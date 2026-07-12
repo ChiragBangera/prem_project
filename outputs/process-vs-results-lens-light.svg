@@ -1,0 +1,263 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1350" viewBox="0 0 1080 1350" role="img" aria-label="EPL: process vs results">
+  <defs>
+    <linearGradient id="lensBg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#FFF9EF" />
+      <stop offset="58%" stop-color="#F7F0E4" />
+      <stop offset="100%" stop-color="#EEE0CB" />
+    </linearGradient>
+    <radialGradient id="greenGlow" cx="0.16" cy="0.12" r="0.52">
+      <stop offset="0%" stop-color="#168A4A" stop-opacity="0.11" />
+      <stop offset="100%" stop-color="#168A4A" stop-opacity="0" />
+    </radialGradient>
+    <radialGradient id="redGlow" cx="0.92" cy="0.10" r="0.50">
+      <stop offset="0%" stop-color="#C73A32" stop-opacity="0.08" />
+      <stop offset="100%" stop-color="#C73A32" stop-opacity="0" />
+    </radialGradient>
+    <filter id="lensShadow">
+      <feDropShadow dx="0" dy="14" stdDeviation="16" flood-color="#B89F79" flood-opacity="0.18" />
+    </filter>
+  </defs>
+  <rect x="0" y="0" width="1080" height="1350" fill="url(#lensBg)" />
+  <rect x="0" y="0" width="1080" height="1350" fill="url(#greenGlow)" />
+  <rect x="0" y="0" width="1080" height="1350" fill="url(#redGlow)" />
+  <rect x="32" y="32" width="1016" height="1286" rx="34" fill="none" stroke="#D6C7B1" stroke-width="2" />
+
+  <g transform="translate(68 70)">
+    <rect x="0" y="0" width="236" height="40" rx="20" fill="#162033" />
+    <text x="118" y="27" text-anchor="middle" fill="#FFF9EF" font-family="Helvetica Neue, Arial, sans-serif" font-size="15" font-weight="900" letter-spacing="1.2">PROCESS VS RESULTS</text>
+    <text x="0" y="108" fill="#162033" font-family="Helvetica Neue, Arial, sans-serif" font-size="56" font-weight="900"><tspan x="0" dy="0">Results are not always process</tspan></text>
+    <text x="0" y="138" fill="#6B7280" font-family="Helvetica Neue, Arial, sans-serif" font-size="23">EPL 2025: points vs xPTS, finishing, defensive variance</text>
+  </g>
+
+  <g filter="url(#lensShadow)">
+    <g transform="translate(68 284)">
+          <rect x="0" y="0" width="296" height="154" rx="24" fill="#FFFFFF" stroke="#DACDBA" stroke-width="1.5" />
+          <rect x="0" y="0" width="296" height="7" rx="7" fill="#168A4A" />
+          <text x="24" y="38" fill="#6B7280" font-family="Helvetica Neue, Arial, sans-serif" font-size="13" font-weight="900" letter-spacing="0.8">POINTS VS PROCESS</text>
+          <text x="24" y="76" fill="#162033" font-family="Helvetica Neue, Arial, sans-serif" font-size="25" font-weight="900">Aston Villa</text>
+          <text x="272" y="76" text-anchor="end" fill="#168A4A" font-family="Helvetica Neue, Arial, sans-serif" font-size="25" font-weight="900">+13.38</text>
+          <text x="24" y="110" fill="#6F5E45" font-family="Helvetica Neue, Arial, sans-serif" font-size="15" font-weight="800">Lowest: Wolverhampto…</text>
+          <text x="272" y="110" text-anchor="end" fill="#6F5E45" font-family="Helvetica Neue, Arial, sans-serif" font-size="15" font-weight="900">-12.24</text>
+          <text x="24" y="137" fill="#6B7280" font-family="Helvetica Neue, Arial, sans-serif" font-size="13">Points minus xPTS</text>
+        </g>
+    <g transform="translate(392 284)">
+          <rect x="0" y="0" width="296" height="154" rx="24" fill="#FFFFFF" stroke="#DACDBA" stroke-width="1.5" />
+          <rect x="0" y="0" width="296" height="7" rx="7" fill="#C77A10" />
+          <text x="24" y="38" fill="#6B7280" font-family="Helvetica Neue, Arial, sans-serif" font-size="13" font-weight="900" letter-spacing="0.8">FINISHING QUALITY</text>
+          <text x="24" y="76" fill="#162033" font-family="Helvetica Neue, Arial, sans-serif" font-size="25" font-weight="900">Tottenham</text>
+          <text x="272" y="76" text-anchor="end" fill="#C77A10" font-family="Helvetica Neue, Arial, sans-serif" font-size="25" font-weight="900">+2.37</text>
+          <text x="24" y="110" fill="#6F5E45" font-family="Helvetica Neue, Arial, sans-serif" font-size="15" font-weight="800">Lowest: Crystal Pala…</text>
+          <text x="272" y="110" text-anchor="end" fill="#6F5E45" font-family="Helvetica Neue, Arial, sans-serif" font-size="15" font-weight="900">-19.23</text>
+          <text x="24" y="137" fill="#6B7280" font-family="Helvetica Neue, Arial, sans-serif" font-size="13">Goals minus xG</text>
+        </g>
+    <g transform="translate(716 284)">
+          <rect x="0" y="0" width="296" height="154" rx="24" fill="#FFFFFF" stroke="#DACDBA" stroke-width="1.5" />
+          <rect x="0" y="0" width="296" height="7" rx="7" fill="#147AA6" />
+          <text x="24" y="38" fill="#6B7280" font-family="Helvetica Neue, Arial, sans-serif" font-size="13" font-weight="900" letter-spacing="0.8">DEFENSIVE PREVENTION</text>
+          <text x="24" y="76" fill="#162033" font-family="Helvetica Neue, Arial, sans-serif" font-size="25" font-weight="900">Everton</text>
+          <text x="272" y="76" text-anchor="end" fill="#147AA6" font-family="Helvetica Neue, Arial, sans-serif" font-size="25" font-weight="900">+11.60</text>
+          <text x="24" y="110" fill="#6F5E45" font-family="Helvetica Neue, Arial, sans-serif" font-size="15" font-weight="800">Lowest: Leeds</text>
+          <text x="272" y="110" text-anchor="end" fill="#6F5E45" font-family="Helvetica Neue, Arial, sans-serif" font-size="15" font-weight="900">-1.56</text>
+          <text x="24" y="137" fill="#6B7280" font-family="Helvetica Neue, Arial, sans-serif" font-size="13">xGA minus goals against</text>
+        </g>
+  </g>
+
+  <g transform="translate(68 494)">
+    <rect x="0" y="0" width="944" height="744" rx="28" fill="#FFFDF8" stroke="#DACDBA" stroke-width="2" />
+    <text x="22" y="42" fill="#6F5E45" font-family="Helvetica Neue, Arial, sans-serif" font-size="21" font-weight="900">FULL LEAGUE VARIANCE TABLE</text>
+    <text x="330" y="80" fill="#6B7280" font-family="Helvetica Neue, Arial, sans-serif" font-size="13" font-weight="900" letter-spacing="0.8">POINTS - xPTS</text>
+    <text x="536" y="80" fill="#6B7280" font-family="Helvetica Neue, Arial, sans-serif" font-size="13" font-weight="900" letter-spacing="0.8">GOALS - xG</text>
+    <text x="728" y="80" fill="#6B7280" font-family="Helvetica Neue, Arial, sans-serif" font-size="13" font-weight="900" letter-spacing="0.8">xGA - GA</text>
+    <text x="22" y="80" fill="#6B7280" font-family="Helvetica Neue, Arial, sans-serif" font-size="13" font-weight="900" letter-spacing="0.8">TEAM</text>
+  </g>
+
+  <g>
+              <rect x="68" y="595" width="944" height="31" rx="12" fill="#F1E7D7" />
+              <text x="90" y="616" fill="#162033" font-family="Helvetica Neue, Arial, sans-serif" font-size="17" font-weight="800">Aston Villa</text>
+              <rect x="398" y="594" width="172" height="27" rx="10" fill="#168A4A" fill-opacity="0.92" />
+        <text x="484" y="613" text-anchor="middle" fill="#FFFFFF" font-family="Helvetica Neue, Arial, sans-serif" font-size="15" font-weight="900">+13.38</text>
+              <rect x="598" y="594" width="172" height="27" rx="10" fill="#C73A32" fill-opacity="0.44" />
+        <text x="684" y="613" text-anchor="middle" fill="#FFFFFF" font-family="Helvetica Neue, Arial, sans-serif" font-size="15" font-weight="900">-1.87</text>
+              <rect x="798" y="594" width="172" height="27" rx="10" fill="#168A4A" fill-opacity="0.84" />
+        <text x="884" y="613" text-anchor="middle" fill="#FFFFFF" font-family="Helvetica Neue, Arial, sans-serif" font-size="15" font-weight="900">+8.92</text>
+            </g><g>
+              <rect x="68" y="626" width="944" height="31" rx="12" fill="#FFF9EF" />
+              <text x="90" y="647" fill="#162033" font-family="Helvetica Neue, Arial, sans-serif" font-size="17" font-weight="800">Sunderland</text>
+              <rect x="398" y="625" width="172" height="27" rx="10" fill="#168A4A" fill-opacity="0.91" />
+        <text x="484" y="644" text-anchor="middle" fill="#FFFFFF" font-family="Helvetica Neue, Arial, sans-serif" font-size="15" font-weight="900">+10.26</text>
+              <rect x="598" y="625" width="172" height="27" rx="10" fill="#C73A32" fill-opacity="0.42" />
+        <text x="684" y="644" text-anchor="middle" fill="#FFFFFF" font-family="Helvetica Neue, Arial, sans-serif" font-size="15" font-weight="900">-1.36</text>
+              <rect x="798" y="625" width="172" height="27" rx="10" fill="#168A4A" fill-opacity="0.92" />
+        <text x="884" y="644" text-anchor="middle" fill="#FFFFFF" font-family="Helvetica Neue, Arial, sans-serif" font-size="15" font-weight="900">+10.60</text>
+            </g><g>
+              <rect x="68" y="657" width="944" height="31" rx="12" fill="#F1E7D7" />
+              <text x="90" y="678" fill="#162033" font-family="Helvetica Neue, Arial, sans-serif" font-size="17" font-weight="800">Fulham</text>
+              <rect x="398" y="656" width="172" height="27" rx="10" fill="#168A4A" fill-opacity="0.81" />
+        <text x="484" y="675" text-anchor="middle" fill="#FFFFFF" font-family="Helvetica Neue, Arial, sans-serif" font-size="15" font-weight="900">+8.42</text>
+              <rect x="598" y="656" width="172" height="27" rx="10" fill="#C73A32" fill-opacity="0.36" />
+        <text x="684" y="675" text-anchor="middle" fill="#FFFFFF" font-family="Helvetica Neue, Arial, sans-serif" font-size="15" font-weight="900">-0.43</text>
+              <rect x="798" y="656" width="172" height="27" rx="10" fill="#168A4A" fill-opacity="0.79" />
+        <text x="884" y="675" text-anchor="middle" fill="#FFFFFF" font-family="Helvetica Neue, Arial, sans-serif" font-size="15" font-weight="900">+8.02</text>
+            </g><g>
+              <rect x="68" y="688" width="944" height="31" rx="12" fill="#FFF9EF" />
+              <text x="90" y="709" fill="#162033" font-family="Helvetica Neue, Arial, sans-serif" font-size="17" font-weight="800">Everton</text>
+              <rect x="398" y="687" width="172" height="27" rx="10" fill="#168A4A" fill-opacity="0.61" />
+        <text x="484" y="706" text-anchor="middle" fill="#FFFFFF" font-family="Helvetica Neue, Arial, sans-serif" font-size="15" font-weight="900">+4.87</text>
+              <rect x="598" y="687" width="172" height="27" rx="10" fill="#C73A32" fill-opacity="0.53" />
+        <text x="684" y="706" text-anchor="middle" fill="#FFFFFF" font-family="Helvetica Neue, Arial, sans-serif" font-size="15" font-weight="900">-3.49</text>
+              <rect x="798" y="687" width="172" height="27" rx="10" fill="#168A4A" fill-opacity="0.92" />
+        <text x="884" y="706" text-anchor="middle" fill="#FFFFFF" font-family="Helvetica Neue, Arial, sans-serif" font-size="15" font-weight="900">+11.60</text>
+            </g><g>
+              <rect x="68" y="719" width="944" height="31" rx="12" fill="#F1E7D7" />
+              <text x="90" y="740" fill="#162033" font-family="Helvetica Neue, Arial, sans-serif" font-size="17" font-weight="800">Manchester City</text>
+              <rect x="398" y="718" width="172" height="27" rx="10" fill="#168A4A" fill-opacity="0.58" />
+        <text x="484" y="737" text-anchor="middle" fill="#FFFFFF" font-family="Helvetica Neue, Arial, sans-serif" font-size="15" font-weight="900">+4.41</text>
+              <rect x="598" y="718" width="172" height="27" rx="10" fill="#C73A32" fill-opacity="0.50" />
+        <text x="684" y="737" text-anchor="middle" fill="#FFFFFF" font-family="Helvetica Neue, Arial, sans-serif" font-size="15" font-weight="900">-2.96</text>
+              <rect x="798" y="718" width="172" height="27" rx="10" fill="#168A4A" fill-opacity="0.92" />
+        <text x="884" y="737" text-anchor="middle" fill="#FFFFFF" font-family="Helvetica Neue, Arial, sans-serif" font-size="15" font-weight="900">+10.55</text>
+            </g><g>
+              <rect x="68" y="750" width="944" height="31" rx="12" fill="#FFF9EF" />
+              <text x="90" y="771" fill="#162033" font-family="Helvetica Neue, Arial, sans-serif" font-size="17" font-weight="800">Manchester United</text>
+              <rect x="398" y="749" width="172" height="27" rx="10" fill="#168A4A" fill-opacity="0.55" />
+        <text x="484" y="768" text-anchor="middle" fill="#FFFFFF" font-family="Helvetica Neue, Arial, sans-serif" font-size="15" font-weight="900">+3.74</text>
+              <rect x="598" y="749" width="172" height="27" rx="10" fill="#C73A32" fill-opacity="0.49" />
+        <text x="684" y="768" text-anchor="middle" fill="#FFFFFF" font-family="Helvetica Neue, Arial, sans-serif" font-size="15" font-weight="900">-2.63</text>
+              <rect x="798" y="749" width="172" height="27" rx="10" fill="#C73A32" fill-opacity="0.39" />
+        <text x="884" y="768" text-anchor="middle" fill="#FFFFFF" font-family="Helvetica Neue, Arial, sans-serif" font-size="15" font-weight="900">-0.83</text>
+            </g><g>
+              <rect x="68" y="781" width="944" height="31" rx="12" fill="#F1E7D7" />
+              <text x="90" y="802" fill="#162033" font-family="Helvetica Neue, Arial, sans-serif" font-size="17" font-weight="800">Arsenal</text>
+              <rect x="398" y="780" width="172" height="27" rx="10" fill="#168A4A" fill-opacity="0.49" />
+        <text x="484" y="799" text-anchor="middle" fill="#FFFFFF" font-family="Helvetica Neue, Arial, sans-serif" font-size="15" font-weight="900">+2.64</text>
+              <rect x="598" y="780" width="172" height="27" rx="10" fill="#C73A32" fill-opacity="0.50" />
+        <text x="684" y="799" text-anchor="middle" fill="#FFFFFF" font-family="Helvetica Neue, Arial, sans-serif" font-size="15" font-weight="900">-2.83</text>
+              <rect x="798" y="780" width="172" height="27" rx="10" fill="#168A4A" fill-opacity="0.56" />
+        <text x="884" y="799" text-anchor="middle" fill="#FFFFFF" font-family="Helvetica Neue, Arial, sans-serif" font-size="15" font-weight="900">+3.92</text>
+            </g><g>
+              <rect x="68" y="812" width="944" height="31" rx="12" fill="#FFF9EF" />
+              <text x="90" y="833" fill="#162033" font-family="Helvetica Neue, Arial, sans-serif" font-size="17" font-weight="800">Nottingham Forest</text>
+              <rect x="398" y="811" width="172" height="27" rx="10" fill="#168A4A" fill-opacity="0.43" />
+        <text x="484" y="830" text-anchor="middle" fill="#FFFFFF" font-family="Helvetica Neue, Arial, sans-serif" font-size="15" font-weight="900">+1.65</text>
+              <rect x="598" y="811" width="172" height="27" rx="10" fill="#C73A32" fill-opacity="0.35" />
+        <text x="684" y="830" text-anchor="middle" fill="#FFFFFF" font-family="Helvetica Neue, Arial, sans-serif" font-size="15" font-weight="900">-0.26</text>
+              <rect x="798" y="811" width="172" height="27" rx="10" fill="#168A4A" fill-opacity="0.91" />
+        <text x="884" y="830" text-anchor="middle" fill="#FFFFFF" font-family="Helvetica Neue, Arial, sans-serif" font-size="15" font-weight="900">+10.30</text>
+            </g><g>
+              <rect x="68" y="843" width="944" height="31" rx="12" fill="#F1E7D7" />
+              <text x="90" y="864" fill="#162033" font-family="Helvetica Neue, Arial, sans-serif" font-size="17" font-weight="800">Liverpool</text>
+              <rect x="398" y="842" width="172" height="27" rx="10" fill="#168A4A" fill-opacity="0.41" />
+        <text x="484" y="861" text-anchor="middle" fill="#FFFFFF" font-family="Helvetica Neue, Arial, sans-serif" font-size="15" font-weight="900">+1.25</text>
+              <rect x="598" y="842" width="172" height="27" rx="10" fill="#C73A32" fill-opacity="0.57" />
+        <text x="684" y="861" text-anchor="middle" fill="#FFFFFF" font-family="Helvetica Neue, Arial, sans-serif" font-size="15" font-weight="900">-4.06</text>
+              <rect x="798" y="842" width="172" height="27" rx="10" fill="#168A4A" fill-opacity="0.49" />
+        <text x="884" y="861" text-anchor="middle" fill="#FFFFFF" font-family="Helvetica Neue, Arial, sans-serif" font-size="15" font-weight="900">+2.73</text>
+            </g><g>
+              <rect x="68" y="874" width="944" height="31" rx="12" fill="#FFF9EF" />
+              <text x="90" y="895" fill="#162033" font-family="Helvetica Neue, Arial, sans-serif" font-size="17" font-weight="800">Brighton</text>
+              <rect x="398" y="873" width="172" height="27" rx="10" fill="#168A4A" fill-opacity="0.37" />
+        <text x="484" y="892" text-anchor="middle" fill="#FFFFFF" font-family="Helvetica Neue, Arial, sans-serif" font-size="15" font-weight="900">+0.57</text>
+              <rect x="598" y="873" width="172" height="27" rx="10" fill="#C73A32" fill-opacity="0.53" />
+        <text x="684" y="892" text-anchor="middle" fill="#FFFFFF" font-family="Helvetica Neue, Arial, sans-serif" font-size="15" font-weight="900">-3.39</text>
+              <rect x="798" y="873" width="172" height="27" rx="10" fill="#168A4A" fill-opacity="0.79" />
+        <text x="884" y="892" text-anchor="middle" fill="#FFFFFF" font-family="Helvetica Neue, Arial, sans-serif" font-size="15" font-weight="900">+8.03</text>
+            </g><g>
+              <rect x="68" y="905" width="944" height="31" rx="12" fill="#F1E7D7" />
+              <text x="90" y="926" fill="#162033" font-family="Helvetica Neue, Arial, sans-serif" font-size="17" font-weight="800">Burnley</text>
+              <rect x="398" y="904" width="172" height="27" rx="10" fill="#C73A32" fill-opacity="0.44" />
+        <text x="484" y="923" text-anchor="middle" fill="#FFFFFF" font-family="Helvetica Neue, Arial, sans-serif" font-size="15" font-weight="900">-1.88</text>
+              <rect x="598" y="904" width="172" height="27" rx="10" fill="#168A4A" fill-opacity="0.38" />
+        <text x="684" y="923" text-anchor="middle" fill="#FFFFFF" font-family="Helvetica Neue, Arial, sans-serif" font-size="15" font-weight="900">+0.69</text>
+              <rect x="798" y="904" width="172" height="27" rx="10" fill="#168A4A" fill-opacity="0.71" />
+        <text x="884" y="923" text-anchor="middle" fill="#FFFFFF" font-family="Helvetica Neue, Arial, sans-serif" font-size="15" font-weight="900">+6.66</text>
+            </g><g>
+              <rect x="68" y="936" width="944" height="31" rx="12" fill="#FFF9EF" />
+              <text x="90" y="957" fill="#162033" font-family="Helvetica Neue, Arial, sans-serif" font-size="17" font-weight="800">West Ham</text>
+              <rect x="398" y="935" width="172" height="27" rx="10" fill="#C73A32" fill-opacity="0.53" />
+        <text x="484" y="954" text-anchor="middle" fill="#FFFFFF" font-family="Helvetica Neue, Arial, sans-serif" font-size="15" font-weight="900">-3.39</text>
+              <rect x="598" y="935" width="172" height="27" rx="10" fill="#C73A32" fill-opacity="0.44" />
+        <text x="684" y="954" text-anchor="middle" fill="#FFFFFF" font-family="Helvetica Neue, Arial, sans-serif" font-size="15" font-weight="900">-1.88</text>
+              <rect x="798" y="935" width="172" height="27" rx="10" fill="#168A4A" fill-opacity="0.47" />
+        <text x="884" y="954" text-anchor="middle" fill="#FFFFFF" font-family="Helvetica Neue, Arial, sans-serif" font-size="15" font-weight="900">+2.33</text>
+            </g><g>
+              <rect x="68" y="967" width="944" height="31" rx="12" fill="#F1E7D7" />
+              <text x="90" y="988" fill="#162033" font-family="Helvetica Neue, Arial, sans-serif" font-size="17" font-weight="800">Brentford</text>
+              <rect x="398" y="966" width="172" height="27" rx="10" fill="#C73A32" fill-opacity="0.57" />
+        <text x="484" y="985" text-anchor="middle" fill="#FFFFFF" font-family="Helvetica Neue, Arial, sans-serif" font-size="15" font-weight="900">-4.20</text>
+              <rect x="598" y="966" width="172" height="27" rx="10" fill="#C73A32" fill-opacity="0.92" />
+        <text x="684" y="985" text-anchor="middle" fill="#FFFFFF" font-family="Helvetica Neue, Arial, sans-serif" font-size="15" font-weight="900">-11.00</text>
+              <rect x="798" y="966" width="172" height="27" rx="10" fill="#168A4A" fill-opacity="0.52" />
+        <text x="884" y="985" text-anchor="middle" fill="#FFFFFF" font-family="Helvetica Neue, Arial, sans-serif" font-size="15" font-weight="900">+3.32</text>
+            </g><g>
+              <rect x="68" y="998" width="944" height="31" rx="12" fill="#FFF9EF" />
+              <text x="90" y="1019" fill="#162033" font-family="Helvetica Neue, Arial, sans-serif" font-size="17" font-weight="800">Bournemouth</text>
+              <rect x="398" y="997" width="172" height="27" rx="10" fill="#C73A32" fill-opacity="0.62" />
+        <text x="484" y="1016" text-anchor="middle" fill="#FFFFFF" font-family="Helvetica Neue, Arial, sans-serif" font-size="15" font-weight="900">-5.08</text>
+              <rect x="598" y="997" width="172" height="27" rx="10" fill="#C73A32" fill-opacity="0.81" />
+        <text x="684" y="1016" text-anchor="middle" fill="#FFFFFF" font-family="Helvetica Neue, Arial, sans-serif" font-size="15" font-weight="900">-8.49</text>
+              <rect x="798" y="997" width="172" height="27" rx="10" fill="#C73A32" fill-opacity="0.37" />
+        <text x="884" y="1016" text-anchor="middle" fill="#FFFFFF" font-family="Helvetica Neue, Arial, sans-serif" font-size="15" font-weight="900">-0.48</text>
+            </g><g>
+              <rect x="68" y="1029" width="944" height="31" rx="12" fill="#F1E7D7" />
+              <text x="90" y="1050" fill="#162033" font-family="Helvetica Neue, Arial, sans-serif" font-size="17" font-weight="800">Crystal Palace</text>
+              <rect x="398" y="1028" width="172" height="27" rx="10" fill="#C73A32" fill-opacity="0.70" />
+        <text x="484" y="1047" text-anchor="middle" fill="#FFFFFF" font-family="Helvetica Neue, Arial, sans-serif" font-size="15" font-weight="900">-6.45</text>
+              <rect x="598" y="1028" width="172" height="27" rx="10" fill="#C73A32" fill-opacity="0.92" />
+        <text x="684" y="1047" text-anchor="middle" fill="#FFFFFF" font-family="Helvetica Neue, Arial, sans-serif" font-size="15" font-weight="900">-19.23</text>
+              <rect x="798" y="1028" width="172" height="27" rx="10" fill="#168A4A" fill-opacity="0.85" />
+        <text x="884" y="1047" text-anchor="middle" fill="#FFFFFF" font-family="Helvetica Neue, Arial, sans-serif" font-size="15" font-weight="900">+9.24</text>
+            </g><g>
+              <rect x="68" y="1060" width="944" height="31" rx="12" fill="#FFF9EF" />
+              <text x="90" y="1081" fill="#162033" font-family="Helvetica Neue, Arial, sans-serif" font-size="17" font-weight="800">Newcastle United</text>
+              <rect x="398" y="1059" width="172" height="27" rx="10" fill="#C73A32" fill-opacity="0.71" />
+        <text x="484" y="1078" text-anchor="middle" fill="#FFFFFF" font-family="Helvetica Neue, Arial, sans-serif" font-size="15" font-weight="900">-6.59</text>
+              <rect x="598" y="1059" width="172" height="27" rx="10" fill="#C73A32" fill-opacity="0.75" />
+        <text x="684" y="1078" text-anchor="middle" fill="#FFFFFF" font-family="Helvetica Neue, Arial, sans-serif" font-size="15" font-weight="900">-7.46</text>
+              <rect x="798" y="1059" width="172" height="27" rx="10" fill="#168A4A" fill-opacity="0.41" />
+        <text x="884" y="1078" text-anchor="middle" fill="#FFFFFF" font-family="Helvetica Neue, Arial, sans-serif" font-size="15" font-weight="900">+1.29</text>
+            </g><g>
+              <rect x="68" y="1091" width="944" height="31" rx="12" fill="#F1E7D7" />
+              <text x="90" y="1112" fill="#162033" font-family="Helvetica Neue, Arial, sans-serif" font-size="17" font-weight="800">Chelsea</text>
+              <rect x="398" y="1090" width="172" height="27" rx="10" fill="#C73A32" fill-opacity="0.75" />
+        <text x="484" y="1109" text-anchor="middle" fill="#FFFFFF" font-family="Helvetica Neue, Arial, sans-serif" font-size="15" font-weight="900">-7.35</text>
+              <rect x="598" y="1090" width="172" height="27" rx="10" fill="#C73A32" fill-opacity="0.92" />
+        <text x="684" y="1109" text-anchor="middle" fill="#FFFFFF" font-family="Helvetica Neue, Arial, sans-serif" font-size="15" font-weight="900">-14.43</text>
+              <rect x="798" y="1090" width="172" height="27" rx="10" fill="#168A4A" fill-opacity="0.66" />
+        <text x="884" y="1109" text-anchor="middle" fill="#FFFFFF" font-family="Helvetica Neue, Arial, sans-serif" font-size="15" font-weight="900">+5.70</text>
+            </g><g>
+              <rect x="68" y="1122" width="944" height="31" rx="12" fill="#FFF9EF" />
+              <text x="90" y="1143" fill="#162033" font-family="Helvetica Neue, Arial, sans-serif" font-size="17" font-weight="800">Tottenham</text>
+              <rect x="398" y="1121" width="172" height="27" rx="10" fill="#C73A32" fill-opacity="0.77" />
+        <text x="484" y="1140" text-anchor="middle" fill="#FFFFFF" font-family="Helvetica Neue, Arial, sans-serif" font-size="15" font-weight="900">-7.68</text>
+              <rect x="598" y="1121" width="172" height="27" rx="10" fill="#168A4A" fill-opacity="0.47" />
+        <text x="684" y="1140" text-anchor="middle" fill="#FFFFFF" font-family="Helvetica Neue, Arial, sans-serif" font-size="15" font-weight="900">+2.37</text>
+              <rect x="798" y="1121" width="172" height="27" rx="10" fill="#C73A32" fill-opacity="0.41" />
+        <text x="884" y="1140" text-anchor="middle" fill="#FFFFFF" font-family="Helvetica Neue, Arial, sans-serif" font-size="15" font-weight="900">-1.25</text>
+            </g><g>
+              <rect x="68" y="1153" width="944" height="31" rx="12" fill="#F1E7D7" />
+              <text x="90" y="1174" fill="#162033" font-family="Helvetica Neue, Arial, sans-serif" font-size="17" font-weight="800">Leeds</text>
+              <rect x="398" y="1152" width="172" height="27" rx="10" fill="#C73A32" fill-opacity="0.92" />
+        <text x="484" y="1171" text-anchor="middle" fill="#FFFFFF" font-family="Helvetica Neue, Arial, sans-serif" font-size="15" font-weight="900">-10.92</text>
+              <rect x="598" y="1152" width="172" height="27" rx="10" fill="#C73A32" fill-opacity="0.85" />
+        <text x="684" y="1171" text-anchor="middle" fill="#FFFFFF" font-family="Helvetica Neue, Arial, sans-serif" font-size="15" font-weight="900">-9.11</text>
+              <rect x="798" y="1152" width="172" height="27" rx="10" fill="#C73A32" fill-opacity="0.43" />
+        <text x="884" y="1171" text-anchor="middle" fill="#FFFFFF" font-family="Helvetica Neue, Arial, sans-serif" font-size="15" font-weight="900">-1.56</text>
+            </g><g>
+              <rect x="68" y="1184" width="944" height="31" rx="12" fill="#FFF9EF" />
+              <text x="90" y="1205" fill="#162033" font-family="Helvetica Neue, Arial, sans-serif" font-size="17" font-weight="800">Wolverhampton Wanderers</text>
+              <rect x="398" y="1183" width="172" height="27" rx="10" fill="#C73A32" fill-opacity="0.92" />
+        <text x="484" y="1202" text-anchor="middle" fill="#FFFFFF" font-family="Helvetica Neue, Arial, sans-serif" font-size="15" font-weight="900">-12.24</text>
+              <rect x="598" y="1183" width="172" height="27" rx="10" fill="#C73A32" fill-opacity="0.76" />
+        <text x="684" y="1202" text-anchor="middle" fill="#FFFFFF" font-family="Helvetica Neue, Arial, sans-serif" font-size="15" font-weight="900">-7.62</text>
+              <rect x="798" y="1183" width="172" height="27" rx="10" fill="#168A4A" fill-opacity="0.36" />
+        <text x="884" y="1202" text-anchor="middle" fill="#FFFFFF" font-family="Helvetica Neue, Arial, sans-serif" font-size="15" font-weight="900">+0.39</text>
+            </g>
+
+  <g transform="translate(68 1268)">
+    <rect x="0" y="0" width="448" height="36" rx="18" fill="#168A4A" fill-opacity="0.14" />
+    <text x="24" y="24" fill="#162033" font-family="Helvetica Neue, Arial, sans-serif" font-size="15" font-weight="800">Positive = above model expectation</text>
+    <rect x="496" y="0" width="448" height="36" rx="18" fill="#C73A32" fill-opacity="0.14" />
+    <text x="520" y="24" fill="#162033" font-family="Helvetica Neue, Arial, sans-serif" font-size="15" font-weight="800">Negative = below model expectation</text>
+    <text x="0" y="62" fill="#6B7280" font-family="Helvetica Neue, Arial, sans-serif" font-size="14">Data source: Understat | Positive xGA-GA means conceding fewer than expected</text>
+  </g>
+</svg>

@@ -1,0 +1,1033 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1900" height="2860" viewBox="0 0 1900 2860" role="img" aria-label="Manchester United attacking distribution: Amorim vs Carrick">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#050B14" />
+      <stop offset="50%" stop-color="#0A1220" />
+      <stop offset="100%" stop-color="#111C2F" />
+    </linearGradient>
+    <radialGradient id="leftGlow" cx="0.14" cy="0.08" r="0.44">
+      <stop offset="0%" stop-color="#C8102E" stop-opacity="0.22" />
+      <stop offset="100%" stop-color="#C8102E" stop-opacity="0" />
+    </radialGradient>
+    <radialGradient id="rightGlow" cx="0.86" cy="0.08" r="0.44">
+      <stop offset="0%" stop-color="#F59E0B" stop-opacity="0.18" />
+      <stop offset="100%" stop-color="#F59E0B" stop-opacity="0" />
+    </radialGradient>
+  </defs>
+  <rect x="0" y="0" width="1900" height="2860" fill="url(#bg)" />
+  <rect x="0" y="0" width="1900" height="2860" fill="url(#leftGlow)" />
+  <rect x="0" y="0" width="1900" height="2860" fill="url(#rightGlow)" />
+  <rect x="28" y="28" width="1844" height="2804" rx="38" fill="none" stroke="#1D2939" stroke-width="2" />
+
+  <g transform="translate(68 70)">
+    <rect x="0" y="0" width="228" height="42" rx="21" fill="#132032" />
+    <text x="114" y="28" text-anchor="middle" fill="#E6D5B7" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700" letter-spacing="1.4">PLAYER LOAD MAP</text>
+    <text x="0" y="104" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="58" font-weight="800"><tspan x="0" dy="0">Amorim spread the burden. Carrick</tspan><tspan x="0" dy="64">centralised it around Bruno.</tspan></text>
+    <text x="0" y="192" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="26">Every Manchester United player in the league windows for Ruben Amorim and Michael Carrick</text>
+  </g>
+
+  <g transform="translate(68 250)">
+          <rect x="0" y="0" width="870" height="1710" rx="34" fill="#121D2D" stroke="#223146" stroke-width="2" />
+          <rect x="0" y="0" width="870" height="10" rx="10" fill="#C8102E" />
+          <text x="42" y="64" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="36" font-weight="800">Ruben Amorim</text>
+          <text x="42" y="102" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="20">20 league matches | lower Bruno concentration</text>
+          <rect x="560" y="38" width="268" height="80" rx="20" fill="#F59E0B" fill-opacity="0.18" />
+          <text x="586" y="68" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="14" letter-spacing="0.8">TEAM TOTALS</text>
+          <text x="586" y="98" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="20" font-weight="700">xA 25.36 | xG 40.73 | Shots 321</text>
+          <text x="42" y="150" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="18">Bruno xA share: 20.8%</text><text x="42" y="180" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="18">Top 3 xA share: 44.8%</text><text x="42" y="210" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="18">Team xA/match: 1.27 | team xG/match: 2.04</text>
+          <g transform="translate(32 246)">
+      <rect x="0" y="0" width="806" height="48" rx="14" fill="#18263A" stroke="#223146" stroke-width="1" />
+      <text x="16" y="29" fill="#64748B" font-family="Helvetica Neue, Arial, sans-serif" font-size="14" font-weight="700">01</text>
+      <text x="48" y="29" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="17" font-weight="700">Bruno Fernandes</text>
+      <text x="244" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xA SHARE</text>
+      <rect x="244" y="24" width="120" height="10" rx="5" fill="#1E293B" />
+    <rect x="244" y="24" width="24" height="10" rx="5" fill="#C8102E" />
+      <text x="372" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">20.8%</text>
+      <text x="448" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xG+xA SHARE</text>
+      <text x="448" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">19.7%</text>
+      <text x="580" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xA</text>
+      <text x="580" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">5.28</text>
+      <text x="636" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xG+xA</text>
+      <text x="636" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">13.02</text>
+      <text x="720" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">S</text>
+      <text x="720" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">46</text>
+      <text x="764" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">MIN</text>
+      <text x="764" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">1489</text>
+      <text x="814" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">G</text>
+      <text x="814" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">5.0</text>
+    </g><g transform="translate(32 300)">
+      <rect x="0" y="0" width="806" height="48" rx="14" fill="#111B29" stroke="#223146" stroke-width="1" />
+      <text x="16" y="29" fill="#64748B" font-family="Helvetica Neue, Arial, sans-serif" font-size="14" font-weight="700">02</text>
+      <text x="48" y="29" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="17" font-weight="700">Amad Diallo</text>
+      <text x="244" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xA SHARE</text>
+      <rect x="244" y="24" width="120" height="10" rx="5" fill="#1E293B" />
+    <rect x="244" y="24" width="14" height="10" rx="5" fill="#C8102E" />
+      <text x="372" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">12.2%</text>
+      <text x="448" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xG+xA SHARE</text>
+      <text x="448" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">10.1%</text>
+      <text x="580" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xA</text>
+      <text x="580" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">3.1</text>
+      <text x="636" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xG+xA</text>
+      <text x="636" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">6.65</text>
+      <text x="720" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">S</text>
+      <text x="720" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">29</text>
+      <text x="764" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">MIN</text>
+      <text x="764" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">1212</text>
+      <text x="814" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">G</text>
+      <text x="814" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">2.0</text>
+    </g><g transform="translate(32 354)">
+      <rect x="0" y="0" width="806" height="48" rx="14" fill="#111B29" stroke="#223146" stroke-width="1" />
+      <text x="16" y="29" fill="#64748B" font-family="Helvetica Neue, Arial, sans-serif" font-size="14" font-weight="700">03</text>
+      <text x="48" y="29" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="17" font-weight="700">Bryan Mbeumo</text>
+      <text x="244" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xA SHARE</text>
+      <rect x="244" y="24" width="120" height="10" rx="5" fill="#1E293B" />
+    <rect x="244" y="24" width="14" height="10" rx="5" fill="#C8102E" />
+      <text x="372" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">11.8%</text>
+      <text x="448" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xG+xA SHARE</text>
+      <text x="448" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">14.4%</text>
+      <text x="580" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xA</text>
+      <text x="580" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">2.98</text>
+      <text x="636" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xG+xA</text>
+      <text x="636" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">9.51</text>
+      <text x="720" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">S</text>
+      <text x="720" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">42</text>
+      <text x="764" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">MIN</text>
+      <text x="764" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">1423</text>
+      <text x="814" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">G</text>
+      <text x="814" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">6.0</text>
+    </g><g transform="translate(32 408)">
+      <rect x="0" y="0" width="806" height="48" rx="14" fill="#111B29" stroke="#223146" stroke-width="1" />
+      <text x="16" y="29" fill="#64748B" font-family="Helvetica Neue, Arial, sans-serif" font-size="14" font-weight="700">04</text>
+      <text x="48" y="29" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="17" font-weight="700">Patrick Dorgu</text>
+      <text x="244" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xA SHARE</text>
+      <rect x="244" y="24" width="120" height="10" rx="5" fill="#1E293B" />
+    <rect x="244" y="24" width="9" height="10" rx="5" fill="#C8102E" />
+      <text x="372" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">8.1%</text>
+      <text x="448" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xG+xA SHARE</text>
+      <text x="448" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">4.6%</text>
+      <text x="580" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xA</text>
+      <text x="580" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">2.06</text>
+      <text x="636" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xG+xA</text>
+      <text x="636" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">3.06</text>
+      <text x="720" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">S</text>
+      <text x="720" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">13</text>
+      <text x="764" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">MIN</text>
+      <text x="764" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">1064</text>
+      <text x="814" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">G</text>
+      <text x="814" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">1.0</text>
+    </g><g transform="translate(32 462)">
+      <rect x="0" y="0" width="806" height="48" rx="14" fill="#111B29" stroke="#223146" stroke-width="1" />
+      <text x="16" y="29" fill="#64748B" font-family="Helvetica Neue, Arial, sans-serif" font-size="14" font-weight="700">05</text>
+      <text x="48" y="29" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="17" font-weight="700">Diogo Dalot</text>
+      <text x="244" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xA SHARE</text>
+      <rect x="244" y="24" width="120" height="10" rx="5" fill="#1E293B" />
+    <rect x="244" y="24" width="9" height="10" rx="5" fill="#C8102E" />
+      <text x="372" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">7.8%</text>
+      <text x="448" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xG+xA SHARE</text>
+      <text x="448" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">5.0%</text>
+      <text x="580" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xA</text>
+      <text x="580" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">1.98</text>
+      <text x="636" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xG+xA</text>
+      <text x="636" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">3.33</text>
+      <text x="720" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">S</text>
+      <text x="720" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">11</text>
+      <text x="764" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">MIN</text>
+      <text x="764" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">1325</text>
+      <text x="814" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">G</text>
+      <text x="814" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">1.0</text>
+    </g><g transform="translate(32 516)">
+      <rect x="0" y="0" width="806" height="48" rx="14" fill="#18263A" stroke="#223146" stroke-width="1" />
+      <text x="16" y="29" fill="#64748B" font-family="Helvetica Neue, Arial, sans-serif" font-size="14" font-weight="700">06</text>
+      <text x="48" y="29" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="17" font-weight="700">Casemiro</text>
+      <text x="244" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xA SHARE</text>
+      <rect x="244" y="24" width="120" height="10" rx="5" fill="#1E293B" />
+    <rect x="244" y="24" width="9" height="10" rx="5" fill="#C8102E" />
+      <text x="372" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">7.6%</text>
+      <text x="448" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xG+xA SHARE</text>
+      <text x="448" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">7.3%</text>
+      <text x="580" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xA</text>
+      <text x="580" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">1.94</text>
+      <text x="636" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xG+xA</text>
+      <text x="636" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">4.85</text>
+      <text x="720" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">S</text>
+      <text x="720" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">27</text>
+      <text x="764" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">MIN</text>
+      <text x="764" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">1277</text>
+      <text x="814" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">G</text>
+      <text x="814" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">4.0</text>
+    </g><g transform="translate(32 570)">
+      <rect x="0" y="0" width="806" height="48" rx="14" fill="#111B29" stroke="#223146" stroke-width="1" />
+      <text x="16" y="29" fill="#64748B" font-family="Helvetica Neue, Arial, sans-serif" font-size="14" font-weight="700">07</text>
+      <text x="48" y="29" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="17" font-weight="700">Matheus Cunha</text>
+      <text x="244" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xA SHARE</text>
+      <rect x="244" y="24" width="120" height="10" rx="5" fill="#1E293B" />
+    <rect x="244" y="24" width="8" height="10" rx="5" fill="#C8102E" />
+      <text x="372" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">7.0%</text>
+      <text x="448" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xG+xA SHARE</text>
+      <text x="448" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">9.2%</text>
+      <text x="580" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xA</text>
+      <text x="580" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">1.77</text>
+      <text x="636" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xG+xA</text>
+      <text x="636" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">6.12</text>
+      <text x="720" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">S</text>
+      <text x="720" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">55</text>
+      <text x="764" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">MIN</text>
+      <text x="764" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">1288</text>
+      <text x="814" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">G</text>
+      <text x="814" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">4.0</text>
+    </g><g transform="translate(32 624)">
+      <rect x="0" y="0" width="806" height="48" rx="14" fill="#111B29" stroke="#223146" stroke-width="1" />
+      <text x="16" y="29" fill="#64748B" font-family="Helvetica Neue, Arial, sans-serif" font-size="14" font-weight="700">08</text>
+      <text x="48" y="29" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="17" font-weight="700">Mason Mount</text>
+      <text x="244" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xA SHARE</text>
+      <rect x="244" y="24" width="120" height="10" rx="5" fill="#1E293B" />
+    <rect x="244" y="24" width="6" height="10" rx="5" fill="#C8102E" />
+      <text x="372" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">5.3%</text>
+      <text x="448" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xG+xA SHARE</text>
+      <text x="448" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">4.6%</text>
+      <text x="580" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xA</text>
+      <text x="580" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">1.35</text>
+      <text x="636" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xG+xA</text>
+      <text x="636" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">3.06</text>
+      <text x="720" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">S</text>
+      <text x="720" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">18</text>
+      <text x="764" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">MIN</text>
+      <text x="764" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">799</text>
+      <text x="814" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">G</text>
+      <text x="814" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">3.0</text>
+    </g><g transform="translate(32 678)">
+      <rect x="0" y="0" width="806" height="48" rx="14" fill="#111B29" stroke="#223146" stroke-width="1" />
+      <text x="16" y="29" fill="#64748B" font-family="Helvetica Neue, Arial, sans-serif" font-size="14" font-weight="700">09</text>
+      <text x="48" y="29" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="17" font-weight="700">Luke Shaw</text>
+      <text x="244" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xA SHARE</text>
+      <rect x="244" y="24" width="120" height="10" rx="5" fill="#1E293B" />
+    <rect x="244" y="24" width="4" height="10" rx="5" fill="#C8102E" />
+      <text x="372" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">3.9%</text>
+      <text x="448" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xG+xA SHARE</text>
+      <text x="448" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">1.6%</text>
+      <text x="580" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xA</text>
+      <text x="580" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">1.0</text>
+      <text x="636" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xG+xA</text>
+      <text x="636" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">1.08</text>
+      <text x="720" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">S</text>
+      <text x="720" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">1</text>
+      <text x="764" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">MIN</text>
+      <text x="764" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">1756</text>
+      <text x="814" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">G</text>
+      <text x="814" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.0</text>
+    </g><g transform="translate(32 732)">
+      <rect x="0" y="0" width="806" height="48" rx="14" fill="#111B29" stroke="#223146" stroke-width="1" />
+      <text x="16" y="29" fill="#64748B" font-family="Helvetica Neue, Arial, sans-serif" font-size="14" font-weight="700">10</text>
+      <text x="48" y="29" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="17" font-weight="700">Joshua Zirkzee</text>
+      <text x="244" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xA SHARE</text>
+      <rect x="244" y="24" width="120" height="10" rx="5" fill="#1E293B" />
+    <rect x="244" y="24" width="4" height="10" rx="5" fill="#C8102E" />
+      <text x="372" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">3.8%</text>
+      <text x="448" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xG+xA SHARE</text>
+      <text x="448" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">5.5%</text>
+      <text x="580" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xA</text>
+      <text x="580" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.95</text>
+      <text x="636" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xG+xA</text>
+      <text x="636" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">3.64</text>
+      <text x="720" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">S</text>
+      <text x="720" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">15</text>
+      <text x="764" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">MIN</text>
+      <text x="764" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">454</text>
+      <text x="814" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">G</text>
+      <text x="814" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">2.0</text>
+    </g><g transform="translate(32 786)">
+      <rect x="0" y="0" width="806" height="48" rx="14" fill="#111B29" stroke="#223146" stroke-width="1" />
+      <text x="16" y="29" fill="#64748B" font-family="Helvetica Neue, Arial, sans-serif" font-size="14" font-weight="700">11</text>
+      <text x="48" y="29" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="17" font-weight="700">Benjamin Sesko</text>
+      <text x="244" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xA SHARE</text>
+      <rect x="244" y="24" width="120" height="10" rx="5" fill="#1E293B" />
+    <rect x="244" y="24" width="4" height="10" rx="5" fill="#C8102E" />
+      <text x="372" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">2.1%</text>
+      <text x="448" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xG+xA SHARE</text>
+      <text x="448" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">9.8%</text>
+      <text x="580" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xA</text>
+      <text x="580" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.53</text>
+      <text x="636" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xG+xA</text>
+      <text x="636" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">6.49</text>
+      <text x="720" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">S</text>
+      <text x="720" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">30</text>
+      <text x="764" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">MIN</text>
+      <text x="764" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">951</text>
+      <text x="814" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">G</text>
+      <text x="814" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">2.0</text>
+    </g><g transform="translate(32 840)">
+      <rect x="0" y="0" width="806" height="48" rx="14" fill="#111B29" stroke="#223146" stroke-width="1" />
+      <text x="16" y="29" fill="#64748B" font-family="Helvetica Neue, Arial, sans-serif" font-size="14" font-weight="700">12</text>
+      <text x="48" y="29" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="17" font-weight="700">Lisandro Martínez</text>
+      <text x="244" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xA SHARE</text>
+      <rect x="244" y="24" width="120" height="10" rx="5" fill="#1E293B" />
+    <rect x="244" y="24" width="4" height="10" rx="5" fill="#C8102E" />
+      <text x="372" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">1.7%</text>
+      <text x="448" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xG+xA SHARE</text>
+      <text x="448" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.7%</text>
+      <text x="580" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xA</text>
+      <text x="580" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.44</text>
+      <text x="636" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xG+xA</text>
+      <text x="636" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.47</text>
+      <text x="720" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">S</text>
+      <text x="720" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">2</text>
+      <text x="764" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">MIN</text>
+      <text x="764" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">349</text>
+      <text x="814" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">G</text>
+      <text x="814" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.0</text>
+    </g><g transform="translate(32 894)">
+      <rect x="0" y="0" width="806" height="48" rx="14" fill="#111B29" stroke="#223146" stroke-width="1" />
+      <text x="16" y="29" fill="#64748B" font-family="Helvetica Neue, Arial, sans-serif" font-size="14" font-weight="700">13</text>
+      <text x="48" y="29" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="17" font-weight="700">Matthijs de Ligt</text>
+      <text x="244" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xA SHARE</text>
+      <rect x="244" y="24" width="120" height="10" rx="5" fill="#1E293B" />
+    <rect x="244" y="24" width="4" height="10" rx="5" fill="#C8102E" />
+      <text x="372" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">1.7%</text>
+      <text x="448" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xG+xA SHARE</text>
+      <text x="448" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">2.6%</text>
+      <text x="580" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xA</text>
+      <text x="580" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.43</text>
+      <text x="636" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xG+xA</text>
+      <text x="636" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">1.75</text>
+      <text x="720" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">S</text>
+      <text x="720" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">11</text>
+      <text x="764" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">MIN</text>
+      <text x="764" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">1170</text>
+      <text x="814" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">G</text>
+      <text x="814" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">1.0</text>
+    </g><g transform="translate(32 948)">
+      <rect x="0" y="0" width="806" height="48" rx="14" fill="#111B29" stroke="#223146" stroke-width="1" />
+      <text x="16" y="29" fill="#64748B" font-family="Helvetica Neue, Arial, sans-serif" font-size="14" font-weight="700">14</text>
+      <text x="48" y="29" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="17" font-weight="700">Ayden Heaven</text>
+      <text x="244" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xA SHARE</text>
+      <rect x="244" y="24" width="120" height="10" rx="5" fill="#1E293B" />
+    <rect x="244" y="24" width="4" height="10" rx="5" fill="#C8102E" />
+      <text x="372" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">1.4%</text>
+      <text x="448" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xG+xA SHARE</text>
+      <text x="448" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.7%</text>
+      <text x="580" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xA</text>
+      <text x="580" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.37</text>
+      <text x="636" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xG+xA</text>
+      <text x="636" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.45</text>
+      <text x="720" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">S</text>
+      <text x="720" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">2</text>
+      <text x="764" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">MIN</text>
+      <text x="764" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">579</text>
+      <text x="814" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">G</text>
+      <text x="814" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.0</text>
+    </g><g transform="translate(32 1002)">
+      <rect x="0" y="0" width="806" height="48" rx="14" fill="#111B29" stroke="#223146" stroke-width="1" />
+      <text x="16" y="29" fill="#64748B" font-family="Helvetica Neue, Arial, sans-serif" font-size="14" font-weight="700">15</text>
+      <text x="48" y="29" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="17" font-weight="700">Altay Bayindir</text>
+      <text x="244" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xA SHARE</text>
+      <rect x="244" y="24" width="120" height="10" rx="5" fill="#1E293B" />
+    <rect x="244" y="24" width="4" height="10" rx="5" fill="#C8102E" />
+      <text x="372" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">1.2%</text>
+      <text x="448" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xG+xA SHARE</text>
+      <text x="448" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.4%</text>
+      <text x="580" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xA</text>
+      <text x="580" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.29</text>
+      <text x="636" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xG+xA</text>
+      <text x="636" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.29</text>
+      <text x="720" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">S</text>
+      <text x="720" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0</text>
+      <text x="764" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">MIN</text>
+      <text x="764" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">540</text>
+      <text x="814" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">G</text>
+      <text x="814" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.0</text>
+    </g><g transform="translate(32 1056)">
+      <rect x="0" y="0" width="806" height="48" rx="14" fill="#18263A" stroke="#223146" stroke-width="1" />
+      <text x="16" y="29" fill="#64748B" font-family="Helvetica Neue, Arial, sans-serif" font-size="14" font-weight="700">16</text>
+      <text x="48" y="29" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="17" font-weight="700">Kobbie Mainoo</text>
+      <text x="244" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xA SHARE</text>
+      <rect x="244" y="24" width="120" height="10" rx="5" fill="#1E293B" />
+    <rect x="244" y="24" width="4" height="10" rx="5" fill="#C8102E" />
+      <text x="372" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">1.1%</text>
+      <text x="448" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xG+xA SHARE</text>
+      <text x="448" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.5%</text>
+      <text x="580" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xA</text>
+      <text x="580" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.27</text>
+      <text x="636" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xG+xA</text>
+      <text x="636" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.33</text>
+      <text x="720" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">S</text>
+      <text x="720" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">2</text>
+      <text x="764" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">MIN</text>
+      <text x="764" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">174</text>
+      <text x="814" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">G</text>
+      <text x="814" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.0</text>
+    </g><g transform="translate(32 1110)">
+      <rect x="0" y="0" width="806" height="48" rx="14" fill="#111B29" stroke="#223146" stroke-width="1" />
+      <text x="16" y="29" fill="#64748B" font-family="Helvetica Neue, Arial, sans-serif" font-size="14" font-weight="700">17</text>
+      <text x="48" y="29" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="17" font-weight="700">Harry Maguire</text>
+      <text x="244" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xA SHARE</text>
+      <rect x="244" y="24" width="120" height="10" rx="5" fill="#1E293B" />
+    <rect x="244" y="24" width="4" height="10" rx="5" fill="#C8102E" />
+      <text x="372" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.8%</text>
+      <text x="448" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xG+xA SHARE</text>
+      <text x="448" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.8%</text>
+      <text x="580" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xA</text>
+      <text x="580" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.19</text>
+      <text x="636" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xG+xA</text>
+      <text x="636" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.55</text>
+      <text x="720" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">S</text>
+      <text x="720" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">4</text>
+      <text x="764" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">MIN</text>
+      <text x="764" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">351</text>
+      <text x="814" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">G</text>
+      <text x="814" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">1.0</text>
+    </g><g transform="translate(32 1164)">
+      <rect x="0" y="0" width="806" height="48" rx="14" fill="#111B29" stroke="#223146" stroke-width="1" />
+      <text x="16" y="29" fill="#64748B" font-family="Helvetica Neue, Arial, sans-serif" font-size="14" font-weight="700">18</text>
+      <text x="48" y="29" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="17" font-weight="700">Manuel Ugarte</text>
+      <text x="244" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xA SHARE</text>
+      <rect x="244" y="24" width="120" height="10" rx="5" fill="#1E293B" />
+    <rect x="244" y="24" width="4" height="10" rx="5" fill="#C8102E" />
+      <text x="372" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.4%</text>
+      <text x="448" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xG+xA SHARE</text>
+      <text x="448" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.4%</text>
+      <text x="580" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xA</text>
+      <text x="580" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.11</text>
+      <text x="636" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xG+xA</text>
+      <text x="636" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.29</text>
+      <text x="720" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">S</text>
+      <text x="720" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">6</text>
+      <text x="764" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">MIN</text>
+      <text x="764" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">626</text>
+      <text x="814" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">G</text>
+      <text x="814" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.0</text>
+    </g><g transform="translate(32 1218)">
+      <rect x="0" y="0" width="806" height="48" rx="14" fill="#111B29" stroke="#223146" stroke-width="1" />
+      <text x="16" y="29" fill="#64748B" font-family="Helvetica Neue, Arial, sans-serif" font-size="14" font-weight="700">19</text>
+      <text x="48" y="29" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="17" font-weight="700">Jack Fletcher</text>
+      <text x="244" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xA SHARE</text>
+      <rect x="244" y="24" width="120" height="10" rx="5" fill="#1E293B" />
+    <rect x="244" y="24" width="4" height="10" rx="5" fill="#C8102E" />
+      <text x="372" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.4%</text>
+      <text x="448" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xG+xA SHARE</text>
+      <text x="448" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.2%</text>
+      <text x="580" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xA</text>
+      <text x="580" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.11</text>
+      <text x="636" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xG+xA</text>
+      <text x="636" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.15</text>
+      <text x="720" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">S</text>
+      <text x="720" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">1</text>
+      <text x="764" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">MIN</text>
+      <text x="764" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">97</text>
+      <text x="814" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">G</text>
+      <text x="814" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.0</text>
+    </g><g transform="translate(32 1272)">
+      <rect x="0" y="0" width="806" height="48" rx="14" fill="#111B29" stroke="#223146" stroke-width="1" />
+      <text x="16" y="29" fill="#64748B" font-family="Helvetica Neue, Arial, sans-serif" font-size="14" font-weight="700">20</text>
+      <text x="48" y="29" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="17" font-weight="700">Leny Yoro</text>
+      <text x="244" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xA SHARE</text>
+      <rect x="244" y="24" width="120" height="10" rx="5" fill="#1E293B" />
+    <rect x="244" y="24" width="4" height="10" rx="5" fill="#C8102E" />
+      <text x="372" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.4%</text>
+      <text x="448" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xG+xA SHARE</text>
+      <text x="448" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">1.3%</text>
+      <text x="580" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xA</text>
+      <text x="580" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.1</text>
+      <text x="636" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xG+xA</text>
+      <text x="636" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.84</text>
+      <text x="720" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">S</text>
+      <text x="720" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">4</text>
+      <text x="764" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">MIN</text>
+      <text x="764" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">1117</text>
+      <text x="814" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">G</text>
+      <text x="814" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.0</text>
+    </g><g transform="translate(32 1326)">
+      <rect x="0" y="0" width="806" height="48" rx="14" fill="#111B29" stroke="#223146" stroke-width="1" />
+      <text x="16" y="29" fill="#64748B" font-family="Helvetica Neue, Arial, sans-serif" font-size="14" font-weight="700">21</text>
+      <text x="48" y="29" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="17" font-weight="700">Noussair Mazraoui</text>
+      <text x="244" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xA SHARE</text>
+      <rect x="244" y="24" width="120" height="10" rx="5" fill="#1E293B" />
+    <rect x="244" y="24" width="4" height="10" rx="5" fill="#C8102E" />
+      <text x="372" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.3%</text>
+      <text x="448" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xG+xA SHARE</text>
+      <text x="448" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.1%</text>
+      <text x="580" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xA</text>
+      <text x="580" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.08</text>
+      <text x="636" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xG+xA</text>
+      <text x="636" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.09</text>
+      <text x="720" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">S</text>
+      <text x="720" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">1</text>
+      <text x="764" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">MIN</text>
+      <text x="764" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">450</text>
+      <text x="814" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">G</text>
+      <text x="814" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.0</text>
+    </g><g transform="translate(32 1380)">
+      <rect x="0" y="0" width="806" height="48" rx="14" fill="#111B29" stroke="#223146" stroke-width="1" />
+      <text x="16" y="29" fill="#64748B" font-family="Helvetica Neue, Arial, sans-serif" font-size="14" font-weight="700">22</text>
+      <text x="48" y="29" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="17" font-weight="700">Bendito Mantato</text>
+      <text x="244" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xA SHARE</text>
+      <rect x="244" y="24" width="120" height="10" rx="5" fill="#1E293B" />
+    <rect x="244" y="24" width="4" height="10" rx="5" fill="#C8102E" />
+      <text x="372" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.1%</text>
+      <text x="448" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xG+xA SHARE</text>
+      <text x="448" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.1%</text>
+      <text x="580" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xA</text>
+      <text x="580" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.04</text>
+      <text x="636" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xG+xA</text>
+      <text x="636" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.04</text>
+      <text x="720" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">S</text>
+      <text x="720" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0</text>
+      <text x="764" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">MIN</text>
+      <text x="764" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">14</text>
+      <text x="814" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">G</text>
+      <text x="814" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.0</text>
+    </g><g transform="translate(32 1434)">
+      <rect x="0" y="0" width="806" height="48" rx="14" fill="#111B29" stroke="#223146" stroke-width="1" />
+      <text x="16" y="29" fill="#64748B" font-family="Helvetica Neue, Arial, sans-serif" font-size="14" font-weight="700">23</text>
+      <text x="48" y="29" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="17" font-weight="700">Shea Lacey</text>
+      <text x="244" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xA SHARE</text>
+      <rect x="244" y="24" width="120" height="10" rx="5" fill="#1E293B" />
+    <rect x="244" y="24" width="4" height="10" rx="5" fill="#C8102E" />
+      <text x="372" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.0%</text>
+      <text x="448" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xG+xA SHARE</text>
+      <text x="448" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.0%</text>
+      <text x="580" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xA</text>
+      <text x="580" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.0</text>
+      <text x="636" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xG+xA</text>
+      <text x="636" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.02</text>
+      <text x="720" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">S</text>
+      <text x="720" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">1</text>
+      <text x="764" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">MIN</text>
+      <text x="764" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">2</text>
+      <text x="814" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">G</text>
+      <text x="814" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.0</text>
+    </g><g transform="translate(32 1488)">
+      <rect x="0" y="0" width="806" height="48" rx="14" fill="#111B29" stroke="#223146" stroke-width="1" />
+      <text x="16" y="29" fill="#64748B" font-family="Helvetica Neue, Arial, sans-serif" font-size="14" font-weight="700">24</text>
+      <text x="48" y="29" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="17" font-weight="700">Tyrell Malacia</text>
+      <text x="244" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xA SHARE</text>
+      <rect x="244" y="24" width="120" height="10" rx="5" fill="#1E293B" />
+    <rect x="244" y="24" width="4" height="10" rx="5" fill="#C8102E" />
+      <text x="372" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.0%</text>
+      <text x="448" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xG+xA SHARE</text>
+      <text x="448" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.0%</text>
+      <text x="580" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xA</text>
+      <text x="580" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.0</text>
+      <text x="636" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xG+xA</text>
+      <text x="636" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.0</text>
+      <text x="720" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">S</text>
+      <text x="720" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0</text>
+      <text x="764" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">MIN</text>
+      <text x="764" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">1</text>
+      <text x="814" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">G</text>
+      <text x="814" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.0</text>
+    </g><g transform="translate(32 1542)">
+      <rect x="0" y="0" width="806" height="48" rx="14" fill="#111B29" stroke="#223146" stroke-width="1" />
+      <text x="16" y="29" fill="#64748B" font-family="Helvetica Neue, Arial, sans-serif" font-size="14" font-weight="700">25</text>
+      <text x="48" y="29" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="17" font-weight="700">Tyler Fredricson</text>
+      <text x="244" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xA SHARE</text>
+      <rect x="244" y="24" width="120" height="10" rx="5" fill="#1E293B" />
+    <rect x="244" y="24" width="4" height="10" rx="5" fill="#C8102E" />
+      <text x="372" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.0%</text>
+      <text x="448" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xG+xA SHARE</text>
+      <text x="448" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.0%</text>
+      <text x="580" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xA</text>
+      <text x="580" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.0</text>
+      <text x="636" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xG+xA</text>
+      <text x="636" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.0</text>
+      <text x="720" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">S</text>
+      <text x="720" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0</text>
+      <text x="764" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">MIN</text>
+      <text x="764" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">1</text>
+      <text x="814" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">G</text>
+      <text x="814" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.0</text>
+    </g><g transform="translate(32 1596)">
+      <rect x="0" y="0" width="806" height="48" rx="14" fill="#111B29" stroke="#223146" stroke-width="1" />
+      <text x="16" y="29" fill="#64748B" font-family="Helvetica Neue, Arial, sans-serif" font-size="14" font-weight="700">26</text>
+      <text x="48" y="29" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="17" font-weight="700">Senne Lammens</text>
+      <text x="244" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xA SHARE</text>
+      <rect x="244" y="24" width="120" height="10" rx="5" fill="#1E293B" />
+    <rect x="244" y="24" width="4" height="10" rx="5" fill="#C8102E" />
+      <text x="372" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.0%</text>
+      <text x="448" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xG+xA SHARE</text>
+      <text x="448" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.0%</text>
+      <text x="580" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xA</text>
+      <text x="580" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.0</text>
+      <text x="636" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xG+xA</text>
+      <text x="636" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.0</text>
+      <text x="720" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">S</text>
+      <text x="720" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0</text>
+      <text x="764" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">MIN</text>
+      <text x="764" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">1260</text>
+      <text x="814" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">G</text>
+      <text x="814" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.0</text>
+    </g>
+        </g>
+  <g transform="translate(962 250)">
+          <rect x="0" y="0" width="870" height="1710" rx="34" fill="#121D2D" stroke="#223146" stroke-width="2" />
+          <rect x="0" y="0" width="870" height="10" rx="10" fill="#F59E0B" />
+          <text x="42" y="64" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="36" font-weight="800">Michael Carrick</text>
+          <text x="42" y="102" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="20">10 league matches | Bruno-centric creation</text>
+          <rect x="560" y="38" width="268" height="80" rx="20" fill="#38BDF8" fill-opacity="0.18" />
+          <text x="586" y="68" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="14" letter-spacing="0.8">TEAM TOTALS</text>
+          <text x="586" y="98" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="20" font-weight="700">xA 12.68 | xG 17.57 | Shots 141</text>
+          <text x="42" y="150" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="18">Bruno xA share: 54.3%</text><text x="42" y="180" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="18">Top 3 xA share: 75.9%</text><text x="42" y="210" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="18">Team xA/match: 1.27 | team xG/match: 1.76</text>
+          <g transform="translate(32 246)">
+      <rect x="0" y="0" width="806" height="48" rx="14" fill="#18263A" stroke="#223146" stroke-width="1" />
+      <text x="16" y="29" fill="#64748B" font-family="Helvetica Neue, Arial, sans-serif" font-size="14" font-weight="700">01</text>
+      <text x="48" y="29" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="17" font-weight="700">Bruno Fernandes</text>
+      <text x="244" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xA SHARE</text>
+      <rect x="244" y="24" width="120" height="10" rx="5" fill="#1E293B" />
+    <rect x="244" y="24" width="65" height="10" rx="5" fill="#F59E0B" />
+      <text x="372" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">54.3%</text>
+      <text x="448" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xG+xA SHARE</text>
+      <text x="448" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">33.0%</text>
+      <text x="580" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xA</text>
+      <text x="580" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">6.88</text>
+      <text x="636" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xG+xA</text>
+      <text x="636" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">9.99</text>
+      <text x="720" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">S</text>
+      <text x="720" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">26</text>
+      <text x="764" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">MIN</text>
+      <text x="764" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">900</text>
+      <text x="814" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">G</text>
+      <text x="814" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">3.0</text>
+    </g><g transform="translate(32 300)">
+      <rect x="0" y="0" width="806" height="48" rx="14" fill="#111B29" stroke="#223146" stroke-width="1" />
+      <text x="16" y="29" fill="#64748B" font-family="Helvetica Neue, Arial, sans-serif" font-size="14" font-weight="700">02</text>
+      <text x="48" y="29" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="17" font-weight="700">Diogo Dalot</text>
+      <text x="244" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xA SHARE</text>
+      <rect x="244" y="24" width="120" height="10" rx="5" fill="#1E293B" />
+    <rect x="244" y="24" width="13" height="10" rx="5" fill="#F59E0B" />
+      <text x="372" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">11.0%</text>
+      <text x="448" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xG+xA SHARE</text>
+      <text x="448" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">6.6%</text>
+      <text x="580" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xA</text>
+      <text x="580" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">1.4</text>
+      <text x="636" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xG+xA</text>
+      <text x="636" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">2.0</text>
+      <text x="720" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">S</text>
+      <text x="720" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">9</text>
+      <text x="764" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">MIN</text>
+      <text x="764" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">821</text>
+      <text x="814" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">G</text>
+      <text x="814" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.0</text>
+    </g><g transform="translate(32 354)">
+      <rect x="0" y="0" width="806" height="48" rx="14" fill="#111B29" stroke="#223146" stroke-width="1" />
+      <text x="16" y="29" fill="#64748B" font-family="Helvetica Neue, Arial, sans-serif" font-size="14" font-weight="700">03</text>
+      <text x="48" y="29" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="17" font-weight="700">Bryan Mbeumo</text>
+      <text x="244" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xA SHARE</text>
+      <rect x="244" y="24" width="120" height="10" rx="5" fill="#1E293B" />
+    <rect x="244" y="24" width="12" height="10" rx="5" fill="#F59E0B" />
+      <text x="372" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">10.6%</text>
+      <text x="448" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xG+xA SHARE</text>
+      <text x="448" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">14.8%</text>
+      <text x="580" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xA</text>
+      <text x="580" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">1.34</text>
+      <text x="636" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xG+xA</text>
+      <text x="636" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">4.46</text>
+      <text x="720" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">S</text>
+      <text x="720" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">18</text>
+      <text x="764" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">MIN</text>
+      <text x="764" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">818</text>
+      <text x="814" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">G</text>
+      <text x="814" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">3.0</text>
+    </g><g transform="translate(32 408)">
+      <rect x="0" y="0" width="806" height="48" rx="14" fill="#111B29" stroke="#223146" stroke-width="1" />
+      <text x="16" y="29" fill="#64748B" font-family="Helvetica Neue, Arial, sans-serif" font-size="14" font-weight="700">04</text>
+      <text x="48" y="29" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="17" font-weight="700">Amad Diallo</text>
+      <text x="244" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xA SHARE</text>
+      <rect x="244" y="24" width="120" height="10" rx="5" fill="#1E293B" />
+    <rect x="244" y="24" width="9" height="10" rx="5" fill="#F59E0B" />
+      <text x="372" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">7.8%</text>
+      <text x="448" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xG+xA SHARE</text>
+      <text x="448" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">7.6%</text>
+      <text x="580" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xA</text>
+      <text x="580" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.99</text>
+      <text x="636" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xG+xA</text>
+      <text x="636" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">2.29</text>
+      <text x="720" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">S</text>
+      <text x="720" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">15</text>
+      <text x="764" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">MIN</text>
+      <text x="764" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">708</text>
+      <text x="814" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">G</text>
+      <text x="814" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.0</text>
+    </g><g transform="translate(32 462)">
+      <rect x="0" y="0" width="806" height="48" rx="14" fill="#111B29" stroke="#223146" stroke-width="1" />
+      <text x="16" y="29" fill="#64748B" font-family="Helvetica Neue, Arial, sans-serif" font-size="14" font-weight="700">05</text>
+      <text x="48" y="29" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="17" font-weight="700">Matheus Cunha</text>
+      <text x="244" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xA SHARE</text>
+      <rect x="244" y="24" width="120" height="10" rx="5" fill="#1E293B" />
+    <rect x="244" y="24" width="7" height="10" rx="5" fill="#F59E0B" />
+      <text x="372" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">6.0%</text>
+      <text x="448" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xG+xA SHARE</text>
+      <text x="448" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">5.7%</text>
+      <text x="580" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xA</text>
+      <text x="580" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.76</text>
+      <text x="636" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xG+xA</text>
+      <text x="636" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">1.73</text>
+      <text x="720" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">S</text>
+      <text x="720" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">14</text>
+      <text x="764" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">MIN</text>
+      <text x="764" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">705</text>
+      <text x="814" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">G</text>
+      <text x="814" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">3.0</text>
+    </g><g transform="translate(32 516)">
+      <rect x="0" y="0" width="806" height="48" rx="14" fill="#18263A" stroke="#223146" stroke-width="1" />
+      <text x="16" y="29" fill="#64748B" font-family="Helvetica Neue, Arial, sans-serif" font-size="14" font-weight="700">06</text>
+      <text x="48" y="29" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="17" font-weight="700">Casemiro</text>
+      <text x="244" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xA SHARE</text>
+      <rect x="244" y="24" width="120" height="10" rx="5" fill="#1E293B" />
+    <rect x="244" y="24" width="6" height="10" rx="5" fill="#F59E0B" />
+      <text x="372" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">5.2%</text>
+      <text x="448" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xG+xA SHARE</text>
+      <text x="448" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">10.2%</text>
+      <text x="580" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xA</text>
+      <text x="580" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.66</text>
+      <text x="636" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xG+xA</text>
+      <text x="636" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">3.08</text>
+      <text x="720" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">S</text>
+      <text x="720" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">13</text>
+      <text x="764" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">MIN</text>
+      <text x="764" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">854</text>
+      <text x="814" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">G</text>
+      <text x="814" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">3.0</text>
+    </g><g transform="translate(32 570)">
+      <rect x="0" y="0" width="806" height="48" rx="14" fill="#18263A" stroke="#223146" stroke-width="1" />
+      <text x="16" y="29" fill="#64748B" font-family="Helvetica Neue, Arial, sans-serif" font-size="14" font-weight="700">07</text>
+      <text x="48" y="29" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="17" font-weight="700">Kobbie Mainoo</text>
+      <text x="244" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xA SHARE</text>
+      <rect x="244" y="24" width="120" height="10" rx="5" fill="#1E293B" />
+    <rect x="244" y="24" width="4" height="10" rx="5" fill="#F59E0B" />
+      <text x="372" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">2.6%</text>
+      <text x="448" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xG+xA SHARE</text>
+      <text x="448" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">1.5%</text>
+      <text x="580" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xA</text>
+      <text x="580" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.33</text>
+      <text x="636" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xG+xA</text>
+      <text x="636" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.44</text>
+      <text x="720" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">S</text>
+      <text x="720" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">5</text>
+      <text x="764" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">MIN</text>
+      <text x="764" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">895</text>
+      <text x="814" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">G</text>
+      <text x="814" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.0</text>
+    </g><g transform="translate(32 624)">
+      <rect x="0" y="0" width="806" height="48" rx="14" fill="#111B29" stroke="#223146" stroke-width="1" />
+      <text x="16" y="29" fill="#64748B" font-family="Helvetica Neue, Arial, sans-serif" font-size="14" font-weight="700">08</text>
+      <text x="48" y="29" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="17" font-weight="700">Joshua Zirkzee</text>
+      <text x="244" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xA SHARE</text>
+      <rect x="244" y="24" width="120" height="10" rx="5" fill="#1E293B" />
+    <rect x="244" y="24" width="4" height="10" rx="5" fill="#F59E0B" />
+      <text x="372" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.9%</text>
+      <text x="448" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xG+xA SHARE</text>
+      <text x="448" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">2.3%</text>
+      <text x="580" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xA</text>
+      <text x="580" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.12</text>
+      <text x="636" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xG+xA</text>
+      <text x="636" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.71</text>
+      <text x="720" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">S</text>
+      <text x="720" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">4</text>
+      <text x="764" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">MIN</text>
+      <text x="764" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">14</text>
+      <text x="814" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">G</text>
+      <text x="814" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.0</text>
+    </g><g transform="translate(32 678)">
+      <rect x="0" y="0" width="806" height="48" rx="14" fill="#111B29" stroke="#223146" stroke-width="1" />
+      <text x="16" y="29" fill="#64748B" font-family="Helvetica Neue, Arial, sans-serif" font-size="14" font-weight="700">09</text>
+      <text x="48" y="29" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="17" font-weight="700">Luke Shaw</text>
+      <text x="244" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xA SHARE</text>
+      <rect x="244" y="24" width="120" height="10" rx="5" fill="#1E293B" />
+    <rect x="244" y="24" width="4" height="10" rx="5" fill="#F59E0B" />
+      <text x="372" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.8%</text>
+      <text x="448" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xG+xA SHARE</text>
+      <text x="448" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">1.2%</text>
+      <text x="580" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xA</text>
+      <text x="580" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.1</text>
+      <text x="636" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xG+xA</text>
+      <text x="636" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.37</text>
+      <text x="720" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">S</text>
+      <text x="720" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">4</text>
+      <text x="764" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">MIN</text>
+      <text x="764" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">813</text>
+      <text x="814" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">G</text>
+      <text x="814" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.0</text>
+    </g><g transform="translate(32 732)">
+      <rect x="0" y="0" width="806" height="48" rx="14" fill="#111B29" stroke="#223146" stroke-width="1" />
+      <text x="16" y="29" fill="#64748B" font-family="Helvetica Neue, Arial, sans-serif" font-size="14" font-weight="700">10</text>
+      <text x="48" y="29" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="17" font-weight="700">Patrick Dorgu</text>
+      <text x="244" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xA SHARE</text>
+      <rect x="244" y="24" width="120" height="10" rx="5" fill="#1E293B" />
+    <rect x="244" y="24" width="4" height="10" rx="5" fill="#F59E0B" />
+      <text x="372" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.3%</text>
+      <text x="448" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xG+xA SHARE</text>
+      <text x="448" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">2.4%</text>
+      <text x="580" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xA</text>
+      <text x="580" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.04</text>
+      <text x="636" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xG+xA</text>
+      <text x="636" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.71</text>
+      <text x="720" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">S</text>
+      <text x="720" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">4</text>
+      <text x="764" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">MIN</text>
+      <text x="764" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">173</text>
+      <text x="814" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">G</text>
+      <text x="814" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">2.0</text>
+    </g><g transform="translate(32 786)">
+      <rect x="0" y="0" width="806" height="48" rx="14" fill="#111B29" stroke="#223146" stroke-width="1" />
+      <text x="16" y="29" fill="#64748B" font-family="Helvetica Neue, Arial, sans-serif" font-size="14" font-weight="700">11</text>
+      <text x="48" y="29" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="17" font-weight="700">Harry Maguire</text>
+      <text x="244" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xA SHARE</text>
+      <rect x="244" y="24" width="120" height="10" rx="5" fill="#1E293B" />
+    <rect x="244" y="24" width="4" height="10" rx="5" fill="#F59E0B" />
+      <text x="372" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.3%</text>
+      <text x="448" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xG+xA SHARE</text>
+      <text x="448" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">2.2%</text>
+      <text x="580" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xA</text>
+      <text x="580" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.04</text>
+      <text x="636" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xG+xA</text>
+      <text x="636" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.68</text>
+      <text x="720" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">S</text>
+      <text x="720" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">6</text>
+      <text x="764" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">MIN</text>
+      <text x="764" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">865</text>
+      <text x="814" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">G</text>
+      <text x="814" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.0</text>
+    </g><g transform="translate(32 840)">
+      <rect x="0" y="0" width="806" height="48" rx="14" fill="#111B29" stroke="#223146" stroke-width="1" />
+      <text x="16" y="29" fill="#64748B" font-family="Helvetica Neue, Arial, sans-serif" font-size="14" font-weight="700">12</text>
+      <text x="48" y="29" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="17" font-weight="700">Manuel Ugarte</text>
+      <text x="244" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xA SHARE</text>
+      <rect x="244" y="24" width="120" height="10" rx="5" fill="#1E293B" />
+    <rect x="244" y="24" width="4" height="10" rx="5" fill="#F59E0B" />
+      <text x="372" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.1%</text>
+      <text x="448" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xG+xA SHARE</text>
+      <text x="448" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">1.1%</text>
+      <text x="580" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xA</text>
+      <text x="580" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.02</text>
+      <text x="636" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xG+xA</text>
+      <text x="636" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.33</text>
+      <text x="720" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">S</text>
+      <text x="720" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">2</text>
+      <text x="764" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">MIN</text>
+      <text x="764" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">48</text>
+      <text x="814" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">G</text>
+      <text x="814" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.0</text>
+    </g><g transform="translate(32 894)">
+      <rect x="0" y="0" width="806" height="48" rx="14" fill="#111B29" stroke="#223146" stroke-width="1" />
+      <text x="16" y="29" fill="#64748B" font-family="Helvetica Neue, Arial, sans-serif" font-size="14" font-weight="700">13</text>
+      <text x="48" y="29" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="17" font-weight="700">Benjamin Sesko</text>
+      <text x="244" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xA SHARE</text>
+      <rect x="244" y="24" width="120" height="10" rx="5" fill="#1E293B" />
+    <rect x="244" y="24" width="4" height="10" rx="5" fill="#F59E0B" />
+      <text x="372" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.0%</text>
+      <text x="448" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xG+xA SHARE</text>
+      <text x="448" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">9.8%</text>
+      <text x="580" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xA</text>
+      <text x="580" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.0</text>
+      <text x="636" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xG+xA</text>
+      <text x="636" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">2.96</text>
+      <text x="720" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">S</text>
+      <text x="720" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">15</text>
+      <text x="764" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">MIN</text>
+      <text x="764" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">280</text>
+      <text x="814" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">G</text>
+      <text x="814" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">5.0</text>
+    </g><g transform="translate(32 948)">
+      <rect x="0" y="0" width="806" height="48" rx="14" fill="#111B29" stroke="#223146" stroke-width="1" />
+      <text x="16" y="29" fill="#64748B" font-family="Helvetica Neue, Arial, sans-serif" font-size="14" font-weight="700">14</text>
+      <text x="48" y="29" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="17" font-weight="700">Leny Yoro</text>
+      <text x="244" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xA SHARE</text>
+      <rect x="244" y="24" width="120" height="10" rx="5" fill="#1E293B" />
+    <rect x="244" y="24" width="4" height="10" rx="5" fill="#F59E0B" />
+      <text x="372" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.0%</text>
+      <text x="448" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xG+xA SHARE</text>
+      <text x="448" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">1.0%</text>
+      <text x="580" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xA</text>
+      <text x="580" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.0</text>
+      <text x="636" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xG+xA</text>
+      <text x="636" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.31</text>
+      <text x="720" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">S</text>
+      <text x="720" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">2</text>
+      <text x="764" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">MIN</text>
+      <text x="764" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">473</text>
+      <text x="814" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">G</text>
+      <text x="814" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.0</text>
+    </g><g transform="translate(32 1002)">
+      <rect x="0" y="0" width="806" height="48" rx="14" fill="#111B29" stroke="#223146" stroke-width="1" />
+      <text x="16" y="29" fill="#64748B" font-family="Helvetica Neue, Arial, sans-serif" font-size="14" font-weight="700">15</text>
+      <text x="48" y="29" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="17" font-weight="700">Noussair Mazraoui</text>
+      <text x="244" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xA SHARE</text>
+      <rect x="244" y="24" width="120" height="10" rx="5" fill="#1E293B" />
+    <rect x="244" y="24" width="4" height="10" rx="5" fill="#F59E0B" />
+      <text x="372" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.0%</text>
+      <text x="448" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xG+xA SHARE</text>
+      <text x="448" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.5%</text>
+      <text x="580" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xA</text>
+      <text x="580" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.0</text>
+      <text x="636" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xG+xA</text>
+      <text x="636" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.15</text>
+      <text x="720" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">S</text>
+      <text x="720" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">3</text>
+      <text x="764" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">MIN</text>
+      <text x="764" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">169</text>
+      <text x="814" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">G</text>
+      <text x="814" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.0</text>
+    </g><g transform="translate(32 1056)">
+      <rect x="0" y="0" width="806" height="48" rx="14" fill="#111B29" stroke="#223146" stroke-width="1" />
+      <text x="16" y="29" fill="#64748B" font-family="Helvetica Neue, Arial, sans-serif" font-size="14" font-weight="700">16</text>
+      <text x="48" y="29" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="17" font-weight="700">Lisandro Martínez</text>
+      <text x="244" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xA SHARE</text>
+      <rect x="244" y="24" width="120" height="10" rx="5" fill="#1E293B" />
+    <rect x="244" y="24" width="4" height="10" rx="5" fill="#F59E0B" />
+      <text x="372" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.0%</text>
+      <text x="448" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xG+xA SHARE</text>
+      <text x="448" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.1%</text>
+      <text x="580" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xA</text>
+      <text x="580" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.0</text>
+      <text x="636" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xG+xA</text>
+      <text x="636" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.01</text>
+      <text x="720" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">S</text>
+      <text x="720" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">1</text>
+      <text x="764" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">MIN</text>
+      <text x="764" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">450</text>
+      <text x="814" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">G</text>
+      <text x="814" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.0</text>
+    </g><g transform="translate(32 1110)">
+      <rect x="0" y="0" width="806" height="48" rx="14" fill="#111B29" stroke="#223146" stroke-width="1" />
+      <text x="16" y="29" fill="#64748B" font-family="Helvetica Neue, Arial, sans-serif" font-size="14" font-weight="700">17</text>
+      <text x="48" y="29" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="17" font-weight="700">Mason Mount</text>
+      <text x="244" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xA SHARE</text>
+      <rect x="244" y="24" width="120" height="10" rx="5" fill="#1E293B" />
+    <rect x="244" y="24" width="4" height="10" rx="5" fill="#F59E0B" />
+      <text x="372" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.0%</text>
+      <text x="448" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xG+xA SHARE</text>
+      <text x="448" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.0%</text>
+      <text x="580" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xA</text>
+      <text x="580" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.0</text>
+      <text x="636" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xG+xA</text>
+      <text x="636" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.0</text>
+      <text x="720" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">S</text>
+      <text x="720" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0</text>
+      <text x="764" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">MIN</text>
+      <text x="764" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">2</text>
+      <text x="814" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">G</text>
+      <text x="814" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.0</text>
+    </g><g transform="translate(32 1164)">
+      <rect x="0" y="0" width="806" height="48" rx="14" fill="#111B29" stroke="#223146" stroke-width="1" />
+      <text x="16" y="29" fill="#64748B" font-family="Helvetica Neue, Arial, sans-serif" font-size="14" font-weight="700">18</text>
+      <text x="48" y="29" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="17" font-weight="700">Tyrell Malacia</text>
+      <text x="244" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xA SHARE</text>
+      <rect x="244" y="24" width="120" height="10" rx="5" fill="#1E293B" />
+    <rect x="244" y="24" width="4" height="10" rx="5" fill="#F59E0B" />
+      <text x="372" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.0%</text>
+      <text x="448" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xG+xA SHARE</text>
+      <text x="448" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.0%</text>
+      <text x="580" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xA</text>
+      <text x="580" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.0</text>
+      <text x="636" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xG+xA</text>
+      <text x="636" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.0</text>
+      <text x="720" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">S</text>
+      <text x="720" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0</text>
+      <text x="764" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">MIN</text>
+      <text x="764" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">1</text>
+      <text x="814" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">G</text>
+      <text x="814" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.0</text>
+    </g><g transform="translate(32 1218)">
+      <rect x="0" y="0" width="806" height="48" rx="14" fill="#111B29" stroke="#223146" stroke-width="1" />
+      <text x="16" y="29" fill="#64748B" font-family="Helvetica Neue, Arial, sans-serif" font-size="14" font-weight="700">19</text>
+      <text x="48" y="29" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="17" font-weight="700">Ayden Heaven</text>
+      <text x="244" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xA SHARE</text>
+      <rect x="244" y="24" width="120" height="10" rx="5" fill="#1E293B" />
+    <rect x="244" y="24" width="4" height="10" rx="5" fill="#F59E0B" />
+      <text x="372" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.0%</text>
+      <text x="448" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xG+xA SHARE</text>
+      <text x="448" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.0%</text>
+      <text x="580" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xA</text>
+      <text x="580" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.0</text>
+      <text x="636" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xG+xA</text>
+      <text x="636" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.0</text>
+      <text x="720" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">S</text>
+      <text x="720" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0</text>
+      <text x="764" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">MIN</text>
+      <text x="764" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">11</text>
+      <text x="814" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">G</text>
+      <text x="814" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.0</text>
+    </g><g transform="translate(32 1272)">
+      <rect x="0" y="0" width="806" height="48" rx="14" fill="#111B29" stroke="#223146" stroke-width="1" />
+      <text x="16" y="29" fill="#64748B" font-family="Helvetica Neue, Arial, sans-serif" font-size="14" font-weight="700">20</text>
+      <text x="48" y="29" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="17" font-weight="700">Senne Lammens</text>
+      <text x="244" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xA SHARE</text>
+      <rect x="244" y="24" width="120" height="10" rx="5" fill="#1E293B" />
+    <rect x="244" y="24" width="4" height="10" rx="5" fill="#F59E0B" />
+      <text x="372" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.0%</text>
+      <text x="448" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xG+xA SHARE</text>
+      <text x="448" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.0%</text>
+      <text x="580" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xA</text>
+      <text x="580" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.0</text>
+      <text x="636" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xG+xA</text>
+      <text x="636" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.0</text>
+      <text x="720" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">S</text>
+      <text x="720" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0</text>
+      <text x="764" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">MIN</text>
+      <text x="764" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">900</text>
+      <text x="814" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">G</text>
+      <text x="814" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.0</text>
+    </g><g transform="translate(32 1326)">
+      <rect x="0" y="0" width="806" height="48" rx="14" fill="#111B29" stroke="#223146" stroke-width="1" />
+      <text x="16" y="29" fill="#64748B" font-family="Helvetica Neue, Arial, sans-serif" font-size="14" font-weight="700">21</text>
+      <text x="48" y="29" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="17" font-weight="700">Tyler Fletcher</text>
+      <text x="244" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xA SHARE</text>
+      <rect x="244" y="24" width="120" height="10" rx="5" fill="#1E293B" />
+    <rect x="244" y="24" width="4" height="10" rx="5" fill="#F59E0B" />
+      <text x="372" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.0%</text>
+      <text x="448" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xG+xA SHARE</text>
+      <text x="448" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.0%</text>
+      <text x="580" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xA</text>
+      <text x="580" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.0</text>
+      <text x="636" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">xG+xA</text>
+      <text x="636" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.0</text>
+      <text x="720" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">S</text>
+      <text x="720" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0</text>
+      <text x="764" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">MIN</text>
+      <text x="764" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">1</text>
+      <text x="814" y="16" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" letter-spacing="0.6">G</text>
+      <text x="814" y="31" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700">0.0</text>
+    </g>
+        </g>
+
+  <g transform="translate(68 2010)">
+    <rect x="0" y="0" width="1764" height="330" rx="34" fill="#0D1522" stroke="#223146" stroke-width="2" />
+    <text x="28" y="48" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="24" font-weight="700" letter-spacing="1.1">WHAT CHANGED</text>
+    <text x="96" y="88" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="24">Bruno&#x27;s xA share jumped from 20.8% to 54.3%.</text><text x="96" y="126" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="24">Top three creators rose from 44.8% to 75.9% of team xA.</text><text x="96" y="164" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="24">Mainoo logged 895 minutes under Carrick but only 0.44 xG+xA.</text><text x="96" y="202" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="24">Casemiro under Carrick: 3.0 goals, 2.42 xG, 0.66 xA.</text>
+  </g>
+
+  <g transform="translate(68 2358)">
+    <rect x="0" y="0" width="1764" height="420" rx="34" fill="#0D1522" stroke="#223146" stroke-width="2" />
+    <text x="28" y="48" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="24" font-weight="700" letter-spacing="1.1">FOCUS PLAYERS</text>
+    <g transform="translate(48 76)">
+          <rect x="0" y="0" width="1504" height="70" rx="20" fill="#111B29" stroke="#223146" stroke-width="1" />
+          <text x="24" y="43" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="22" font-weight="700">Bruno Fernandes</text>
+          <text x="360" y="25" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="12" letter-spacing="0.8">AMORIM</text>
+          <text x="360" y="49" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="18">xA 5.28 | xG+xA 13.02 | Shots 46 | Min 1489</text>
+          <text x="960" y="25" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="12" letter-spacing="0.8">CARRICK</text>
+          <text x="960" y="49" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="18">xA 6.88 | xG+xA 9.99 | Shots 26 | Min 900</text>
+        </g><g transform="translate(48 166)">
+          <rect x="0" y="0" width="1504" height="70" rx="20" fill="#111B29" stroke="#223146" stroke-width="1" />
+          <text x="24" y="43" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="22" font-weight="700">Casemiro</text>
+          <text x="360" y="25" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="12" letter-spacing="0.8">AMORIM</text>
+          <text x="360" y="49" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="18">xA 1.94 | xG+xA 4.85 | Shots 27 | Min 1277</text>
+          <text x="960" y="25" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="12" letter-spacing="0.8">CARRICK</text>
+          <text x="960" y="49" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="18">xA 0.66 | xG+xA 3.08 | Shots 13 | Min 854</text>
+        </g><g transform="translate(48 256)">
+          <rect x="0" y="0" width="1504" height="70" rx="20" fill="#111B29" stroke="#223146" stroke-width="1" />
+          <text x="24" y="43" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="22" font-weight="700">Kobbie Mainoo</text>
+          <text x="360" y="25" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="12" letter-spacing="0.8">AMORIM</text>
+          <text x="360" y="49" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="18">xA 0.27 | xG+xA 0.33 | Shots 2 | Min 174</text>
+          <text x="960" y="25" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="12" letter-spacing="0.8">CARRICK</text>
+          <text x="960" y="49" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="18">xA 0.33 | xG+xA 0.44 | Shots 5 | Min 895</text>
+        </g><g transform="translate(48 346)">
+          <rect x="0" y="0" width="1504" height="70" rx="20" fill="#111B29" stroke="#223146" stroke-width="1" />
+          <text x="24" y="43" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="22" font-weight="700">Amad Diallo</text>
+          <text x="360" y="25" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="12" letter-spacing="0.8">AMORIM</text>
+          <text x="360" y="49" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="18">xA 3.1 | xG+xA 6.65 | Shots 29 | Min 1212</text>
+          <text x="960" y="25" fill="#9FA8BC" font-family="Helvetica Neue, Arial, sans-serif" font-size="12" letter-spacing="0.8">CARRICK</text>
+          <text x="960" y="49" fill="#F6F1E8" font-family="Helvetica Neue, Arial, sans-serif" font-size="18">xA 0.99 | xG+xA 2.29 | Shots 15 | Min 708</text>
+        </g>
+  </g>
+
+  <text x="68" y="2824" fill="#667085" font-family="Helvetica Neue, Arial, sans-serif" font-size="18">Data source: Understat | Windows: Amorim Jul 1, 2025 to Jan 5, 2026; Carrick Jan 13, 2026 to Apr 6, 2026</text>
+</svg>

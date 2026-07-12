@@ -1,0 +1,77 @@
+# prem-project
+
+Small async Understat client experiments for football data collection.
+
+Current focus:
+- Expand endpoint coverage beyond the initial team fetches.
+- Build a reliable data layer for football Q&A workflows.
+- Prepare the repo for social-ready outputs for Instagram and X.
+
+Implemented client coverage now includes:
+- Global stats
+- League data, players, results, fixtures, and derived table
+- Team data, stats, players, results, fixtures, and filtered player stats
+- Player data, shots, matches, grouped stats, and min/max stats
+- Player search and compare-match AJAX helpers
+- Match data, rosters, and shots
+
+Compatibility notes:
+- `Understat` is exported as an alias for `UnderstatData` so the client matches the original package style more closely.
+- Endpoint inventory lives in `docs/understat_endpoint_inventory.md`.
+
+Terminal interaction:
+- `understat-cli endpoints`
+- `understat-cli templates`
+- `understat-cli manutd-presets`
+- `understat-cli describe league_data`
+- `understat-cli run league_data league_name="EPL" season=2025`
+- `understat-cli shell`
+- `understat-cli ask "How good has Erling Haaland been in 2025?"`
+
+In shell mode you can do:
+
+```text
+endpoints
+templates
+manutd-presets
+describe team_player_stats
+run team_data team_name="Manchester United" season=2025
+run player_stats player_id=565 positions=["FW"]
+ask How good has Erling Haaland been in 2025?
+exit
+```
+
+Manchester United preset examples:
+
+```text
+Are Manchester United overperforming or underperforming xPTS in 2025?
+How has Manchester United looked over the last 5 matches in 2025?
+Compare Manchester United first 5 vs last 5 league matches in 2025
+How has Manchester United's table position changed across weeks in 2025 and over the years?
+Who has been Manchester United's best finisher in 2025?
+Who has been Manchester United's most creative player in 2025?
+What are Manchester United's defensive trends in 2025?
+Show Manchester United chance creation by zone and type in 2025
+How have Manchester United looked under Ruben Amorim in 2025?
+Compare Erik ten Hag vs Ruben Amorim in 2024
+Compare Bruno Fernandes vs Amad in 2025
+```
+
+Quick example:
+
+```python
+import asyncio
+
+from app import UnderstatData
+
+
+async def main():
+    async with UnderstatData() as understat:
+        league_players = await understat.get_league_players("EPL", 2025)
+        team_stats = await understat.get_team_stats("Manchester United", 2025)
+        print(len(league_players))
+        print(team_stats.keys())
+
+
+asyncio.run(main())
+```

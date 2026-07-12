@@ -1,0 +1,9 @@
+{
+  "name": "prem-project-renderer",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "echarts": "^6.0.0",
+    "sharp": "^0.34.5"
+  }
+}

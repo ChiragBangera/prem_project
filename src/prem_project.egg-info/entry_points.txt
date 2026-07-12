@@ -1,0 +1,2 @@
+[console_scripts]
+understat-cli = app.cli:main

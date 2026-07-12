@@ -1,0 +1,22 @@
+[project]
+name = "prem-project"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "aiohttp>=3.13.2",
+    "ipykernel>=7.1.0",
+    "pip>=25.3",
+    "polars>=1.36.1",
+    "requests>=2.32.5",
+]
+
+[project.scripts]
+understat-cli = "app.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.uv]
+package = true
