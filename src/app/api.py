@@ -11,6 +11,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from app import __version__
+from app.analytics_service import AnalyticsService
 from app.endpoint_manifest import get_endpoint_manifest, get_endpoint_spec
 from app.endpoint_runner import EndpointRunner
 from app.errors import UnderstatRequestError
@@ -97,6 +98,7 @@ async def lifespan(app: FastAPI):
     app.state.client = client
     app.state.runner = EndpointRunner(client=client)
     app.state.answerer = FootballQuestionAnswerer(client=client)
+    app.state.analytics = AnalyticsService(client=client)
     yield
     await client.close()
 
@@ -216,3 +218,114 @@ async def run_endpoint(endpoint_name: str, payload: EndpointRequest, request: Re
 )
 async def ask_question(payload: QuestionRequest, request: Request):
     return await request.app.state.answerer.answer(payload.question)
+
+
+class AnalyzePlayerRequest(BaseModel):
+    player_id: int | None = None
+    player_name: str | None = None
+    league_name: str = "EPL"
+    season: int = 2025
+
+
+class AnalyzeTeamRequest(BaseModel):
+    team_name: str
+    league_name: str = "EPL"
+    season: int = 2025
+    with_shots: bool = False
+
+
+class AnalyzeLeagueRequest(BaseModel):
+    league_name: str = "EPL"
+    season: int = 2025
+
+
+class DiscoverPlayersRequest(BaseModel):
+    league_name: str = "EPL"
+    season: int = 2025
+    position_group: str | None = None
+    minimum_minutes: float = 900
+    order_by: str = "npxG"
+    limit: int = 20
+
+
+@app.post(
+    "/api/v1/analyze/player",
+    tags=["Analytics"],
+    responses={
+        422: {"model": ErrorResponse},
+        502: {"model": ErrorResponse},
+    },
+)
+async def analyze_player(payload: AnalyzePlayerRequest, request: Request):
+    try:
+        return await request.app.state.analytics.analyze_player(
+            player_id=payload.player_id,
+            player_name=payload.player_name,
+            league_name=payload.league_name,
+            season=payload.season,
+        )
+    except ValueError as exc:
+        return JSONResponse(
+            status_code=422,
+            content={"error": "invalid_parameters", "detail": str(exc)},
+        )
+
+
+@app.post(
+    "/api/v1/analyze/team",
+    tags=["Analytics"],
+    responses={
+        422: {"model": ErrorResponse},
+        502: {"model": ErrorResponse},
+    },
+)
+async def analyze_team(payload: AnalyzeTeamRequest, request: Request):
+    try:
+        return await request.app.state.analytics.analyze_team(
+            team_name=payload.team_name,
+            league_name=payload.league_name,
+            season=payload.season,
+            with_shots=payload.with_shots,
+        )
+    except ValueError as exc:
+        return JSONResponse(
+            status_code=422,
+            content={"error": "invalid_parameters", "detail": str(exc)},
+        )
+
+
+@app.post(
+    "/api/v1/analyze/league",
+    tags=["Analytics"],
+    responses={502: {"model": ErrorResponse}},
+)
+async def analyze_league(payload: AnalyzeLeagueRequest, request: Request):
+    return await request.app.state.analytics.analyze_league(
+        league_name=payload.league_name,
+        season=payload.season,
+    )
+
+
+@app.post(
+    "/api/v1/analyze/match/{match_id}",
+    tags=["Analytics"],
+    responses={502: {"model": ErrorResponse}},
+)
+async def analyze_match(match_id: int, request: Request):
+    return await request.app.state.analytics.analyze_match(match_id)
+
+
+@app.post(
+    "/api/v1/discover/players",
+    tags=["Analytics"],
+    responses={502: {"model": ErrorResponse}},
+)
+async def discover_players(payload: DiscoverPlayersRequest, request: Request):
+    return await request.app.state.analytics.discover_players(
+        league_name=payload.league_name,
+        season=payload.season,
+        position_group=payload.position_group,
+        minimum_minutes=payload.minimum_minutes,
+        order_by=payload.order_by,
+        limit=payload.limit,
+    )
