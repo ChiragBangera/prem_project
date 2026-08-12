@@ -98,3 +98,47 @@ def find_coach_eras(question_lower: str):
                 break
 
     return matches
+
+
+def find_coach_era_by_name(coach_name: str | None, team_name: str | None = None):
+    if coach_name is None:
+        return None
+    for era in find_coach_eras(coach_name.lower()):
+        if era.coach_name == coach_name and (team_name is None or era.team_name == team_name):
+            return era
+    return None
+
+
+def season_from_date(date_string: str) -> int:
+    year, month, _ = (int(part) for part in date_string.split("-"))
+    return year if month >= 7 else year - 1
+
+
+def coach_covered_seasons(era: CoachEra, today) -> list[int]:
+    end_date = era.end_date or today
+    start_season = season_from_date(era.start_date)
+    end_season = season_from_date(end_date)
+    return list(range(start_season, end_season + 1))
+
+
+def default_coach_season(eras, today) -> int | None:
+    if not eras:
+        return None
+    shared = None
+    for era in eras:
+        seasons = set(coach_covered_seasons(era, today))
+        shared = seasons if shared is None else shared & seasons
+    if shared:
+        return max(shared)
+    return max(coach_covered_seasons(eras[0], today))
+
+
+def coach_window_for_season(era: CoachEra, season: int, today):
+    season_start = f"{season}-07-01"
+    season_end = f"{season + 1}-06-30"
+    era_end = era.end_date or today
+    start_date = max(era.start_date, season_start)
+    end_date = min(era_end, season_end)
+    if start_date > end_date:
+        return None
+    return start_date, end_date
