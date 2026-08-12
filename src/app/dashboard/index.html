@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Premier League Analytics Lab</title>
+  <link rel="stylesheet" href="/dashboard/styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <h1>Premier League Analytics Lab</h1>
+      <div class="sub">Evidence-backed football analytics powered by Understat · unofficial project</div>
+    </div>
+    <div class="leagues" id="leaguePicker">
+      <button data-league="EPL" class="active">EPL</button>
+      <button data-league="La_liga">La Liga</button>
+      <button data-league="Serie_A">Serie A</button>
+      <button data-league="Ligue_1">Ligue 1</button>
+    </div>
+  </header>
+
+  <nav class="tabs" id="tabs">
+    <button data-tab="player" class="active">Player</button>
+    <button data-tab="team">Team</button>
+    <button data-tab="league">League</button>
+    <button data-tab="match">Match</button>
+    <button data-tab="discover">Discover</button>
+  </nav>
+
+  <main>
+    <!-- PLAYER -->
+    <section class="view active" id="view-player">
+      <div class="player-pick">
+        <div class="field"><label>Player name</label><input id="playerName" placeholder="e.g. Erling Haaland" style="min-width:240px" /></div>
+        <div class="field"><label>Season</label><input id="playerSeason" type="number" value="2025" style="min-width:90px" /></div>
+        <button class="primary" id="playerGo">Analyze</button>
+        <div id="playerResolved" class="mono" style="color:var(--muted);align-self:center;font-size:12px;"></div>
+      </div>
+      <div id="playerContent"><div class="empty">Enter a player name to build a radar, per-90s, involvement and similarity profile.</div></div>
+    </section>
+
+    <!-- TEAM -->
+    <section class="view" id="view-team">
+      <div class="controls">
+        <div class="field"><label>Team name</label><input id="teamName" placeholder="e.g. Arsenal" /></div>
+        <div class="field"><label>Season</label><input id="teamSeason" type="number" value="2025" style="min-width:90px" /></div>
+        <button class="primary" id="teamGo">Analyze</button>
+      </div>
+      <div id="teamContent"><div class="empty">Enter a team name for PPDA, xGD, form/momentum and situational splits.</div></div>
+    </section>
+
+    <!-- LEAGUE -->
+    <section class="view" id="view-league">
+      <div class="controls">
+        <div class="field"><label>Season</label><input id="leagueSeason" type="number" value="2025" style="min-width:90px" /></div>
+        <button class="primary" id="leagueGo">Analyze</button>
+      </div>
+      <div id="leagueContent"><div class="empty">Click Analyze for the xPTS "is-lying" table, variance, PPDA ranking and league pace.</div></div>
+    </section>
+
+    <!-- MATCH -->
+    <section class="view" id="view-match">
+      <div class="controls">
+        <div class="field"><label>Match id</label><input id="matchId" placeholder="e.g. 28778" /></div>
+        <button class="primary" id="matchGo">Analyze</button>
+        <span class="hint" style="color:var(--muted);font-size:12px;align-self:center;">Find an id from <a href="#" id="pickMatch">a recent result</a></span>
+      </div>
+      <div id="matchContent"><div class="empty">Enter a match id for shot map, xG timeline, big-chance inventory and narrative.</div></div>
+    </section>
+
+    <!-- DISCOVER -->
+    <section class="view" id="view-discover">
+      <div class="controls">
+        <div class="field"><label>Position group</label>
+          <select id="discoverPosition"><option value="">All</option><option value="F">Forward</option><option value="M">Midfielder</option><option value="D">Defender</option><option value="GK">Goalkeeper</option></select>
+        </div>
+        <div class="field"><label>Min minutes</label><input id="discoverMinutes" type="number" value="900" style="min-width:90px" /></div>
+        <div class="field"><label>Order by</label>
+          <select id="discoverOrderBy">
+            <option value="npxG">NP xG</option>
+            <option value="xA">xA</option>
+            <option value="xGChain">xGChain</option>
+            <option value="xGBuildup">xGBuildup</option>
+            <option value="goals">Goals</option>
+            <option value="assists">Assists</option>
+          </select>
+        </div>
+        <button class="primary" id="discoverGo">Discover</button>
+      </div>
+      <div id="discoverContent"><div class="empty">Filter the league player table by position and minutes; rank by involvement metrics.</div></div>
+    </section>
+  </main>
+
+  <footer>
+    Unofficial project · data: <a href="https://understat.com" target="_blank" rel="noopener">Understat</a> ·
+    <a href="/docs" target="_blank" rel="noopener">API docs</a> ·
+    metrics ship only what is honestly computable from this dataset
+  </footer>
+
+  <script src="/dashboard/app.js"></script>
+</body>
+</html>

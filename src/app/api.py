@@ -8,6 +8,7 @@ from typing import Any
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from app import __version__
@@ -44,6 +45,7 @@ class ProjectInfoResponse(BaseModel):
     docs: str
     health: str
     api: str
+    dashboard: str
     data_source: str
     affiliation: str
 
@@ -126,6 +128,12 @@ app.add_middleware(
     allow_headers=["Content-Type"],
 )
 
+app.mount(
+    "/dashboard",
+    StaticFiles(directory=os.path.join(os.path.dirname(__file__), "dashboard"), html=True),
+    name="dashboard",
+)
+
 
 @app.exception_handler(UnderstatRequestError)
 async def understat_error_handler(_: Request, exc: UnderstatRequestError):
@@ -148,6 +156,7 @@ async def project_info():
         "docs": "/docs",
         "health": "/health",
         "api": "/api/v1",
+        "dashboard": "/dashboard/",
         "data_source": "Understat",
         "affiliation": "Unofficial project",
     }
