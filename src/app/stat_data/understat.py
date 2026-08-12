@@ -323,6 +323,20 @@ class UnderstatData:
         team_data = await self.get_team_data_by_season(team_name=team_name, season=season)
         return team_data.get("statistics", {})
 
+    async def get_team_history(self, team_name: str, season, league_name: str = "EPL"):
+        """Per-match history list for a team — xG, xGA, ppda, ppda_allowed, deep per match.
+
+        Sourced from league data (teams keyed by id carry `history`), because team
+        page data does not expose per-match PPDA. Returns an empty list if the team
+        is not found in the selected league season.
+        """
+        league_data = await self.get_league_data(league_name=league_name, season=season)
+        teams = league_data.get("teams", {})
+        for team_data in teams.values():
+            if str(team_data.get("title", "")).lower() == str(team_name).lower():
+                return team_data.get("history", [])
+        return []
+
     async def get_team_results(self, team_name: str, season, options=None, **kwargs):
         team_data = await self.get_team_data_by_season(team_name=team_name, season=season)
         results = [match for match in team_data.get("dates", []) if match.get("isResult")]
