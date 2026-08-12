@@ -1,5 +1,6 @@
 import asyncio
 import unittest
+from datetime import date
 
 from app.question_answering import FootballQuestionAnswerer
 
@@ -160,10 +161,13 @@ class QuestionAnsweringTestCase(unittest.TestCase):
 
     def test_since_month_builds_date_range(self):
         async def run():
-            answerer = FootballQuestionAnswerer(client=FakeClient())
+            answerer = FootballQuestionAnswerer(
+                client=FakeClient(),
+                today=date(2026, 7, 17),
+            )
             result = await answerer.answer("How good has Erling Haaland been since January 2025?")
             self.assertEqual(result["plan"]["start_date"], "2025-01-01")
-            self.assertEqual(result["plan"]["end_date"], "2026-04-06")
+            self.assertEqual(result["plan"]["end_date"], "2026-07-17")
 
         asyncio.run(run())
 
@@ -194,10 +198,7 @@ class QuestionAnsweringTestCase(unittest.TestCase):
             self.assertEqual(result["template"]["name"], "process_vs_results")
             self.assertIn("Process vs results", result["answer"]["direct_answer"])
             self.assertIn("points-minus-xPTS", " ".join(result["answer"]["reasons"]))
-            self.assertEqual(result["answer"]["social_ready"]["visualizations"]["card_type"], "process_vs_results_lens")
-            self.assertEqual(result["answer"]["social_ready"]["visualizations"]["framework"], "custom_svg")
-            self.assertEqual(result["answer"]["social_ready"]["visualizations"]["template"], "process_vs_results_lens_v1")
-            self.assertEqual(result["answer"]["social_ready"]["visualizations"]["template_status"], "needs_review")
+            self.assertIn("x_thread", result["answer"]["share_copy"])
 
         asyncio.run(run())
 
@@ -264,11 +265,7 @@ class QuestionAnsweringTestCase(unittest.TestCase):
             self.assertEqual(result["template"]["name"], "team_comparison")
             self.assertIn("Arsenal vs Liverpool", result["answer"]["direct_answer"])
             self.assertIn("W-D-L", " ".join(result["answer"]["reasons"]))
-            visualizations = result["answer"]["social_ready"]["visualizations"]
-            self.assertEqual(visualizations["framework"], "custom_svg")
-            self.assertEqual(visualizations["template"], "premium_team_compare_v1")
-            self.assertEqual(visualizations["template_status"], "needs_review")
-            self.assertEqual(len(visualizations["teams"]), 2)
+            self.assertIn("x_post", result["answer"]["share_copy"])
 
         asyncio.run(run())
 
@@ -281,13 +278,13 @@ class QuestionAnsweringTestCase(unittest.TestCase):
 
         asyncio.run(run())
 
-    def test_club_question_defaults_league_and_builds_social_payload(self):
+    def test_club_question_defaults_league_and_builds_share_copy(self):
         async def run():
             answerer = FootballQuestionAnswerer(client=FakeClient())
             result = await answerer.answer("Who has been Manchester United's best finisher in 2025?")
             self.assertEqual(result["plan"]["league_name"], "EPL")
-            self.assertIn("x_post", result["answer"]["social_ready"])
-            self.assertIn("instagram_caption", result["answer"]["social_ready"])
+            self.assertIn("x_post", result["answer"]["share_copy"])
+            self.assertIn("instagram_caption", result["answer"]["share_copy"])
 
         asyncio.run(run())
 
@@ -354,16 +351,15 @@ class QuestionAnsweringTestCase(unittest.TestCase):
 
         asyncio.run(run())
 
-    def test_social_payload_contains_thread_carousel_and_visualization(self):
+    def test_share_copy_contains_text_without_visual_payloads(self):
         async def run():
             answerer = FootballQuestionAnswerer(client=FakeClient())
             result = await answerer.answer("Show Arsenal chance creation by zone and type in 2025")
-            social_ready = result["answer"]["social_ready"]
-            self.assertIn("x_thread", social_ready)
-            self.assertIn("instagram_carousel", social_ready)
-            self.assertIn("visualizations", social_ready)
-            self.assertEqual(social_ready["visualizations"]["framework"], "echarts")
-            self.assertIn("echarts_option", social_ready["visualizations"])
+            share_copy = result["answer"]["share_copy"]
+            self.assertIn("x_thread", share_copy)
+            self.assertIn("instagram_caption", share_copy)
+            self.assertNotIn("visualizations", share_copy)
+            self.assertNotIn("instagram_carousel", share_copy)
 
         asyncio.run(run())
 

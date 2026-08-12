@@ -27,6 +27,14 @@ class EndpointRunner:
                 f"Missing required params for '{endpoint_name}': {missing}"
             )
 
+        allowed_params = set(endpoint_spec.required_params + endpoint_spec.optional_params)
+        unexpected_params = sorted(set(params) - allowed_params)
+        if unexpected_params:
+            unexpected = ", ".join(unexpected_params)
+            raise ValueError(
+                f"Unexpected params for '{endpoint_name}': {unexpected}"
+            )
+
         method = getattr(self.client, endpoint_spec.method_name)
         return await method(**params)
 

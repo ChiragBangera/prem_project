@@ -1,18 +1,37 @@
 [project]
-name = "prem-project"
-version = "0.1.0"
-description = "Add your description here"
+name = "prem-analytics-lab"
+version = "0.2.0"
+description = "An async football analytics API and CLI powered by Understat data."
 readme = "README.md"
 requires-python = ">=3.11"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [
+    { name = "Chirag Bangera" },
+]
+keywords = ["football", "soccer", "analytics", "understat", "xg"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Information Analysis",
+]
 dependencies = [
-    "aiohttp>=3.13.2",
-    "ipykernel>=7.1.0",
-    "pip>=25.3",
-    "polars>=1.36.1",
-    "requests>=2.32.5",
+    "aiohttp>=3.11,<4",
+    "fastapi>=0.115,<1",
+    "uvicorn>=0.30,<1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "httpx>=0.27,<1",
 ]
 
 [project.scripts]
+prem-analytics = "app.cli:main"
 understat-cli = "app.cli:main"
 
 [tool.setuptools.packages.find]

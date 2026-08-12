@@ -3,6 +3,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 
+# Understat does not provide manager metadata. These windows are curated and
+# should be re-verified whenever a coaching change occurs.
+COACH_ERAS_LAST_VERIFIED = "2026-07-17"
+
+
 @dataclass(frozen=True)
 class CoachEra:
     coach_name: str
@@ -67,7 +72,7 @@ COACH_ERAS: tuple[CoachEra, ...] = (
         team_name="Liverpool",
         league_name="EPL",
         start_date="2024-06-01",
-        end_date=None,
+        end_date="2026-05-30",
         aliases=("slot", "arne slot"),
     ),
     CoachEra(
@@ -75,7 +80,7 @@ COACH_ERAS: tuple[CoachEra, ...] = (
         team_name="Chelsea",
         league_name="EPL",
         start_date="2024-07-01",
-        end_date=None,
+        end_date="2026-01-01",
         aliases=("maresca", "enzo maresca"),
     ),
 )

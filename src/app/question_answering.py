@@ -6,7 +6,6 @@ from dataclasses import asdict, dataclass
 
 from app.coach_eras import find_coach_eras
 from app.stat_data import UnderstatData
-from app.visual_templates import VISUAL_TEMPLATE_REGISTRY
 
 
 LEAGUE_ALIASES = {
@@ -66,9 +65,6 @@ MONTH_NAMES = {
     "november": 11,
     "december": 12,
 }
-CURRENT_DATE = date(2026, 4, 6)
-
-
 @dataclass
 class PlannedQuestion:
     question: str
@@ -92,9 +88,14 @@ class PlannedQuestion:
 
 
 class FootballQuestionAnswerer:
-    def __init__(self, client=None):
+    def __init__(self, client=None, today: date | None = None):
         self.client = client or UnderstatData()
         self._owns_client = client is None
+        self._today = today
+
+    @property
+    def today(self) -> date:
+        return self._today or date.today()
 
     async def __aenter__(self):
         return self
@@ -240,7 +241,7 @@ class FootballQuestionAnswerer:
         return None
 
     def _extract_date_range(self, question_lower: str, season: int | None):
-        default_year = season or CURRENT_DATE.year
+        default_year = season or self.today.year
 
         explicit = re.search(
             r"\bfrom\s+(\d{4}-\d{2}-\d{2})\s+(?:to|until)\s+(\d{4}-\d{2}-\d{2})\b",
@@ -251,11 +252,11 @@ class FootballQuestionAnswerer:
 
         since_explicit = re.search(r"\bsince\s+(\d{4}-\d{2}-\d{2})\b", question_lower)
         if since_explicit:
-            return since_explicit.group(1), CURRENT_DATE.isoformat()
+            return since_explicit.group(1), self.today.isoformat()
 
         for month_name, month_number in MONTH_NAMES.items():
             if f"since {month_name}" in question_lower or f"from {month_name}" in question_lower:
-                return f"{default_year}-{month_number:02d}-01", CURRENT_DATE.isoformat()
+                return f"{default_year}-{month_number:02d}-01", self.today.isoformat()
 
         return None, None
 
@@ -658,7 +659,6 @@ class FootballQuestionAnswerer:
         reasons = []
         direct_answer = ""
         social_caption = ""
-        viz_context = {}
 
         timeframe = self._describe_timeframe(plan)
 
@@ -762,28 +762,6 @@ class FootballQuestionAnswerer:
                     f"Defensive/keeper variance: {defensive_over['team']} are {defensive_over['defensive_prevention_gap']:+.2f} on xGA minus goals against; "
                     f"{defensive_under['team']} are lowest at {defensive_under['defensive_prevention_gap']:+.2f}."
                 )
-                viz_context = {
-                    "categories": [row["team"] for row in sorted(process_rows, key=lambda item: item["points_gap"], reverse=True)],
-                    "series": {
-                        "points_minus_xpts": [
-                            row["points_gap"] for row in sorted(process_rows, key=lambda item: item["points_gap"], reverse=True)
-                        ],
-                        "goals_minus_xg": [
-                            row["finishing_gap"] for row in sorted(process_rows, key=lambda item: item["points_gap"], reverse=True)
-                        ],
-                        "xga_minus_goals_against": [
-                            row["defensive_prevention_gap"] for row in sorted(process_rows, key=lambda item: item["points_gap"], reverse=True)
-                        ],
-                    },
-                    "rankings": {
-                        "points_overperformer": points_over,
-                        "points_underperformer": points_under,
-                        "finishing_overperformer": finishing_over,
-                        "finishing_underperformer": finishing_under,
-                        "defensive_overperformer": defensive_over,
-                        "defensive_underperformer": defensive_under,
-                    },
-                }
                 social_caption = (
                     f"Process vs results {timeframe}: {points_over['team']} are running hottest against xPTS "
                     f"({points_over['points_gap']:+.2f}), while {points_under['team']} are the clearest under-earners "
@@ -931,14 +909,6 @@ class FootballQuestionAnswerer:
                 reasons.append(
                     f"That is a {self._trend_label(last_summary['xga_per_game'], first_summary['xga_per_game'], lower_is_better=True)} defensive process on xGA per game."
                 )
-                viz_context = {
-                    "categories": ["First window", "Last window"],
-                    "series": {
-                        "points_per_game": [first_summary["ppg"], last_summary["ppg"]],
-                        "xg_per_game": [first_summary["xg_per_game"], last_summary["xg_per_game"]],
-                        "xga_per_game": [first_summary["xga_per_game"], last_summary["xga_per_game"]],
-                    },
-                }
                 social_caption = direct_answer
 
         if plan.intent == "team_defensive_trend":
@@ -962,13 +932,6 @@ class FootballQuestionAnswerer:
                     reasons.append(
                         f"Shots allowed moved from {previous_summary['shots_against']} in the prior 5 to {recent_summary['shots_against']} in the latest 5."
                     )
-                viz_context = {
-                    "categories": ["Previous 5", "Latest 5"],
-                    "series": {
-                        "xga_per_game": [previous_summary["xga_per_game"], recent_summary["xga_per_game"]],
-                        "goals_against": [previous_summary["goals_against"], recent_summary["goals_against"]],
-                    },
-                }
                 social_caption = direct_answer
 
         if plan.intent == "team_chance_profile":
@@ -986,25 +949,6 @@ class FootballQuestionAnswerer:
                 reasons.append(
                     f"Peak scoring window is {chance_profile['top_timing']['label']} with {self._fmt_num(chance_profile['top_timing']['xg'])} xG created."
                 )
-                viz_context = {
-                    "categories": [
-                        chance_profile["top_situation"]["label"],
-                        chance_profile["top_zone"]["label"],
-                        chance_profile["top_timing"]["label"],
-                    ],
-                    "series": {
-                        "xg": [
-                            chance_profile["top_situation"]["xg"],
-                            chance_profile["top_zone"]["xg"],
-                            chance_profile["top_timing"]["xg"],
-                        ],
-                        "shots": [
-                            chance_profile["top_situation"]["shots"],
-                            chance_profile["top_zone"]["shots"],
-                            chance_profile["top_timing"]["shots"],
-                        ],
-                    },
-                }
                 social_caption = direct_answer
 
         if plan.intent == "team_compare" and "league_table" in data:
@@ -1036,24 +980,6 @@ class FootballQuestionAnswerer:
                     f"W-D-L form over the same stretch: {left_profile['team']} {left_recent['wins']}-{left_recent['draws']}-{left_recent['losses']}, "
                     f"{right_profile['team']} {right_recent['wins']}-{right_recent['draws']}-{right_recent['losses']}."
                 )
-                viz_context = {
-                    "categories": [left_profile["team"], right_profile["team"]],
-                    "series": {
-                        "points_last_5": [left_recent["points"], right_recent["points"]],
-                        "goals_for_last_5": [left_recent["goals_for"], right_recent["goals_for"]],
-                        "goals_against_last_5": [left_recent["goals_against"], right_recent["goals_against"]],
-                        "xg_last_5": [left_recent["xg"], right_recent["xg"]],
-                        "xga_last_5": [left_recent["xga"], right_recent["xga"]],
-                    },
-                    "records": {
-                        left_profile["team"]: f"{left_recent['wins']}-{left_recent['draws']}-{left_recent['losses']}",
-                        right_profile["team"]: f"{right_recent['wins']}-{right_recent['draws']}-{right_recent['losses']}",
-                    },
-                    "result_sequences": {
-                        left_profile["team"]: self._team_result_sequence(left_results),
-                        right_profile["team"]: self._team_result_sequence(right_results),
-                    },
-                }
                 social_caption = direct_answer
 
         if plan.intent == "team_player_ranking" and "team_player_stats" in data:
@@ -1268,8 +1194,7 @@ class FootballQuestionAnswerer:
                 "end_date": plan.end_date,
             },
             "reasons": reasons,
-            "social_ready": self._build_social_payload(plan, direct_answer, reasons, social_caption, viz_context),
-            "next_step": "Use this as the assistant-facing answer scaffold when the user asks football questions here.",
+            "share_copy": self._build_share_copy(plan, direct_answer, reasons, social_caption),
         }
 
     def _filter_rows_by_date(self, rows, start_date=None, end_date=None):
@@ -1547,14 +1472,6 @@ class FootballQuestionAnswerer:
 
         return summary
 
-    def _team_result_sequence(self, rows):
-        sequence = []
-        for row in reversed(rows):
-            result = str(row.get("result", "")).upper()
-            if result in {"W", "D", "L"}:
-                sequence.append(result)
-        return sequence
-
     def _team_result_points(self, row):
         if row.get("pts") is not None:
             return int(row.get("pts", 0))
@@ -1662,12 +1579,9 @@ class FootballQuestionAnswerer:
                 return "Small sample warning: the recent-form layer is based on fewer than five results."
         return None
 
-    def _build_social_payload(self, plan: PlannedQuestion, direct_answer: str, reasons: list[str], social_caption: str, viz_context: dict | None = None):
+    def _build_share_copy(self, plan: PlannedQuestion, direct_answer: str, reasons: list[str], social_caption: str):
         hook = self._build_hook(plan, direct_answer)
         stat_lines = reasons[:3]
-        carousel_cards = self._build_carousel_cards(plan, direct_answer, stat_lines)
-        visualizations = self._build_visualization_payload(plan, stat_lines, viz_context or {})
-        visualizations = self._attach_visual_template_status(visualizations)
         return {
             "hook": hook,
             "caption": social_caption,
@@ -1675,25 +1589,7 @@ class FootballQuestionAnswerer:
             "x_thread": [hook, social_caption, *stat_lines],
             "instagram_caption": f"{hook}\n\n{social_caption}\n\nKey points: " + " | ".join(stat_lines),
             "stat_lines": stat_lines,
-            "instagram_carousel": carousel_cards,
-            "visualizations": visualizations,
         }
-
-    def _attach_visual_template_status(self, visualization_payload: dict):
-        template_name = visualization_payload.get("template")
-        if not template_name:
-            visualization_payload["template_status"] = "unregistered"
-            return visualization_payload
-
-        template_metadata = VISUAL_TEMPLATE_REGISTRY.get(template_name)
-        if not template_metadata:
-            visualization_payload["template_status"] = "unregistered"
-            return visualization_payload
-
-        visualization_payload["template_status"] = template_metadata["status"]
-        visualization_payload["template_notes"] = template_metadata["notes"]
-        visualization_payload["template_requirements"] = template_metadata["requirements"]
-        return visualization_payload
 
     def _find_coach_era_by_name(self, coach_name: str | None, team_name: str | None = None):
         if coach_name is None:
@@ -1715,7 +1611,7 @@ class FootballQuestionAnswerer:
         return max(self._coach_covered_seasons(eras[0]))
 
     def _coach_covered_seasons(self, era):
-        end_date = era.end_date or CURRENT_DATE.isoformat()
+        end_date = era.end_date or self.today.isoformat()
         start_season = self._season_from_date(era.start_date)
         end_season = self._season_from_date(end_date)
         return list(range(start_season, end_season + 1))
@@ -1727,7 +1623,7 @@ class FootballQuestionAnswerer:
     def _coach_window_for_season(self, era, season: int):
         season_start = f"{season}-07-01"
         season_end = f"{season + 1}-06-30"
-        era_end = era.end_date or CURRENT_DATE.isoformat()
+        era_end = era.end_date or self.today.isoformat()
         start_date = max(era.start_date, season_start)
         end_date = min(era_end, season_end)
         if start_date > end_date:
@@ -1859,434 +1755,6 @@ class FootballQuestionAnswerer:
         if not ranked:
             return None
         return max(ranked, key=lambda item: item["metric"])
-
-    def _build_carousel_cards(self, plan: PlannedQuestion, direct_answer: str, stat_lines: list[str]):
-        cards = [
-            {"title": "Main Takeaway", "body": direct_answer},
-        ]
-        for idx, line in enumerate(stat_lines[:3], start=2):
-            cards.append({"title": f"Key Stat {idx - 1}", "body": line})
-        return cards
-
-    def _team_compare_headline(self, viz_context: dict):
-        categories = viz_context.get("categories", [])
-        series = viz_context.get("series", {})
-        if len(categories) < 2:
-            return "Recent form comparison"
-
-        left_team, right_team = categories[:2]
-        left_points = float(series.get("points_last_5", [0, 0])[0] or 0)
-        right_points = float(series.get("points_last_5", [0, 0])[1] or 0)
-        left_xga = float(series.get("xga_last_5", [0, 0])[0] or 0)
-        right_xga = float(series.get("xga_last_5", [0, 0])[1] or 0)
-
-        if left_points > right_points:
-            return f"{left_team} have the stronger recent league form"
-        if right_points > left_points:
-            return f"{right_team} have the stronger recent league form"
-        if left_xga < right_xga:
-            return f"{left_team} edge it on defensive control"
-        if right_xga < left_xga:
-            return f"{right_team} edge it on defensive control"
-        return f"{left_team} and {right_team} are level on recent form"
-
-    def _team_compare_cards(self, viz_context: dict):
-        categories = viz_context.get("categories", [])
-        series = viz_context.get("series", {})
-        records = viz_context.get("records", {})
-        result_sequences = viz_context.get("result_sequences", {})
-        metric_map = [
-            ("goals_for_last_5", "Goals Scored"),
-            ("goals_against_last_5", "Goals Conceded"),
-            ("xg_last_5", "Expected Goals"),
-            ("xga_last_5", "Expected Goals Against"),
-        ]
-        cards = []
-
-        for index, team_name in enumerate(categories[:2]):
-            palette = self._team_palette(team_name, index=index)
-            points = float(series.get("points_last_5", [0, 0])[index] or 0)
-            team_metrics = []
-
-            for metric_key, metric_label in metric_map:
-                values = series.get(metric_key, [0, 0])
-                current_value = float(values[index] or 0)
-                maximum = max([float(value or 0) for value in values] + [1.0])
-                team_metrics.append(
-                    {
-                        "label": metric_label,
-                        "value": self._fmt_num(current_value),
-                        "ratio": round(current_value / maximum, 4),
-                    }
-                )
-
-            cards.append(
-                {
-                    "name": team_name,
-                    "short_name": self._team_abbreviation(team_name),
-                    "accent": palette["accent"],
-                    "accent_soft": palette["accent_soft"],
-                    "points": self._fmt_num(points),
-                    "record": records.get(team_name, "-"),
-                    "results": result_sequences.get(team_name, []),
-                    "metrics": team_metrics,
-                    "summary": f"{records.get(team_name, '-')} | {self._fmt_num(points)} pts",
-                }
-            )
-
-        return cards
-
-    def _team_abbreviation(self, team_name: str | None):
-        if not team_name:
-            return "TEAM"
-
-        abbreviations = {
-            "Manchester United": "MUN",
-            "Manchester City": "MCI",
-            "Arsenal": "ARS",
-            "Liverpool": "LIV",
-            "Chelsea": "CHE",
-            "Tottenham": "TOT",
-            "Newcastle United": "NEW",
-            "Aston Villa": "AVL",
-            "Brighton": "BHA",
-            "West Ham": "WHU",
-        }
-        if team_name in abbreviations:
-            return abbreviations[team_name]
-
-        parts = [part for part in str(team_name).replace("_", " ").split() if part]
-        if len(parts) == 1:
-            return parts[0][:3].upper()
-        return "".join(part[0] for part in parts[:3]).upper()
-
-    def _team_palette(self, team_name: str | None, index: int = 0):
-        palettes = {
-            "Manchester United": {"accent": "#C8102E", "accent_soft": "#F59E0B"},
-            "Arsenal": {"accent": "#EF4444", "accent_soft": "#3B82F6"},
-            "Liverpool": {"accent": "#DC2626", "accent_soft": "#10B981"},
-            "Chelsea": {"accent": "#2563EB", "accent_soft": "#F59E0B"},
-            "Manchester City": {"accent": "#38BDF8", "accent_soft": "#F8FAFC"},
-            "Tottenham": {"accent": "#E2E8F0", "accent_soft": "#60A5FA"},
-            "Newcastle United": {"accent": "#F8FAFC", "accent_soft": "#94A3B8"},
-            "Aston Villa": {"accent": "#8B5CF6", "accent_soft": "#F472B6"},
-        }
-        if team_name in palettes:
-            return palettes[team_name]
-        fallback = [
-            {"accent": "#E76F51", "accent_soft": "#F4A261"},
-            {"accent": "#2A9D8F", "accent_soft": "#84CC16"},
-        ]
-        return fallback[index % len(fallback)]
-
-    def _build_visualization_payload(self, plan: PlannedQuestion, stat_lines: list[str], viz_context: dict):
-        if plan.intent == "team_window_compare":
-            return {
-                "framework": "echarts",
-                "chart_type": "grouped_bar",
-                "title": f"{plan.team_name}: first vs last window",
-                "series": ["points_per_game", "xg_per_game", "xga_per_game"],
-                "card_type": "before_after_comparison",
-                "stat_lines": stat_lines,
-                "echarts_option": self._build_echarts_option(
-                    chart_type="grouped_bar",
-                    title=f"{plan.team_name}: first vs last window",
-                    categories=viz_context.get("categories", []),
-                    series=viz_context.get("series", {}),
-                ),
-            }
-        if plan.intent == "team_compare":
-            return {
-                "framework": "custom_svg",
-                "render_mode": "custom_svg",
-                "template": "premium_team_compare_v1",
-                "chart_type": "comparison_bar",
-                "title": f"{plan.team_name} vs {plan.comparison_team_name}: recent form",
-                "series": list(viz_context.get("series", {}).keys()),
-                "card_type": "team_form_comparison",
-                "stat_lines": stat_lines,
-                "record_labels": viz_context.get("records", {}),
-                "headline": self._team_compare_headline(viz_context),
-                "kicker": "FORM CHECK",
-                "subtitle": "Last 5 league matches | points, W-D-L, goals, xG, xGA",
-                "footer": "Data source: Understat | Window: latest 5 league matches",
-                "teams": self._team_compare_cards(viz_context),
-            }
-        if plan.intent == "team_defensive_trend":
-            return {
-                "framework": "echarts",
-                "chart_type": "line",
-                "title": f"{plan.team_name}: defensive trend",
-                "series": ["xga_per_game", "goals_against"],
-                "card_type": "trend_card",
-                "stat_lines": stat_lines,
-                "echarts_option": self._build_echarts_option(
-                    chart_type="line",
-                    title=f"{plan.team_name}: defensive trend",
-                    categories=viz_context.get("categories", []),
-                    series=viz_context.get("series", {}),
-                ),
-            }
-        if plan.intent == "team_chance_profile":
-            return {
-                "framework": "echarts",
-                "chart_type": "stacked_bar",
-                "title": f"{plan.team_name}: chance profile",
-                "series": ["xg", "shots"],
-                "card_type": "profile_card",
-                "stat_lines": stat_lines,
-                "echarts_option": self._build_echarts_option(
-                    chart_type="stacked_bar",
-                    title=f"{plan.team_name}: chance profile",
-                    categories=viz_context.get("categories", []),
-                    series=viz_context.get("series", {}),
-                ),
-            }
-        if plan.intent == "process_vs_results":
-            return {
-                "framework": "custom_svg",
-                "render_mode": "custom_svg",
-                "template": "process_vs_results_lens_v1",
-                "chart_type": "grouped_bar",
-                "title": f"{plan.league_name or 'League'}: process vs results",
-                "headline": "Results are not always process",
-                "subtitle": f"{plan.league_name or 'League'} {plan.season}: points vs xPTS, finishing, defensive variance",
-                "kicker": "PROCESS VS RESULTS",
-                "footer": "Data source: Understat | Positive xGA-GA means conceding fewer than expected",
-                "series": ["points_minus_xpts", "goals_minus_xg", "xga_minus_goals_against"],
-                "card_type": "process_vs_results_lens",
-                "categories": viz_context.get("categories", []),
-                "metric_series": viz_context.get("series", {}),
-                "stat_lines": stat_lines,
-                "rankings": viz_context.get("rankings", {}),
-                "echarts_option": self._build_echarts_option(
-                    chart_type="grouped_bar",
-                    title=f"{plan.league_name or 'League'}: process vs results",
-                    categories=viz_context.get("categories", []),
-                    series=viz_context.get("series", {}),
-                ),
-            }
-        return {
-            "framework": "echarts",
-            "chart_type": "stat_card",
-            "title": plan.question,
-            "series": [],
-            "card_type": "summary_card",
-            "stat_lines": stat_lines,
-            "echarts_option": self._build_echarts_option(
-                chart_type="stat_card",
-                title=plan.question,
-                categories=[],
-                series={},
-                stat_lines=stat_lines,
-            ),
-        }
-
-    def _build_echarts_option(self, chart_type: str, title: str, categories: list[str], series: dict, stat_lines: list[str] | None = None, extra: dict | None = None):
-        palette = ["#111827", "#E76F51", "#2A9D8F", "#E9C46A", "#264653"]
-        base = {
-            "backgroundColor": "#F7F3EA",
-            "title": {
-                "text": title,
-                "left": 20,
-                "top": 16,
-                "textStyle": {
-                    "color": "#111827",
-                    "fontFamily": "Georgia, Times New Roman, serif",
-                    "fontSize": 18,
-                    "fontWeight": "bold",
-                },
-            },
-            "color": palette[1:],
-            "grid": {"left": 48, "right": 24, "top": 72, "bottom": 44},
-            "tooltip": {"trigger": "axis"},
-        }
-
-        if chart_type == "grouped_bar":
-            base.update(
-                {
-                    "legend": {"top": 42},
-                    "xAxis": {"type": "category", "data": categories},
-                    "yAxis": {"type": "value"},
-                    "series": [
-                        {"name": name, "type": "bar", "data": values, "barMaxWidth": 26}
-                        for name, values in series.items()
-                    ],
-                }
-            )
-            return base
-
-        if chart_type == "line":
-            base.update(
-                {
-                    "legend": {"top": 42},
-                    "xAxis": {"type": "category", "data": categories},
-                    "yAxis": {"type": "value"},
-                    "series": [
-                        {
-                            "name": name,
-                            "type": "line",
-                            "data": values,
-                            "smooth": True,
-                            "symbolSize": 10,
-                            "lineStyle": {"width": 4},
-                        }
-                        for name, values in series.items()
-                    ],
-                }
-            )
-            return base
-
-        if chart_type == "comparison_bar":
-            left_team, right_team = categories
-            left_color = "#FF6B57"
-            right_color = "#2EC4B6"
-            ink = "#F8F4EC"
-            muted = "#94A3B8"
-            card_bg = "#101826"
-            track = "#1E293B"
-            metrics = [
-                ("goals_for_last_5", "Goals Scored"),
-                ("goals_against_last_5", "Goals Conceded"),
-                ("xg_last_5", "Expected Goals"),
-                ("xga_last_5", "Expected Goals Against"),
-            ]
-            left_values = {key: series.get(key, [0, 0])[0] for key, _ in metrics}
-            right_values = {key: series.get(key, [0, 0])[1] for key, _ in metrics}
-            left_points = float(series.get("points_last_5", [0, 0])[0])
-            right_points = float(series.get("points_last_5", [0, 0])[1])
-
-            if left_points > right_points:
-                verdict = f"{left_team} have the stronger recent form"
-            elif right_points > left_points:
-                verdict = f"{right_team} have the stronger recent form"
-            else:
-                verdict = "Recent form is level on points"
-
-            def metric_max(key):
-                return max(float(left_values[key]), float(right_values[key]), 1)
-
-            def format_metric_value(value):
-                value = float(value)
-                return f"{value:.2f}" if not value.is_integer() else str(int(value))
-
-            def metric_row(x, y, width, label, value, maximum, color):
-                fill_width = max(24, (float(value) / maximum) * width)
-                return [
-                    {
-                        "type": "text",
-                        "left": x,
-                        "top": y - 4,
-                        "style": {
-                            "text": label,
-                            "fill": muted,
-                            "font": "12px Helvetica Neue, Arial, sans-serif",
-                        },
-                    },
-                    {
-                        "type": "text",
-                        "left": x + width + 12,
-                        "top": y - 7,
-                        "style": {
-                            "text": format_metric_value(value),
-                            "fill": ink,
-                            "font": "bold 13px Helvetica Neue, Arial, sans-serif",
-                        },
-                    },
-                    {
-                        "type": "rect",
-                        "shape": {"x": x, "y": y + 18, "width": width, "height": 10, "r": 5},
-                        "style": {"fill": track},
-                    },
-                    {
-                        "type": "rect",
-                        "shape": {"x": x, "y": y + 18, "width": fill_width, "height": 10, "r": 5},
-                        "style": {"fill": color},
-                    },
-                ]
-
-            graphics = [
-                {"type": "rect", "shape": {"x": 0, "y": 0, "width": 1200, "height": 675}, "style": {"fill": "#07101B"}},
-                {"type": "rect", "shape": {"x": 36, "y": 26, "width": 1128, "height": 623, "r": 30}, "style": {"fill": "#0B1523"}},
-                {"type": "rect", "shape": {"x": 80, "y": 58, "width": 196, "height": 28, "r": 14}, "style": {"fill": "#172235"}},
-                {"type": "text", "left": 100, "top": 64, "style": {"text": "SOCIAL READY FORM CARD", "fill": "#D7DEE9", "font": "700 12px Helvetica Neue, Arial, sans-serif"}},
-                {"type": "text", "left": 80, "top": 104, "style": {"text": "MANCHESTER UNITED VS ARSENAL", "fill": ink, "font": "700 34px Helvetica Neue, Arial, sans-serif"}},
-                {"type": "text", "left": 82, "top": 148, "style": {"text": "LAST 5 LEAGUE MATCHES | POINTS, W-D-L, GF, GA, XG, XGA", "fill": muted, "font": "13px Helvetica Neue, Arial, sans-serif"}},
-                {"type": "rect", "shape": {"x": 80, "y": 182, "width": 364, "height": 44, "r": 22}, "style": {"fill": "#121E2F"}},
-                {"type": "text", "left": 102, "top": 194, "style": {"text": verdict.upper(), "fill": ink, "font": "700 15px Helvetica Neue, Arial, sans-serif"}},
-                {"type": "rect", "shape": {"x": 78, "y": 256, "width": 492, "height": 302, "r": 28}, "style": {"fill": card_bg, "stroke": "#1F2937", "lineWidth": 1}},
-                {"type": "rect", "shape": {"x": 630, "y": 256, "width": 492, "height": 302, "r": 28}, "style": {"fill": card_bg, "stroke": "#1F2937", "lineWidth": 1}},
-                {"type": "circle", "shape": {"cx": 122, "cy": 292, "r": 8}, "style": {"fill": left_color}},
-                {"type": "circle", "shape": {"cx": 674, "cy": 292, "r": 8}, "style": {"fill": right_color}},
-                {"type": "text", "left": 144, "top": 278, "style": {"text": left_team.upper(), "fill": ink, "font": "700 26px Helvetica Neue, Arial, sans-serif"}},
-                {"type": "text", "left": 696, "top": 278, "style": {"text": right_team.upper(), "fill": ink, "font": "700 26px Helvetica Neue, Arial, sans-serif"}},
-                {"type": "rect", "shape": {"x": 110, "y": 324, "width": 132, "height": 34, "r": 17}, "style": {"fill": "#162334"}},
-                {"type": "rect", "shape": {"x": 662, "y": 324, "width": 132, "height": 34, "r": 17}, "style": {"fill": "#162334"}},
-                {"type": "text", "left": 127, "top": 333, "style": {"text": f"W-D-L {(extra or {}).get(left_team, '-')}", "fill": ink, "font": "700 13px Helvetica Neue, Arial, sans-serif"}},
-                {"type": "text", "left": 679, "top": 333, "style": {"text": f"W-D-L {(extra or {}).get(right_team, '-')}", "fill": ink, "font": "700 13px Helvetica Neue, Arial, sans-serif"}},
-                {"type": "text", "left": 110, "top": 390, "style": {"text": "POINTS IN LAST 5", "fill": muted, "font": "12px Helvetica Neue, Arial, sans-serif"}},
-                {"type": "text", "left": 662, "top": 390, "style": {"text": "POINTS IN LAST 5", "fill": muted, "font": "12px Helvetica Neue, Arial, sans-serif"}},
-                {"type": "text", "left": 110, "top": 412, "style": {"text": str(int(left_points)), "fill": left_color, "font": "700 60px Helvetica Neue, Arial, sans-serif"}},
-                {"type": "text", "left": 662, "top": 412, "style": {"text": str(int(right_points)), "fill": right_color, "font": "700 60px Helvetica Neue, Arial, sans-serif"}},
-            ]
-
-            row_y_start = 446
-            row_gap = 42
-            for index, (metric_key, metric_label) in enumerate(metrics, start=0):
-                y = row_y_start + (index * row_gap)
-                graphics.extend(metric_row(110, y, 260, metric_label, left_values[metric_key], metric_max(metric_key), left_color))
-                graphics.extend(metric_row(662, y, 260, metric_label, right_values[metric_key], metric_max(metric_key), right_color))
-
-            graphics.extend(
-                [
-                    {"type": "text", "left": 80, "top": 606, "style": {"text": (stat_lines or [""])[0] if stat_lines else "", "fill": ink, "font": "14px Helvetica Neue, Arial, sans-serif"}},
-                    {"type": "text", "left": 80, "top": 630, "style": {"text": (stat_lines or ["", ""])[1] if len(stat_lines) > 1 else "", "fill": muted, "font": "13px Helvetica Neue, Arial, sans-serif"}},
-                ]
-            )
-
-            return {
-                "backgroundColor": "#09111F",
-                "animation": False,
-                "graphic": graphics,
-            }
-
-        if chart_type == "stacked_bar":
-            base.update(
-                {
-                    "legend": {"top": 42},
-                    "xAxis": {"type": "category", "data": categories},
-                    "yAxis": {"type": "value"},
-                    "series": [
-                        {
-                            "name": name,
-                            "type": "bar",
-                            "data": values,
-                            "stack": "total" if name == "xg" else None,
-                            "barMaxWidth": 36,
-                        }
-                        for name, values in series.items()
-                    ],
-                }
-            )
-            return base
-
-        return {
-            **base,
-            "graphic": [
-                {
-                    "type": "text",
-                    "left": 20,
-                    "top": 74,
-                    "style": {
-                        "text": "\n".join(stat_lines or []),
-                        "fill": "#111827",
-                        "font": "14px Georgia, Times New Roman, serif",
-                        "lineHeight": 24,
-                        "width": 700,
-                    },
-                }
-            ],
-        }
 
     def _summarize_data_shapes(self, data: dict):
         summary = {}

@@ -1,8 +1,11 @@
+import asyncio
 import json
 from datetime import datetime
 from urllib.parse import quote
 
 import aiohttp
+
+from app.errors import UnderstatRequestError, UnderstatTimeoutError
 
 
 class Utils:
@@ -49,8 +52,20 @@ class Utils:
                 response.raise_for_status()
                 if parse_json:
                     return await self.response_parser(response=response)
-                else:
-                    return await response.text()
+                return await response.text()
+        except asyncio.TimeoutError as exc:
+            raise UnderstatTimeoutError(
+                "Understat did not respond before the request timeout."
+            ) from exc
+        except aiohttp.ClientResponseError as exc:
+            raise UnderstatRequestError(
+                f"Understat returned HTTP {exc.status}.",
+                status_code=exc.status,
+            ) from exc
+        except aiohttp.ClientError as exc:
+            raise UnderstatRequestError(
+                "Unable to connect to Understat."
+            ) from exc
 
         finally:
             if session is None:
@@ -69,7 +84,9 @@ class Utils:
         try:
             return json.loads(data)
         except json.JSONDecodeError as exc:
-            raise ValueError("Understat response was not valid JSON") from exc
+            raise UnderstatRequestError(
+                "Understat returned a response that was not valid JSON."
+            ) from exc
 
     def url_string_encoder(self, team_name: str):
         """Encodes the team name

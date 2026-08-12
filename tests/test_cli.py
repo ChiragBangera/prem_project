@@ -1,17 +1,15 @@
-import asyncio
 import unittest
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 from app.cli import (
     parse_key_value_pairs,
     parse_param_value,
-    render_ask_command,
     render_endpoint_details,
     render_templates,
     render_manchester_united_presets,
-    render_visual_templates,
 )
 from app.endpoint_manifest import get_endpoint_manifest
+from app.errors import UnderstatRequestError
 
 
 class CliTestCase(unittest.TestCase):
@@ -57,60 +55,16 @@ class CliTestCase(unittest.TestCase):
         self.assertIn("Analytics templates:", render_templates())
         self.assertIn("Manchester United presets:", render_manchester_united_presets())
 
-    def test_render_visual_templates_splits_polished_from_rework(self):
-        output = render_visual_templates()
+    @patch("app.cli._main", side_effect=UnderstatRequestError("Upstream unavailable"))
+    @patch("app.cli.sys.stderr")
+    def test_main_formats_expected_errors_without_traceback(self, stderr, _):
+        from app.cli import main
 
-        self.assertIn("Visual templates:", output)
-        self.assertIn("Polished:", output)
-        self.assertIn("coach_trend_insight_v1", output)
-        self.assertIn("Rework:", output)
-        self.assertIn("goalkeeper_variance_v1", output)
+        with self.assertRaises(SystemExit) as raised:
+            main()
 
-    @patch("app.cli.render_visualization_asset")
-    @patch("app.cli.FootballQuestionAnswerer")
-    def test_render_ask_command_writes_svg(self, mock_answerer_cls, mock_render):
-        answerer = AsyncMock()
-        answerer.__aenter__.return_value = answerer
-        answerer.answer.return_value = {
-            "answer": {
-                "social_ready": {
-                    "visualizations": {
-                        "framework": "echarts",
-                        "echarts_option": {"title": {"text": "Test"}},
-                    }
-                }
-            }
-        }
-        mock_answerer_cls.return_value = answerer
-
-        output = asyncio.run(render_ask_command("Show Arsenal chance creation by zone and type in 2025"))
-
-        self.assertTrue(output.endswith(".svg"))
-        self.assertTrue(mock_render.called)
-
-    @patch("app.cli.render_visualization_asset_with_png")
-    @patch("app.cli.FootballQuestionAnswerer")
-    def test_render_ask_command_can_export_png(self, mock_answerer_cls, mock_render):
-        answerer = AsyncMock()
-        answerer.__aenter__.return_value = answerer
-        answerer.answer.return_value = {
-            "answer": {
-                "social_ready": {
-                    "visualizations": {
-                        "framework": "echarts",
-                        "echarts_option": {"title": {"text": "Test"}},
-                    }
-                }
-            }
-        }
-        mock_answerer_cls.return_value = answerer
-        mock_render.return_value = {"svg": "outputs/test.svg", "png": "outputs/test.png"}
-
-        output = asyncio.run(render_ask_command("Test visual", export_png=True))
-
-        self.assertEqual(output["png"], "outputs/test.png")
-        self.assertTrue(mock_render.called)
-
+        self.assertEqual(raised.exception.code, 1)
+        self.assertTrue(stderr.write.called)
 
 if __name__ == "__main__":
     unittest.main()

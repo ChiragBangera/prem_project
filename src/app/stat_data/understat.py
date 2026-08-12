@@ -19,9 +19,10 @@ import aiohttp
 
 
 class UnderstatData:
-    def __init__(self, session=None):
+    def __init__(self, session=None, timeout_seconds: float = 20.0):
         self._session = session
         self._own_session = session is None
+        self._timeout = aiohttp.ClientTimeout(total=timeout_seconds)
         self.utils = Utils(understat_header)
 
     async def _get_data(
@@ -33,7 +34,7 @@ class UnderstatData:
         parse_json=True,
     ):
         if self._session is None or self._session.closed:
-            self._session = aiohttp.ClientSession()
+            self._session = aiohttp.ClientSession(timeout=self._timeout)
             self._own_session = True
 
         return await self.utils.get_data(
