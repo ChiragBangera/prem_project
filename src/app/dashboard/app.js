@@ -276,7 +276,7 @@ function renderMatch(node, d) {
   const n = d.narrative; clear(node);
   node.innerHTML = `
     <div class="card"><h3>${n.narrative}</h3><div class="kv"><span class="k">Scoreline</span><span class="v">${n.scoreline.h} - ${n.scoreline.a}</span><span class="k">xG</span><span class="v">${fmt(n.xG.h)} - ${fmt(n.xG.a)}</span></div></div>
-    <div class="card" style="margin-top:16px"><h3>Shot map</h3><div id="shotmap"></div><div class="hint">Coord orientation: defending goal at left. Goal = filled, header shows shot result.</div></div>
+    <div class="card" style="margin-top:16px"><h3>Shot map</h3><div id="shotmap"></div><div class="hint">Coord orientation: defending goal at left. Goal = filled; hover a circle for shot details.</div></div>
     <div class="card" style="margin-top:16px"><h3>xG timeline (cumulative)</h3><div id="xgtl"></div></div>
     <div class="grid cols-2" style="margin-top:16px">
       <div class="card"><h3>Big-chance inventory (xG ≥ ${d.big_chance_inventory.xG_threshold})</h3>${bigChances(d.big_chance_inventory)}</div>
@@ -305,10 +305,11 @@ function drawShotMap(container, sm) {
   const circles = (shots, color) => shots.map((s) => {
     const r = 4 + Math.sqrt(Math.max(parseFloat(s.xG) || 0, 0.001)) * 14;
     const fill = s.result === "Goal";
-    return `<circle cx="${px(s.X)}" cy="${py(s.Y)}" r="${r}" fill="${fill ? color : "none"}" stroke="${color}" stroke-width="${fill ? 2 : 1.2}" opacity="${fill ? 0.85 : 0.55}"/>`;
+    const tip = `${s.player || "?"} ${s.minute}' — ${s.result} (xG ${fmt(s.xG, 3)})`;
+    return `<circle cx="${px(s.X)}" cy="${py(s.Y)}" r="${r}" fill="${fill ? color : "none"}" stroke="${color}" stroke-width="${fill ? 2 : 1.2}" opacity="${fill ? 0.85 : 0.55}"><title>${tip}</title></circle>`;
   }).join("");
-  const lines = `<line x1="0" y1="${h/2}" x2="${w}" y2="${h/2}" stroke="#1a2230"/><line x1="${w/2}" y1="0" x2="${w/2}" y2="${h}" stroke="#1a2230"/><circle cx="${w/2}" cy="${h/2}" r="60" fill="none" stroke="#1a2230"/><rect x="0" y="${h/2-60}" width="44" height="120" fill="none" stroke="#1a2230"/>`;
-  el.innerHTML = `<svg class="pitch-svg" viewBox="0 0 ${w} ${h}"><rect x="0" y="0" width="${w}" height="${h}" fill="#0f1620"/>${lines}<g>${circles(away, "#41d6a3")}</g><g>${circles(home, "#4ea1ff")}</g></svg><div class="hint"><span style="color:#4ea1ff">● home</span> &nbsp; <span style="color:#41d6a3">● away</span> &nbsp; radius scales with xG; filled = goal</div>`;
+  const lines = `<line x1="0" y1="${h/2}" x2="${w}" y2="${h/2}" stroke="#1a2230"/><line x1="${w/2}" y1="0" x2="${w/2}" y2="${h}" stroke="#1a2230"/><circle cx="${w/2}" cy="${h/2}" r="60" fill="none" stroke="#1a2230"/><rect x="0" y="${h/2-60}" width="44" height="120" fill="none" stroke="#1a2230"/><rect x="${w-44}" y="${h/2-60}" width="44" height="120" fill="none" stroke="#1a2230"/>`;
+  el.innerHTML = `<svg class="pitch-svg" viewBox="0 0 ${w} ${h}"><rect x="0" y="0" width="${w}" height="${h}" fill="#0f1620"/>${lines}<g>${circles(away, "#41d6a3")}</g><g>${circles(home, "#4ea1ff")}</g></svg><div class="hint"><span style="color:#4ea1ff">● home</span> &nbsp; <span style="color:#41d6a3">● away</span> &nbsp; radius scales with xG; filled = goal &nbsp; hover for shot details</div>`;
 }
 function drawXgTimeline(container, tl) {
   const el = document.getElementById(container); if (!el) return;

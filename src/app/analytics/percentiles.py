@@ -99,8 +99,12 @@ def percentile_rank(value: float, within: Iterable[float]) -> float:
     below = sum(1 for v in series if v < value)
     equal = sum(1 for v in series if v == value)
     if equal == 0:
-        return round(100.0 * below / max(n - 1, 1), 2)
-    return round(100.0 * (below + (equal - 1) / 2) / max(n - 1, 1), 2)
+        raw = 100.0 * below / max(n - 1, 1)
+    else:
+        raw = 100.0 * (below + (equal - 1) / 2) / max(n - 1, 1)
+    # Values strictly above every peer map to rank n+1, which would exceed 100
+    # under the (n-1) normalization; clamp to the documented 0..100 range.
+    return round(max(0.0, min(100.0, raw)), 2)
 
 
 def radar_profile(player: dict, peers: list[dict], metrics: tuple[tuple[str, str, bool, bool], ...] | None = None) -> list[dict]:
