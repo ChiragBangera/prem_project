@@ -186,6 +186,20 @@ th .term { color: inherit; border-bottom-color: rgba(78,161,255,0.35); }
 .back-link { color: var(--accent); font-size: 13px; }
 .back-link:hover { text-decoration: underline; }
 
+/* player basket */
+.basket-bar { display: flex; align-items: center; gap: 10px; margin: 10px 0; padding: 8px 12px;
+  background: rgba(78,161,255,0.08); border: 1px solid rgba(78,161,255,0.3); border-radius: 8px; }
+.basket-bar .basket-count { font-weight: 600; font-size: 13px; }
+.basket-bar button { padding: 6px 12px; font-size: 12px; }
+.basket-card { margin-bottom: 14px; }
+.basket-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.basket-chip { background: var(--panel-2); border: 1px solid var(--border); border-radius: 999px;
+  padding: 4px 10px; font-size: 12px; }
+.basket-x { color: var(--danger); cursor: pointer; margin-left: 6px; font-weight: 700; }
+.basket-x:hover { color: #ff8d7f; }
+td.best-cell { background: rgba(65,214,163,0.12); font-weight: 700; }
+table input[type=checkbox] { accent-color: var(--accent); }
+
 footer { color: var(--muted); font-size: 12px; text-align: center; padding: 20px; border-top: 1px solid var(--border); margin-top: 30px; }
 footer a { color: var(--muted); }
 .mono { font-family: var(--mono); }

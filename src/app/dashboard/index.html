@@ -95,6 +95,9 @@
           <select id="discoverPosition"><option value="">All</option><option value="F">Forward</option><option value="M">Midfielder</option><option value="D">Defender</option><option value="GK">Goalkeeper</option></select>
         </div>
         <div class="field"><label>Min minutes</label><input id="discoverMinutes" type="number" value="900" style="min-width:90px" /></div>
+        <div class="field"><label>Show</label>
+          <select id="discoverLimit"><option value="20">20</option><option value="50">50</option><option value="100">100</option></select>
+        </div>
         <div class="field"><label>Order by</label>
           <select id="discoverOrderBy">
             <option value="npxG">NP xG</option>
@@ -118,6 +121,7 @@
 
     <!-- COMPARE -->
     <section class="view" id="view-compare">
+      <div id="compareBasket"></div>
       <div class="controls">
         <div class="field"><label>Mode</label>
           <select id="compareMode"><option value="players">Players</option><option value="teams">Teams</option></select>

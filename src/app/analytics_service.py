@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 from .analytics import career as career_engine
@@ -199,28 +200,44 @@ class AnalyticsService:
 
     async def compare_players(
         self,
-        player_1: str,
-        player_2: str,
+        player_1: str | None = None,
+        player_2: str | None = None,
+        players: list[str] | None = None,
         league_name: str = "EPL",
         season: int = 2025,
         start_date: str | None = None,
         end_date: str | None = None,
     ) -> dict:
         start_date, end_date = _valid_date_range(start_date, end_date)
+        names = players or [name for name in (player_1, player_2) if name]
+        names = [name.strip() for name in names if name and name.strip()]
+        if len(names) < 2:
+            raise ValueError("At least two players are required.")
+        if len(names) > 12:
+            raise ValueError("Compare at most 12 players at once.")
         league_players = await self.client.get_league_player_stats(
             league_name, season, start_date=start_date, end_date=end_date
         )
-        first = await self._resolve_player(player_1, league_players, league_name, season)
-        second = await self._resolve_player(player_2, league_players, league_name, season)
-        first_report = player_engine.player_report(first, league_players)
-        second_report = player_engine.player_report(second, league_players)
+        resolved = await asyncio.gather(
+            *(self._resolve_player(name, league_players, league_name, season) for name in names),
+            return_exceptions=True,
+        )
+        pairs = []
+        for name, player in zip(names, resolved):
+            if isinstance(player, BaseException):
+                raise ValueError(str(player))
+            pairs.append((name, player))
+        reports = {
+            name: player_engine.player_report(player, league_players)
+            for name, player in pairs
+        }
         try:
             birthdates = await self._birthdate_map(
-                [first.get("player_name"), second.get("player_name")], [first, second]
+                [player.get("player_name") for _, player in pairs], [player for _, player in pairs]
             )
-            for report, player in ((first_report, first), (second_report, second)):
-                report["player"]["age"] = _age(birthdates.get(player.get("player_name")))
-                report["player"]["date_of_birth"] = birthdates.get(player.get("player_name"))
+            for name, player in pairs:
+                reports[name]["player"]["age"] = _age(birthdates.get(player.get("player_name")))
+                reports[name]["player"]["date_of_birth"] = birthdates.get(player.get("player_name"))
         except Exception:
             pass
         return {
@@ -228,12 +245,10 @@ class AnalyticsService:
             "season": season,
             "date_window": {"start_date": start_date, "end_date": end_date},
             "pool_size": len(league_players),
-            "players": {
-                player_1: first_report,
-                player_2: second_report,
-            },
-            "radar_labels": [entry["label"] for entry in first_report["radar"]["profile"]],
-            "limitations": first_report["limitations"],
+            "players": reports,
+            "order": names,
+            "radar_labels": [entry["label"] for entry in next(iter(reports.values()))["radar"]["profile"]],
+            "limitations": next(iter(reports.values()))["limitations"],
         }
 
     async def compare_teams(
@@ -563,6 +578,13 @@ class AnalyticsService:
                     "assists": _float(p, "assists"),
                     "yellow_cards": _float(p, "yellow_cards"),
                     "red_cards": _float(p, "red_cards"),
+                    "npg": _float(p, "npg"),
+                    "npxG_per90": _per90_value(p, "npxG"),
+                    "xA_per90": _per90_value(p, "xA"),
+                    "goal_involvement_per90": round(_per90_value(p, "npxG") + _per90_value(p, "xA"), 3),
+                    "xG_per_shot": _ratio_value(p, "xG", "shots"),
+                    "conversion": _ratio_value(p, "goals", "shots"),
+                    "g_minus_xg": round(_float(p, "goals") - _float(p, "xG"), 2),
                 }
                 for p in top
             ],
@@ -717,6 +739,20 @@ def _float(row: dict, key: str) -> float:
         return round(float(row.get(key, 0)), 2)
     except (TypeError, ValueError):
         return 0.0
+
+
+def _per90_value(row: dict, key: str) -> float:
+    minutes = _minutes(row)
+    if minutes <= 0:
+        return 0.0
+    return round(_float(row, key) * 90.0 / minutes, 3)
+
+
+def _ratio_value(row: dict, numerator_key: str, denominator_key: str) -> float:
+    denominator = _float(row, denominator_key)
+    if denominator <= 0:
+        return 0.0
+    return round(_float(row, numerator_key) / denominator, 3)
 
 
 def _age(date_of_birth: str | None) -> int | None:

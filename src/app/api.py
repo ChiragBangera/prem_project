@@ -258,8 +258,9 @@ class CareerRequest(BaseModel):
 
 
 class ComparePlayersRequest(BaseModel):
-    player_1: str
-    player_2: str
+    player_1: str | None = None
+    player_2: str | None = None
+    players: list[str] | None = None
     league_name: str = "EPL"
     season: int = 2025
     start_date: str | None = None
@@ -399,6 +400,7 @@ async def compare_players(payload: ComparePlayersRequest, request: Request):
         return await request.app.state.analytics.compare_players(
             player_1=payload.player_1,
             player_2=payload.player_2,
+            players=payload.players,
             league_name=payload.league_name,
             season=payload.season,
             start_date=payload.start_date,

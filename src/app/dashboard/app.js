@@ -921,6 +921,58 @@ function drawXgTimeline(container, tl) {
   </svg>`;
 }
 
+// ---------- player basket (discover → compare) ----------
+const RADAR_COLORS = ["#4ea1ff", "#41d6a3", "#f5b042", "#ef6a5a", "#b18cff",
+  "#5ad1ef", "#ff8fd8", "#c5d86d", "#ff9f43", "#74b9ff", "#a29bfe", "#55efc4"];
+
+function loadBasket() {
+  try {
+    state.basket = JSON.parse(localStorage.getItem("prem_basket") || "[]");
+  } catch (_) { state.basket = []; }
+}
+function saveBasket() {
+  localStorage.setItem("prem_basket", JSON.stringify(state.basket));
+}
+function toggleBasket(name, team, age) {
+  const existing = state.basket.findIndex((p) => p.name === name);
+  if (existing >= 0) state.basket.splice(existing, 1);
+  else state.basket.push({ name, team, age });
+  saveBasket();
+  updateBasketUI();
+}
+function updateBasketUI() {
+  const bar = document.getElementById("discoverBasketBar");
+  if (!bar) return;
+  bar.style.display = state.basket.length ? "flex" : "none";
+  bar.querySelector(".basket-count").textContent = `${state.basket.length} selected`;
+  renderCompareBasket();
+}
+function renderCompareBasket() {
+  const host = document.getElementById("compareBasket");
+  if (!host) return;
+  host.innerHTML = state.basket.length
+    ? `<div class="card basket-card">
+        <h3>Basket · from Discover</h3>
+        <div class="basket-chips">${state.basket.map((p) =>
+          `<span class="basket-chip">${p.name}${p.age ? ` (${p.age})` : ""} <span class="basket-x" data-remove="${p.name}">×</span></span>`).join("")}</div>
+        <div class="controls" style="margin-top:8px">
+          <button class="primary" id="basketCompareGo">Compare ${state.basket.length} players</button>
+          <button class="ghost" id="basketClear">Clear</button>
+        </div>
+      </div>`
+    : "";
+  host.querySelectorAll("[data-remove]").forEach((x) => x.addEventListener("click", () => {
+    state.basket = state.basket.filter((p) => p.name !== x.dataset.remove);
+    saveBasket();
+    updateBasketUI();
+  }));
+  const go = document.getElementById("basketCompareGo");
+  if (go) go.addEventListener("click", () => { state.pendingBasket = true; runCompare(); });
+  const clear = document.getElementById("basketClear");
+  if (clear) clear.addEventListener("click", () => { state.basket = []; saveBasket(); updateBasketUI(); });
+}
+loadBasket();
+
 // ---------- DISCOVER ----------
 $("discoverGo").addEventListener("click", runDiscover);
 async function runDiscover() {
@@ -933,6 +985,7 @@ async function runDiscover() {
       position_group: $("discoverPosition").value || null,
       minimum_minutes: parseFloat($("discoverMinutes").value) || 900,
       order_by: $("discoverOrderBy").value,
+      limit: parseInt($("discoverLimit").value, 10) || 20,
       start_date: dateOf("discoverFrom"), end_date: dateOf("discoverTo"),
       min_age: parseInt($("discoverMinAge").value, 10) || null,
       max_age: parseInt($("discoverMaxAge").value, 10) || null,
@@ -944,10 +997,19 @@ function renderDiscover(node, d) {
   clear(node);
   const seasonsLabel = d.seasons && d.seasons.length > 1 ? ` · ${d.seasons.join("–")}` : "";
   node.innerHTML = `<div class="card"><h3>Top ${d.limit} ${d.position_group || "all-position"} players ≥ ${d.minimum_minutes} min · ordered by ${d.order_by}${seasonsLabel} ${windowBadge(d)}</h3>
-    <table><thead><tr><th>Player</th><th>Team</th><th>Pos</th><th class="num">${term("age")}</th><th class="num">${term("team_press")}</th><th class="num">${term("minutes")}</th><th class="num">${term("npxG")}</th><th class="num">${term("xA")}</th><th class="num">${term("xG_chain")}</th><th class="num">${term("xG_buildup")}</th><th class="num">${term("goals")}</th><th class="num">${term("assists")}</th><th class="num">${term("cards")}</th></tr></thead><tbody>
-      ${d.players.map((p) => `<tr><td data-name="${p.name}">${p.name}</td><td>${p.team}</td><td>${p.position_group}</td><td class="num">${p.age ?? "—"}</td><td class="num">${fmt(p.team_ppda)}</td><td class="num">${fmt(p.minutes, 0)}</td><td class="num">${fmt(p.npxG)}</td><td class="num">${fmt(p.xA)}</td><td class="num">${fmt(p.xGChain)}</td><td class="num">${fmt(p.xGBuildup)}</td><td class="num">${fmt(p.goals, 0)}</td><td class="num">${fmt(p.assists, 0)}</td><td class="num">${fmt(p.yellow_cards, 0)}y / ${fmt(p.red_cards, 0)}r</td></tr>`).join("")}
+    <div class="basket-bar" id="discoverBasketBar" style="display:${state.basket.length ? "flex" : "none"}">
+      <span class="basket-count">${state.basket.length} selected</span>
+      <button class="primary" id="discoverToCompare">Compare →</button>
+      <button class="ghost" id="discoverBasketClear">Clear</button>
+    </div>
+    <table><thead><tr><th>✓</th><th>Player</th><th>Team</th><th>Pos</th><th class="num">${term("age")}</th><th class="num">${term("team_press")}</th><th class="num">${term("minutes")}</th><th class="num">${term("npxG")}</th><th class="num">/90</th><th class="num">${term("xA")}</th><th class="num">/90</th><th class="num">${term("goal_involvement")}/90</th><th class="num">${term("xG_per_shot")}</th><th class="num">${term("g_minus_xg")}</th><th class="num">${term("goals")}</th><th class="num">${term("assists")}</th><th class="num">${term("cards")}</th></tr></thead><tbody>
+      ${d.players.map((p) => {
+        const checked = state.basket.some((b) => b.name === p.name) ? "checked" : "";
+        return `<tr><td><input type="checkbox" class="basket-check" data-name="${p.name}" data-team="${p.team}" data-age="${p.age ?? ""}" ${checked}/></td>
+        <td data-name="${p.name}">${p.name}</td><td>${p.team}</td><td>${p.position_group}</td><td class="num">${p.age ?? "—"}</td><td class="num">${fmt(p.team_ppda)}</td><td class="num">${fmt(p.minutes, 0)}</td><td class="num">${fmt(p.npxG)}</td><td class="num">${fmt(p.npxG_per90, 3)}</td><td class="num">${fmt(p.xA)}</td><td class="num">${fmt(p.xA_per90, 3)}</td><td class="num">${fmt(p.goal_involvement_per90, 3)}</td><td class="num">${fmt(p.xG_per_shot, 3)}</td><td class="num">${p.g_minus_xg >= 0 ? "+" : ""}${fmt(p.g_minus_xg)}</td><td class="num">${fmt(p.goals, 0)}</td><td class="num">${fmt(p.assists, 0)}</td><td class="num">${fmt(p.yellow_cards, 0)}y / ${fmt(p.red_cards, 0)}r</td></tr>`;
+      }).join("")}
     </tbody></table>
-    <div class="hint">Click a name to load that player in the Player tab. Age from Wikidata; ${term("team_press")} is the team's season PPDA (lower = more intense press).</div>
+    <div class="hint">Tick players to build a basket, then Compare → to compare all of them at once. Age from Wikidata; ${term("team_press")} is the team's season PPDA.</div>
     <div class="caveat"><ul>${(d.limitations || []).map((l) => `<li>${l}</li>`).join("")}</ul></div>
   </div>`;
   node.querySelectorAll("td[data-name]").forEach((td) => td.addEventListener("click", () => {
@@ -958,6 +1020,22 @@ function renderDiscover(node, d) {
     activateTab("player");
     runPlayer();
   }));
+  node.querySelectorAll(".basket-check").forEach((checkbox) => checkbox.addEventListener("change", () => {
+    toggleBasket(checkbox.dataset.name, checkbox.dataset.team, checkbox.dataset.age ? parseInt(checkbox.dataset.age, 10) : null);
+  }));
+  const toCompare = document.getElementById("discoverToCompare");
+  if (toCompare) toCompare.addEventListener("click", () => {
+    state.pendingBasket = true;
+    activateTab("compare");
+    runCompare();
+  });
+  const clearBasket = document.getElementById("discoverBasketClear");
+  if (clearBasket) clearBasket.addEventListener("click", () => {
+    state.basket = [];
+    saveBasket();
+    updateBasketUI();
+    node.querySelectorAll(".basket-check").forEach((c) => { c.checked = false; });
+  });
 }
 
 // ---------- COMPARE ----------
@@ -972,14 +1050,27 @@ $("compareMode").addEventListener("change", () => {
 });
 
 async function runCompare() {
-  const a = $("compareA").value.trim(), b = $("compareB").value.trim();
-  if (!a || !b) return;
-  const node = $("compareContent"); loading(node);
+  const node = $("compareContent");
   const mode = $("compareMode").value;
   const common = {
     league_name: state.league, season: seasonOf("compareSeason"),
     start_date: dateOf("compareFrom"), end_date: dateOf("compareTo"),
   };
+  if (mode === "players" && (state.pendingBasket || (!state.pendingBasket && state.basket.length >= 2 && !$("compareA").value.trim()))) {
+    const names = state.basket.map((p) => p.name);
+    state.pendingBasket = false;
+    if (names.length < 2) { errored(node, "Tick at least 2 players in Discover, or use the two-name inputs below."); return; }
+    loading(node);
+    try {
+      const d = await api("/api/v1/compare/players", { players: names, ...common });
+      renderComparePlayersMulti(node, d);
+    } catch (e) { errored(node, e.message); }
+    return;
+  }
+  state.pendingBasket = false;
+  const a = $("compareA").value.trim(), b = $("compareB").value.trim();
+  if (!a || !b) return;
+  loading(node);
   try {
     const d = await api(
       mode === "players" ? "/api/v1/compare/players" : "/api/v1/compare/teams",
@@ -988,6 +1079,90 @@ async function runCompare() {
     if (mode === "players") renderComparePlayers(node, d, a, b);
     else renderCompareTeams(node, d);
   } catch (e) { errored(node, e.message); }
+}
+
+function renderComparePlayersMulti(node, d) {
+  const names = d.order || Object.keys(d.players);
+  clear(node);
+  const radarEntries = names.slice(0, 5).map((name, i) => ({
+    name, color: RADAR_COLORS[i % RADAR_COLORS.length], report: d.players[name],
+  }));
+  node.innerHTML = `
+    <div class="card"><h3>${term("radar")} · ${names.length} players · shared pool (${d.pool_size}) ${windowBadge(d)}</h3>
+      <div id="compareRadar"></div>
+      ${names.length > 5 ? `<div class="hint">Radar shows the first 5; tables include all ${names.length}.</div>` : ""}
+    </div>
+    <div class="card" style="margin-top:16px"><h3>${term("per90")} comparison · best value highlighted</h3>${multiPer90(d, names)}</div>
+    <div class="card" style="margin-top:16px"><h3>Involvement & finishing</h3>${multiInvolvement(d, names)}</div>
+    <div class="caveat"><strong>Limitations.</strong><ul>${d.limitations.map((l) => `<li>${l}</li>`).join("")}</ul></div>
+  `;
+  drawMultiRadar("compareRadar", d.radar_labels, radarEntries);
+}
+
+function multiPer90(d, names) {
+  const rows = [["goals", "goals"], ["xG", "xG"], ["npxG", "npxG"], ["assists", "assists"],
+    ["xA", "xA"], ["shots", "shots"], ["key_passes", "key_passes"]];
+  const head = `<tr><th></th>${names.map((n) => `<th class="num">${n}${d.players[n].player.age != null ? ` (${d.players[n].player.age})` : ""}</th>`).join("")}</tr>`;
+  const body = rows.map(([k, gk]) => {
+    const values = names.map((n) => d.players[n].per90_breakdown.per90[k]);
+    const best = Math.max(...values.filter((v) => typeof v === "number"));
+    return `<tr><td>${term(gk)}</td>${values.map((v) => `<td class="num${v === best ? " best-cell" : ""}">${fmt(v, 3)}</td>`).join("")}</tr>`;
+  }).join("");
+  return `<table><thead>${head}</thead><tbody>${body}</tbody></table>`;
+}
+
+function multiInvolvement(d, names) {
+  const chain = names.map((n) => d.players[n].involvement_profile);
+  const chainBest = Math.max(...chain.map((c) => c.xGChain_per90));
+  const buildupBest = Math.max(...chain.map((c) => c.xGBuildup_per90));
+  const rows = (label, getter, best) => `<tr><td>${label}</td>${names.map((n, i) => {
+    const v = getter(chain[i]);
+    return `<td class="num${v === best ? " best-cell" : ""}">${fmt(v, 3)}</td>`;
+  }).join("")}</tr>`;
+  return `<table><thead><tr><th>per 90</th>${names.map((n) => `<th class="num">${n}</th>`).join("")}</tr></thead><tbody>
+    ${rows(term("xG_chain"), (c) => c.xGChain_per90, chainBest)}
+    ${rows(term("xG_buildup"), (c) => c.xGBuildup_per90, buildupBest)}
+  </tbody></table>
+  <div class="kv" style="margin-top:10px">${names.map((n) => {
+    const f = d.players[n].finishing_overperformance;
+    return `<span class="k">${n} ${term("g_minus_xg")}</span><span class="v"><span class="badge ${f.g_minus_xg > 0 ? "good" : f.g_minus_xg < 0 ? "bad" : ""}">${f.g_minus_xg >= 0 ? "+" : ""}${fmt(f.g_minus_xg)}</span> ± ${fmt(f.g_minus_xg_std_error)}</span>`;
+  }).join("")}</div>`;
+}
+
+function drawMultiRadar(container, labels, entries) {
+  const el = document.getElementById(container);
+  if (!el) return;
+  const size = 400, cx = size / 2, cy = size / 2, r = 140;
+  const n = labels.length;
+  if (n < 3) { el.innerHTML = `<div class="empty">Need ≥3 metrics.</div>`; return; }
+  const ang = (i) => -Math.PI / 2 + (i * 2 * Math.PI) / n;
+  const pt = (i, rad) => [cx + rad * Math.cos(ang(i)), cy + rad * Math.sin(ang(i))];
+  let rings = "";
+  for (let g = 1; g <= 4; g++) {
+    const rr = r * g / 4;
+    let pts = ""; for (let i = 0; i < n; i++) { const [x, y] = pt(i, rr); pts += `${x},${y} `; }
+    rings += `<polygon points="${pts}" fill="none" stroke="#243040" stroke-width="1"/>`;
+  }
+  let spokes = "", labelsSvg = "";
+  for (let i = 0; i < n; i++) {
+    const [x, y] = pt(i, r);
+    spokes += `<line x1="${cx}" y1="${cy}" x2="${x}" y2="${y}" stroke="#243040" stroke-width="1"/>`;
+    const [lx, ly] = pt(i, r + 20);
+    labelsSvg += `<text x="${lx}" y="${ly}" fill="#8a98a8" font-size="10" text-anchor="middle" dominant-baseline="middle">${radarLabelTitle(labels[i])}${labels[i]}</text>`;
+  }
+  const polys = entries.map((entry) => {
+    const byLabel = Object.fromEntries(entry.report.radar.profile.map((p) => [p.label, p.percentile]));
+    let pts = "";
+    for (let i = 0; i < n; i++) {
+      const pct = Math.max(0, Math.min(100, byLabel[labels[i]] ?? 0));
+      const [x, y] = pt(i, r * pct / 100);
+      pts += `${x},${y} `;
+    }
+    return `<polygon points="${pts}" fill="none" stroke="${entry.color}" stroke-width="2"/>`;
+  }).join("");
+  const legend = entries.map((e) => `<span style="color:${e.color}">● ${e.name}</span>`).join(" &nbsp; ");
+  el.innerHTML = `<svg class="radar-svg" viewBox="0 0 ${size} ${size}">${rings}${spokes}${polys}${labelsSvg}</svg>
+    <div class="hint">${legend} &nbsp; · ${term("percentile")} vs league pool</div>`;
 }
 
 function renderComparePlayers(node, d, nameA, nameB) {

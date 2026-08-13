@@ -149,6 +149,39 @@ class CareerTestCase(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(response.status_code, 422)
 
+    async def test_compare_players_multi_basket(self):
+        response = await self.client.post(
+            "/api/v1/compare/players",
+            json={"players": ["Player One", "Player Two", "Keeper Kev"], "league_name": "EPL", "season": 2025},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["order"], ["Player One", "Player Two", "Keeper Kev"])
+        self.assertEqual(len(body["players"]), 3)
+        self.assertGreater(len(body["radar_labels"]), 2)
+
+        too_many = await self.client.post(
+            "/api/v1/compare/players",
+            json={"players": [f"Player {i}" for i in range(13)]},
+        )
+        self.assertEqual(too_many.status_code, 422)
+
+    async def test_discover_returns_richer_metrics_and_honours_limit(self):
+        response = await self.client.post(
+            "/api/v1/discover/players",
+            json={"league_name": "EPL", "season": 2025, "limit": 50},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertIn("npxG_per90", body["players"][0])
+        self.assertIn("goal_involvement_per90", body["players"][0])
+        self.assertIn("xG_per_shot", body["players"][0])
+        self.assertIn("conversion", body["players"][0])
+        self.assertIn("g_minus_xg", body["players"][0])
+        self.assertEqual(body["limit"], 50)
+
     async def test_compare_teams_returns_styles_and_meetings(self):
         response = await self.client.post(
             "/api/v1/compare/teams",
