@@ -8,6 +8,7 @@ from .analytics import team as team_engine
 from .analytics import league as league_engine
 from .analytics import match as match_engine
 from .analytics._shared import as_list_matches
+from .ml.engine import build_match_rows
 from .stat_data import UnderstatData
 
 
@@ -21,6 +22,25 @@ def _valid_date_range(start_date: str | None, end_date: str | None) -> tuple[str
     if start and end and start > end:
         raise ValueError(f"start_date ({start}) must not be after end_date ({end}).")
     return start, end
+
+
+def parse_seasons(value) -> list[int] | None:
+    """Accept an int, a list of ints, or a comma-separated string like "2024,2025"."""
+    if value is None:
+        return None
+    if isinstance(value, (list, tuple, set)):
+        seasons = sorted({int(s) for s in value if s is not None})
+        return seasons or None
+    if isinstance(value, str):
+        parts = [part.strip() for part in value.split(",") if part.strip()]
+        if not parts:
+            return None
+        try:
+            seasons = sorted({int(part) for part in parts})
+        except ValueError as exc:
+            raise ValueError(f"Invalid season list '{value}': use comma-separated years, e.g. '2024,2025'.") from exc
+        return seasons or None
+    return [int(value)]
 
 
 class AnalyticsService:
@@ -37,33 +57,58 @@ class AnalyticsService:
         season: int = 2025,
         start_date: str | None = None,
         end_date: str | None = None,
+        seasons: list[int] | str | None = None,
     ) -> dict:
         if player_id is None and player_name is None:
             raise ValueError("Either player_id or player_name is required.")
 
         start_date, end_date = _valid_date_range(start_date, end_date)
+        target_seasons = parse_seasons(seasons) or [season]
         if player_id is None:
             matches = await self.client.search_players(player_name)
             if not matches:
                 raise ValueError(f"Player '{player_name}' was not found via Understat search.")
             player_id = int(matches[0]["id"])
 
-        league_players = await self.client.get_league_player_stats(
-            league_name, season, start_date=start_date, end_date=end_date
+        import asyncio
+
+        season_stats = await asyncio.gather(
+            *(
+                self.client.get_league_player_stats(
+                    league_name, current_season, start_date=start_date, end_date=end_date
+                )
+                for current_season in target_seasons
+            ),
+            return_exceptions=True,
         )
-        target = next((p for p in league_players if int(p["id"]) == player_id), None)
+        valid = [rows for rows in season_stats if isinstance(rows, list)]
+        if not valid:
+            raise ValueError(f"No league player stats could be loaded for {league_name} {target_seasons}.")
+
+        merged_by_id = _merge_league_players(valid)
+        target = merged_by_id.get(player_id)
         if target is None:
             window = _window_label(start_date, end_date)
             raise ValueError(
-                f"Player id {player_id} is not in {league_name} {season}{window} per the league player stats table."
+                f"Player id {player_id} is not in {league_name} {target_seasons}{window} per the league player stats tables."
             )
 
+        all_merged = list(merged_by_id.values())
         teammates = [
-            p for p in league_players
+            p for p in all_merged
             if p.get("team_title") == target.get("team_title") and int(p.get("id", 0)) != player_id
         ]
-        report = player_engine.player_report(target, league_players, teammates)
+
+        shots = None
+        try:
+            raw_shots = await self.client.get_player_shots(player_id)
+            shots = _filter_shots_to_seasons(raw_shots, target_seasons, start_date, end_date)
+        except Exception:
+            shots = None
+
+        report = player_engine.player_report(target, all_merged, teammates, shots=shots)
         report["date_window"] = {"start_date": start_date, "end_date": end_date}
+        report["seasons"] = target_seasons
         return report
 
     async def player_career(
@@ -264,34 +309,67 @@ class AnalyticsService:
         with_shots: bool = False,
         start_date: str | None = None,
         end_date: str | None = None,
+        seasons: list[int] | str | None = None,
     ) -> dict:
         start_date, end_date = _valid_date_range(start_date, end_date)
-        table = await self.client.get_league_table(
-            league_name, season, start_date=start_date, end_date=end_date
+        target_seasons = parse_seasons(seasons) or [season]
+
+        import asyncio
+
+        tables = await asyncio.gather(
+            *(
+                self.client.get_league_table(
+                    league_name, current_season, start_date=start_date, end_date=end_date
+                )
+                for current_season in target_seasons
+            ),
+            return_exceptions=True,
         )
-        team_row = next((r for r in table[1:] if str(r[0]).lower() == team_name.lower()), None)
-        if team_row is None:
+        team_rows = [_find_team_row(table, team_name) for table in tables if isinstance(table, list)]
+        team_rows = [row for row in team_rows if row is not None]
+        if not team_rows:
             raise ValueError(
-                f"Team '{team_name}' is not in the {league_name} {season} league table"
+                f"Team '{team_name}' is not in the {league_name} {target_seasons} tables"
                 f"{_window_label(start_date, end_date)}."
             )
+        team_row = _merge_table_rows(team_rows)
 
-        history = _filter_history(
-            await self.client.get_team_history(team_name, season, league_name), start_date, end_date
+        histories = await asyncio.gather(
+            *(self.client.get_team_history(team_name, s, league_name) for s in target_seasons),
+            return_exceptions=True,
         )
+        history = []
+        for batch in histories:
+            if isinstance(batch, BaseException):
+                continue
+            history.extend(as_list_matches(batch))
+        history = _filter_rows_by_date(history, start_date, end_date)
+
         shots = None
         if with_shots:
-            results = await self.client.get_team_results(team_name, season)
+            results = await self.client.get_team_results(team_name, target_seasons[-1])
             match_ids = [int(m["id"]) for m in results if m.get("id")]
-            import asyncio
             all_shots = await asyncio.gather(*(self.client.get_match_shots(mid) for mid in match_ids[:10]))
             shots = []
             for batch in all_shots:
                 for side in ("h", "a"):
                     shots.extend(batch.get(side, []))
 
-        report = team_engine.team_report(team_row, team_history=history, team_shots=shots)
+        league_histories = None
+        try:
+            league_data = await self.client.get_league_data(league_name, target_seasons[-1])
+            league_histories = {
+                name: as_list_matches(entry.get("history")) if isinstance(entry, dict) else []
+                for name, entry in (league_data.get("teams") or {}).items()
+                if isinstance(entry, dict)
+            }
+        except Exception:
+            league_histories = None
+
+        report = team_engine.team_report(team_row, team_history=history, team_shots=shots,
+                                        league_histories=league_histories)
         report["date_window"] = {"start_date": start_date, "end_date": end_date}
+        report["seasons"] = target_seasons
         return report
 
     async def analyze_league(
@@ -308,6 +386,51 @@ class AnalyticsService:
         report = league_engine.league_report(table)
         report["date_window"] = {"start_date": start_date, "end_date": end_date}
         return report
+
+    async def match_rounds(self, league_name: str = "EPL", season: int = 2025) -> dict:
+        """League matches grouped by derived round (home team's nth league match).
+
+        Understat does not label gameweeks, so a match's round is the count of
+        league matches the home team had played through that date. In a normal
+        season this matches the official gameweek; postponements can shift a
+        fixture by a week or two.
+        """
+        data = await self.client.get_league_data(league_name, season)
+        rows = build_match_rows(data.get("dates", []))
+        played = sorted((r for r in rows if r["is_result"]), key=lambda r: (r["date"], r["home"]))
+        by_round: dict[int, list[dict]] = {}
+        team_played: dict[str, int] = {}
+        for row in played:
+            for team in (row["home"], row["away"]):
+                team_played[team] = team_played.get(team, 0) + 1
+            round_number = team_played[row["home"]]
+            by_round.setdefault(round_number, []).append(row)
+        rounds = []
+        for round_number in sorted(by_round):
+            matches = sorted(by_round[round_number], key=lambda r: r["date"])
+            rounds.append(
+                {
+                    "round": round_number,
+                    "matches": [
+                        {
+                            "match_id": row["match_id"],
+                            "date": row["date"],
+                            "home": row["home"],
+                            "away": row["away"],
+                            "home_goals": row["home_goals"],
+                            "away_goals": row["away_goals"],
+                        }
+                        for row in matches
+                    ],
+                }
+            )
+        return {
+            "league_name": league_name,
+            "season": season,
+            "n_played": len(played),
+            "rounds": rounds,
+            "note": "Round = the home team's nth league match of the season (Understat has no official gameweek label).",
+        }
 
     async def analyze_match(self, match_id: int) -> dict:
         shots = await self.client.get_match_shots(match_id)
@@ -329,19 +452,40 @@ class AnalyticsService:
         limit: int = 20,
         start_date: str | None = None,
         end_date: str | None = None,
+        seasons: list[int] | str | None = None,
     ) -> dict:
         start_date, end_date = _valid_date_range(start_date, end_date)
-        league_players = await self.client.get_league_player_stats(
-            league_name, season, start_date=start_date, end_date=end_date
+        target_seasons = parse_seasons(seasons) or [season]
+
+        import asyncio
+
+        season_stats = await asyncio.gather(
+            *(
+                self.client.get_league_player_stats(
+                    league_name, current_season, start_date=start_date, end_date=end_date
+                )
+                for current_season in target_seasons
+            ),
+            return_exceptions=True,
         )
+        valid = [rows for rows in season_stats if isinstance(rows, list)]
+        merged_by_id = _merge_league_players(valid)
+        league_players = list(merged_by_id.values())
+
         filtered = [p for p in league_players if _minutes(p) >= minimum_minutes]
         from .analytics.percentiles import position_group as to_group
         if position_group:
             filtered = [p for p in filtered if to_group(p.get("position")) == position_group.upper()]
         filtered.sort(key=lambda p: _float(p, order_by), reverse=True)
+        top = filtered[:limit]
+
+        ppda_by_team = await self._team_press_map(league_name, target_seasons[-1], start_date, end_date)
+        birthdates = await self._birthdate_map([p.get("player_name") for p in top], top)
+
         return {
             "league_name": league_name,
             "season": season,
+            "seasons": target_seasons,
             "date_window": {"start_date": start_date, "end_date": end_date},
             "position_group": position_group,
             "minimum_minutes": minimum_minutes,
@@ -354,6 +498,10 @@ class AnalyticsService:
                     "team": p.get("team_title"),
                     "position": p.get("position"),
                     "position_group": to_group(p.get("position")),
+                    "age": _age(birthdates.get(p.get("player_name"))),
+                    "date_of_birth": birthdates.get(p.get("player_name")),
+                    "team_ppda": ppda_by_team.get(p.get("team_title")),
+                    "team_oppda": ppda_by_team.get(f"{p.get('team_title')}::oppda"),
                     "minutes": int(_minutes(p)),
                     "npxG": _float(p, "npxG"),
                     "xA": _float(p, "xA"),
@@ -361,10 +509,44 @@ class AnalyticsService:
                     "xGBuildup": _float(p, "xGBuildup"),
                     "goals": _float(p, "goals"),
                     "assists": _float(p, "assists"),
+                    "yellow_cards": _float(p, "yellow_cards"),
+                    "red_cards": _float(p, "red_cards"),
                 }
-                for p in filtered[:limit]
+                for p in top
+            ],
+            "limitations": [
+                "Age comes from Wikidata (CC0); a few players may be missing or mismatched on name — shown as '—' rather than guessed.",
+                "Per-player pressing counts do not exist in Understat; the team PPDA column is the honest pressing context.",
+                "Team PPDA is the full-season team value (not date-windowed per player).",
+                "Multi-season discovery merges counting stats and keeps the latest team; team PPDA is from the latest season only.",
             ],
         }
+
+    async def _team_press_map(self, league_name, season, start_date, end_date):
+        try:
+            table = await self.client.get_league_table(
+                league_name, season, start_date=start_date, end_date=end_date
+            )
+        except Exception:
+            return {}
+        mapping = {}
+        rows = table[1:] if table and table[0] and str(table[0][0]).strip().lower() == "team" else (table or [])
+        for row in rows:
+            if not row or not row[0]:
+                continue
+            if len(row) > 13:
+                mapping[str(row[0])] = _to_float(row[13])
+            if len(row) > 14:
+                mapping[f"{str(row[0])}::oppda"] = _to_float(row[14])
+        return mapping
+
+    async def _birthdate_map(self, names: list[str], players: list[dict]) -> dict:
+        from .stat_data.wikidata import fetch_birthdates
+        hints = {p.get("player_name"): p.get("team_title") for p in players if p.get("team_title")}
+        try:
+            return await fetch_birthdates([n for n in names if n], hints)
+        except Exception:
+            return {}
 
 
 def _find_team_row(table, team_name: str):
@@ -390,6 +572,84 @@ def _filter_history(history, start_date: str | None, end_date: str | None):
     return filtered
 
 
+def _merge_league_players(season_rows_list: list[list[dict]]) -> dict[int, dict]:
+    """Merge per-season league player rows into one row per player id.
+
+    Counting stats sum across seasons (time, goals, xG, ...); team and position
+    come from the most recent season in which the player appears.
+    """
+    SUM_KEYS = (
+        "games", "time", "goals", "xG", "npxG", "npg", "assists", "xA", "shots",
+        "key_passes", "xGChain", "xGBuildup", "yellow_cards", "red_cards",
+    )
+    merged: dict[int, dict] = {}
+    for season_index, rows in enumerate(season_rows_list):
+        for row in rows:
+            player_id = int(row.get("id", 0))
+            if not player_id:
+                continue
+            if player_id not in merged:
+                merged[player_id] = dict(row)
+            else:
+                for key in SUM_KEYS:
+                    merged[player_id][key] = str(_to_float(merged[player_id].get(key)) + _to_float(row.get(key)))
+                # keep the latest season's identity fields
+                merged[player_id]["team_title"] = row.get("team_title", merged[player_id].get("team_title"))
+                merged[player_id]["position"] = row.get("position", merged[player_id].get("position"))
+    return merged
+
+
+def _filter_shots_to_seasons(raw_shots, seasons: list[int], start_date=None, end_date=None) -> list[dict]:
+    rows = list(raw_shots.values()) if isinstance(raw_shots, dict) else list(raw_shots or [])
+    allowed = {str(season) for season in seasons}
+    filtered = [row for row in rows if str(row.get("season")) in allowed]
+    if start_date or end_date:
+        filtered = _filter_rows_by_date(filtered, start_date, end_date)
+    return filtered
+
+
+def _filter_rows_by_date(rows, start_date=None, end_date=None):
+    if not start_date and not end_date:
+        return rows
+    out = []
+    for row in rows:
+        current = (row.get("date") or "")[:10]
+        if not current:
+            out.append(row)
+            continue
+        if start_date and current < start_date:
+            continue
+        if end_date and current > end_date:
+            continue
+        out.append(row)
+    return out
+
+
+def _merge_table_rows(team_rows: list[list]) -> list:
+    """Merge per-season league-table rows for the same team into one row.
+
+    Column layout: [Team, M, W, D, L, G, GA, PTS, xG, NPxG, xGA, NPxGA, NPxGD,
+    PPDA, OPPDA, DC, ODC, xPTS]. Counting columns sum; ratio columns (PPDA,
+    OPPDA) take the minutes-weighted... simplest honest rule: sums for counts,
+    and for PPDA/OPPDA use the most recent season's value (they are per-season
+    rate metrics, not additive).
+    """
+    if len(team_rows) == 1:
+        return team_rows[0]
+    merged = [team_rows[-1][0]]
+    for col in range(1, len(team_rows[0])):
+        if col in (13, 14):  # PPDA / OPPDA: keep the latest season's rate
+            merged.append(team_rows[-1][col])
+        else:
+            merged.append(sum(_to_float(row[col]) if col != 1 else _to_int(row[col]) for row in team_rows if len(row) > col))
+    return merged
+
+
+def _find_team_row(table, team_name: str):
+    rows = table[1:] if table and table[0] and str(table[0][0]).strip().lower() == "team" else (table or [])
+    return next((r for r in rows if str(r[0]).lower() == team_name.lower()), None)
+
+
 def _window_label(start_date, end_date):
     if start_date and end_date:
         return f" between {start_date} and {end_date}"
@@ -405,6 +665,18 @@ def _float(row: dict, key: str) -> float:
         return round(float(row.get(key, 0)), 2)
     except (TypeError, ValueError):
         return 0.0
+
+
+def _age(date_of_birth: str | None) -> int | None:
+    if not date_of_birth:
+        return None
+    try:
+        from datetime import date, datetime
+        born = datetime.strptime(date_of_birth, "%Y-%m-%d").date()
+        today = date.today()
+        return today.year - born.year - ((today.month, today.day) < (born.month, born.day))
+    except (ValueError, TypeError):
+        return None
 
 
 def _to_float(value) -> float:

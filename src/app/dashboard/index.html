@@ -36,7 +36,7 @@
     <section class="view active" id="view-player">
       <div class="player-pick">
         <div class="field"><label>Player name</label><input id="playerName" placeholder="e.g. Erling Haaland" style="min-width:240px" /></div>
-        <div class="field"><label>Season</label><input id="playerSeason" type="number" value="2025" style="min-width:90px" /></div>
+        <div class="field"><label>Season(s)</label><input id="playerSeason" value="2025" style="min-width:110px" title="comma-separated for multi-season, e.g. 2024,2025" /></div>
         <div class="field"><label>From <span class="opt">(optional)</span></label><input id="playerFrom" type="date" /></div>
         <div class="field"><label>To <span class="opt">(optional)</span></label><input id="playerTo" type="date" /></div>
         <button class="primary" id="playerGo">Analyze</button>
@@ -51,7 +51,7 @@
     <section class="view" id="view-team">
       <div class="controls">
         <div class="field"><label>Team name</label><input id="teamName" placeholder="e.g. Arsenal" /></div>
-        <div class="field"><label>Season</label><input id="teamSeason" type="number" value="2025" style="min-width:90px" /></div>
+        <div class="field"><label>Season(s)</label><input id="teamSeason" value="2025" style="min-width:110px" title="comma-separated for multi-season, e.g. 2024,2025" /></div>
         <div class="field"><label>From <span class="opt">(optional)</span></label><input id="teamFrom" type="date" /></div>
         <div class="field"><label>To <span class="opt">(optional)</span></label><input id="teamTo" type="date" /></div>
         <button class="primary" id="teamGo">Analyze</button>
@@ -74,9 +74,15 @@
     <!-- MATCH -->
     <section class="view" id="view-match">
       <div class="controls">
-        <div class="field"><label>Match id</label><input id="matchId" placeholder="e.g. 28778" /></div>
+        <div class="field"><label>Season</label><input id="matchSeason" value="2025" style="min-width:90px" /></div>
+        <div class="field"><label>Round</label><select id="roundSelect" style="min-width:90px"><option value="">—</option></select></div>
+        <div class="field"><label>Match</label><select id="matchSelect" style="min-width:280px"><option value="">pick a round first</option></select></div>
+        <button class="ghost" id="loadRounds">Load rounds</button>
+      </div>
+      <div class="controls">
+        <div class="field"><label>Or match id</label><input id="matchId" placeholder="e.g. 28778" /></div>
         <button class="primary" id="matchGo">Analyze</button>
-        <span class="hint" style="color:var(--muted);font-size:12px;align-self:center;">Find an id from <a href="#" id="pickMatch">a recent result</a></span>
+        <span class="hint" style="color:var(--muted);font-size:12px;align-self:center;">Round = the home team's nth league match (Understat has no official gameweek label).</span>
       </div>
       <div id="matchContent"><div class="empty">Enter a match id for shot map, xG timeline, big-chance inventory and narrative.<div class="examples">Try: <span class="example" data-id="matchId" data-value="28778" data-action="runMatch">28778</span> · or use "a recent result" above</div></div></div>
     </section>
@@ -84,6 +90,7 @@
     <!-- DISCOVER -->
     <section class="view" id="view-discover">
       <div class="controls">
+        <div class="field"><label>Season(s)</label><input id="discoverSeason" value="2025" style="min-width:110px" title="comma-separated for multi-season, e.g. 2024,2025" /></div>
         <div class="field"><label>Position group</label>
           <select id="discoverPosition"><option value="">All</option><option value="F">Forward</option><option value="M">Midfielder</option><option value="D">Defender</option><option value="GK">Goalkeeper</option></select>
         </div>

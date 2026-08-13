@@ -201,6 +201,77 @@ class CareerTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertIn("long", entry)
         self.assertIn("brier", body["by_key"])
         self.assertIn("champion", body["by_key"])
+        self.assertIn("age", body["by_key"])
+        self.assertIn("regain_xg", body["by_key"])
+        self.assertIn("position_trend", body["by_key"])
+
+    async def test_match_rounds_groups_by_home_team_match_count(self):
+        class RoundsClient(FakeCompareClient):
+            async def get_league_data(self, league_name, season):
+                dates = []
+                for i in range(4):
+                    for j in range(4):
+                        if i == j:
+                            continue
+                        dates.append({
+                            "id": f"m{i}{j}", "isResult": True,
+                            "h": {"title": f"T{i}"}, "a": {"title": f"T{j}"},
+                            "goals": {"h": "1", "a": "0"}, "xG": {"h": "1.0", "a": "0.5"},
+                            "datetime": f"2025-01-{10 + i + j:02d} 15:00:00",
+                        })
+                return {"dates": dates}
+
+        app.state.analytics = AnalyticsService(client=RoundsClient())
+        response = await self.client.post(
+            "/api/v1/matches/rounds",
+            json={"league_name": "EPL", "season": 2025},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(len(body["rounds"]), 6)
+        self.assertEqual(body["rounds"][0]["round"], 1)
+        total_matches = sum(len(r["matches"]) for r in body["rounds"])
+        self.assertEqual(total_matches, 12)
+
+    async def test_team_analysis_includes_position_trend_and_splits(self):
+        class TeamCtxClient(FakeCompareClient):
+            async def get_team_history(self, team_name, season, league_name="EPL"):
+                return [
+                    {"date": "2025-01-10 15:00:00", "h_a": "h", "pts": 3, "xpts": 2.4, "xG": 2.0, "xGA": 0.5,
+                     "npxGD": 1.5, "scored": 2, "missed": 0, "wins": 1, "draws": 0, "loses": 0,
+                     "ppda": {"att": 200, "def": 20}, "ppda_allowed": {"att": 150, "def": 15}},
+                    {"date": "2025-01-17 15:00:00", "h_a": "a", "pts": 1, "xpts": 1.0, "xG": 1.0, "xGA": 1.0,
+                     "npxGD": 0.0, "scored": 1, "missed": 1, "wins": 0, "draws": 1, "loses": 0,
+                     "ppda": {"att": 180, "def": 30}, "ppda_allowed": {"att": 170, "def": 25}},
+                    {"date": "2025-01-24 15:00:00", "h_a": "h", "pts": 0, "xpts": 0.4, "xG": 0.6, "xGA": 1.8,
+                     "npxGD": -1.2, "scored": 0, "missed": 2, "wins": 0, "draws": 0, "loses": 1,
+                     "ppda": {"att": 190, "def": 19}, "ppda_allowed": {"att": 160, "def": 16}},
+                ]
+
+            async def get_league_data(self, league_name, season):
+                return {"teams": {"Team A": {"history": [
+                    {"date": "2025-01-10 15:00:00", "pts": 3}, {"date": "2025-01-17 15:00:00", "pts": 1},
+                    {"date": "2025-01-24 15:00:00", "pts": 0}]},
+                    "Team B": {"history": [
+                    {"date": "2025-01-10 15:00:00", "pts": 0}, {"date": "2025-01-17 15:00:00", "pts": 3},
+                    {"date": "2025-01-24 15:00:00", "pts": 3}]}}}
+
+        app.state.analytics = AnalyticsService(client=TeamCtxClient())
+        response = await self.client.post(
+            "/api/v1/analyze/team",
+            json={"team_name": "Team A", "league_name": "EPL", "season": 2025},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(len(body["position_trend"]["matchdays"]), 3)
+        self.assertEqual(body["position_trend"]["matchdays"][-1]["rank"], 2)
+        self.assertIn("first_half", body["half_split"])
+        self.assertIn("home", body["home_away_splits"])
+        self.assertAlmostEqual(body["home_away_splits"]["home"]["points_per_game"], 1.5, places=2)
+        self.assertEqual(body["luck_curve"]["final"], -0.6)
+        self.assertIn("xG_for", body["metric_trends"])
 
     async def test_team_timeline_monthly_aggregation(self):
         async def fake_history(team_name, season, league_name="EPL"):

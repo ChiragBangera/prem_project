@@ -3,6 +3,7 @@ from __future__ import annotations
 import math
 from typing import Iterable
 
+from ._shared import round_value
 from .percentiles import (
     to_float,
     per90,
@@ -253,7 +254,8 @@ def _cosine_similarity(a: list[float], b: list[float]) -> float:
     return dot / (na * nb)
 
 
-def player_report(player: dict, league_peers: list[dict], team_roster: list[dict] | None = None) -> dict:
+def player_report(player: dict, league_peers: list[dict], team_roster: list[dict] | None = None,
+                  shots: list[dict] | None = None) -> dict:
     """Bundle the full player analytics view into one JSON-serializable payload."""
     return {
         "player": {
@@ -270,5 +272,54 @@ def player_report(player: dict, league_peers: list[dict], team_roster: list[dict
         "radar": radar(player, league_peers),
         "creative_dominance": creative_dominance(player, team_roster or league_peers),
         "similar_players": similar_players(player, league_peers, top_k=5),
+        "pressing_output": pressing_output(shots) if shots else None,
         "limitations": HONEST_LIMITATIONS,
+    }
+
+
+REGAIN_ACTIONS = {"BallRecovery", "Dispossessed", "BlockedPass", "Rebound"}
+
+
+def pressing_output(shots: list[dict]) -> dict:
+    """Chances the player finished from possession-regain situations.
+
+    Understat has no per-player pressing counts; the honest available signal
+    is the `lastAction` of each shot: BallRecovery / Dispossessed /
+    BlockedPass / Rebound mean the chance came from a possession regain.
+    This measures the OUTPUT of pressing (chances finished after regains),
+    not pressing actions themselves.
+    """
+    total_xg = sum(to_float(shot.get("xG")) for shot in shots)
+    total_goals = sum(1 for shot in shots if str(shot.get("result", "")).lower() == "goal")
+    regain_shots = [shot for shot in shots if shot.get("lastAction") in REGAIN_ACTIONS]
+    regain_xg = sum(to_float(shot.get("xG")) for shot in regain_shots)
+    regain_goals = sum(1 for shot in regain_shots if str(shot.get("result", "")).lower() == "goal")
+    by_action = {}
+    for action in sorted(REGAIN_ACTIONS):
+        subset = [shot for shot in regain_shots if shot.get("lastAction") == action]
+        if not subset:
+            continue
+        by_action[action] = {
+            "shots": len(subset),
+            "xG": round_value(sum(to_float(shot.get("xG")) for shot in subset), 2),
+            "goals": sum(1 for shot in subset if str(shot.get("result", "")).lower() == "goal"),
+        }
+    return {
+        "total_shots": len(shots),
+        "total_xG": round_value(total_xg, 2),
+        "regain_shots": len(regain_shots),
+        "regain_xG": round_value(regain_xg, 2),
+        "regain_goals": regain_goals,
+        "regain_xG_share": round_value(regain_xg / total_xg, 3) if total_xg > 0 else 0.0,
+        "by_action": by_action,
+        "interpretation": (
+            "xG from shots that followed a possession regain (BallRecovery, Dispossessed, "
+            "BlockedPass, Rebound). This measures how often the player converts pressing "
+            "rewards — it is not a count of pressing actions, which Understat does not track."
+        ),
+        "limitations": [
+            "This is press OUTPUT (chances after regains), not pressing activity; no pressure-event data exists in Understat.",
+            "A player's own shots carry the whole team's regain; team-mates earn the regain itself.",
+            "Single-season regain samples are small — treat as a profile hint, not a ranking.",
+        ],
     }

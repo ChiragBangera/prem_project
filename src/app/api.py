@@ -244,6 +244,7 @@ class AnalyzePlayerRequest(BaseModel):
     season: int = 2025
     start_date: str | None = None
     end_date: str | None = None
+    seasons: list[int] | str | None = None
 
 
 class CareerRequest(BaseModel):
@@ -279,6 +280,7 @@ class AnalyzeTeamRequest(BaseModel):
     with_shots: bool = False
     start_date: str | None = None
     end_date: str | None = None
+    seasons: list[int] | str | None = None
 
 
 class TeamTimelineRequest(BaseModel):
@@ -304,6 +306,7 @@ class DiscoverPlayersRequest(BaseModel):
     limit: int = 20
     start_date: str | None = None
     end_date: str | None = None
+    seasons: list[int] | str | None = None
 
 
 @app.post(
@@ -323,6 +326,7 @@ async def analyze_player(payload: AnalyzePlayerRequest, request: Request):
             season=payload.season,
             start_date=payload.start_date,
             end_date=payload.end_date,
+            seasons=payload.seasons,
         )
     except ValueError as exc:
         return JSONResponse(
@@ -445,6 +449,7 @@ async def analyze_team(payload: AnalyzeTeamRequest, request: Request):
             with_shots=payload.with_shots,
             start_date=payload.start_date,
             end_date=payload.end_date,
+            seasons=payload.seasons,
         )
     except ValueError as exc:
         return JSONResponse(
@@ -477,6 +482,18 @@ async def analyze_league(payload: AnalyzeLeagueRequest, request: Request):
 
 
 @app.post(
+    "/api/v1/matches/rounds",
+    tags=["Analytics"],
+    responses={502: {"model": ErrorResponse}},
+)
+async def match_rounds(payload: AnalyzeLeagueRequest, request: Request):
+    return await request.app.state.analytics.match_rounds(
+        league_name=payload.league_name,
+        season=payload.season,
+    )
+
+
+@app.post(
     "/api/v1/analyze/match/{match_id}",
     tags=["Analytics"],
     responses={502: {"model": ErrorResponse}},
@@ -504,6 +521,7 @@ async def discover_players(payload: DiscoverPlayersRequest, request: Request):
             limit=payload.limit,
             start_date=payload.start_date,
             end_date=payload.end_date,
+            seasons=payload.seasons,
         )
     except ValueError as exc:
         return JSONResponse(

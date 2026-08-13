@@ -38,8 +38,9 @@ function windowBadge(d) {
 
 // input persistence + example chips
 const PERSIST_IDS = ["playerName", "playerSeason", "teamName", "teamSeason", "leagueSeason",
+  "discoverSeason", "matchSeason", "matchId",
   "predHome", "predAway", "predSeason", "simSeason", "calSeason",
-  "compareA", "compareB", "compareSeason", "discoverMinutes", "discoverPosition", "discoverOrderBy", "matchId"];
+  "compareA", "compareB", "compareSeason", "discoverMinutes", "discoverPosition", "discoverOrderBy"];
 PERSIST_IDS.forEach((id) => {
   const el = document.getElementById(id);
   if (!el) return;
@@ -51,6 +52,10 @@ const savedLeague = localStorage.getItem("prem_league");
 if (savedLeague) {
   document.querySelectorAll("header.topbar .leagues button").forEach((b) => b.classList.toggle("active", b.dataset.league === savedLeague));
   state.league = savedLeague || state.league;
+}
+const initialHash = (window.location.hash || "").slice(1);
+if (initialHash && document.querySelector(`nav.tabs button[data-tab="${initialHash}"]`)) {
+  activateTab(initialHash, false);
 }
 
 document.addEventListener("click", (e) => {
@@ -131,10 +136,7 @@ document.getElementById("infoSearch").addEventListener("input", renderInfo);
 document.getElementById("tabs").addEventListener("click", (e) => {
   const btn = e.target.closest("button[data-tab]");
   if (!btn) return;
-  state.tab = btn.dataset.tab;
-  document.querySelectorAll("nav.tabs button").forEach((b) => b.classList.toggle("active", b === btn));
-  document.querySelectorAll("section.view").forEach((s) => s.classList.toggle("active", s.id === `view-${state.tab}`));
-  if (state.tab === "info") renderInfo();
+  activateTab(btn.dataset.tab);
 });
 document.getElementById("leaguePicker").addEventListener("click", (e) => {
   const btn = e.target.closest("button[data-league]");
@@ -145,7 +147,31 @@ document.getElementById("leaguePicker").addEventListener("click", (e) => {
 });
 
 function seasonOf(id) { return parseInt($(id).value, 10) || 2025; }
+function seasonsOf(id) {
+  const raw = $(id).value.trim();
+  if (!raw) return null;
+  if (!raw.includes(",") && !raw.includes(" ")) return null; // single season handled by season param
+  const seasons = raw.split(/[\s,]+/).filter(Boolean).map((s) => parseInt(s, 10)).filter((s) => s > 0);
+  return seasons.length ? seasons : null;
+}
 function dateOf(id) { const v = $(id).value; return v || null; }
+
+// ---------- hash routing (browser back/forward works across tabs) ----------
+function activateTab(tab, push = true) {
+  state.tab = tab;
+  document.querySelectorAll("nav.tabs button").forEach((b) => b.classList.toggle("active", b.dataset.tab === tab));
+  document.querySelectorAll("section.view").forEach((s) => s.classList.toggle("active", s.id === `view-${tab}`));
+  if (push && window.location.hash !== `#${tab}`) window.history.pushState(null, "", `#${tab}`);
+  if (tab === "info") renderInfo();
+  if (tab === "match" && !state.roundsLoaded) loadRounds();
+}
+window.addEventListener("popstate", () => {
+  const tab = (window.location.hash || "#player").slice(1);
+  if (document.querySelector(`nav.tabs button[data-tab="${tab}"]`)) activateTab(tab, false);
+});
+document.addEventListener("click", (e) => {
+  if (e.target.closest("[data-back]")) { e.preventDefault(); window.history.back(); }
+});
 
 // ---------- PLAYER ----------
 $("playerGo").addEventListener("click", runPlayer);
@@ -160,9 +186,11 @@ async function runPlayer() {
   try {
     const d = await api("/api/v1/analyze/player", {
       player_name: name, league_name: state.league, season: seasonOf("playerSeason"),
+      seasons: seasonsOf("playerSeason"),
       start_date: dateOf("playerFrom"), end_date: dateOf("playerTo"),
     });
-    $("playerResolved").textContent = `${d.player.name} · ${d.player.team_title || "—"} · ${d.player.position || "—"}`;
+    const seasonLabel = d.seasons && d.seasons.length > 1 ? ` · ${d.seasons.join("–")}` : "";
+    $("playerResolved").textContent = `${d.player.name} · ${d.player.team_title || "—"} · ${d.player.position || "—"}${seasonLabel}`;
     renderPlayer(node, d);
   } catch (e) { errored(node, e.message); }
 }
@@ -282,6 +310,7 @@ function renderPlayer(node, d) {
   const radar = d.radar.profile.filter((p) => p.percentile > 0 || p.raw > 0);
   clear(node);
   node.innerHTML = `
+    ${state.fromDiscover ? `<div style="margin-bottom:10px"><a href="#" data-back class="back-link">← back to Discover</a></div>` : ""}
     <div class="grid cols-2">
       <div class="card"><h3>${term("radar")} · ${term("percentile")} ${windowBadge(d)}</h3><div id="radar"></div><div class="hint">${d.radar.peer_count} same-position peers · ${d.radar.minutes_threshold} min min</div></div>
       <div class="card"><h3>${term("per90")} breakdown</h3>${per90Table(d.per90_breakdown)}</div>
@@ -294,6 +323,7 @@ function renderPlayer(node, d) {
       <div class="card"><h3>Shot selection</h3>${shotSelection(d.shot_selection)}</div>
       <div class="card"><h3>${term("similar_players")}</h3>${similarPlayers(d.similar_players)}</div>
     </div>
+    ${d.pressing_output ? `<div class="card" style="margin-top:16px"><h3>${term("regain_xg")}</h3>${pressingBlock(d.pressing_output)}</div>` : ""}
     <div class="caveat"><strong>Limitations.</strong><ul>${d.limitations.map((l) => `<li>${l}</li>`).join("")}</ul></div>
   `;
   drawRadar("radar", radar);
@@ -375,6 +405,17 @@ function drawRadar(container, profile) {
   el.innerHTML = `<svg class="radar-svg" viewBox="0 0 ${size} ${size}">${rings}${spokes}<polygon points="${poly}" fill="rgba(78,161,255,0.18)" stroke="#4ea1ff" stroke-width="2"/>${labels}${vals.join("")}</svg>`;
 }
 
+function pressingBlock(p) {
+  const actions = Object.entries(p.by_action || {}).map(([name, v]) =>
+    `<span class="k">· ${name}</span><span class="v">${v.shots} shots · ${fmt(v.xG)} xG · ${v.goals} G</span>`).join("");
+  return `<div class="kv">
+    <span class="k">Shots after a regain</span><span class="v">${p.regain_shots} of ${p.total_shots}</span>
+    <span class="k">xG after a regain</span><span class="v">${fmt(p.regain_xG)} (${pct(p.regain_xG_share)} of total xG)</span>
+    <span class="k">Goals after a regain</span><span class="v">${p.regain_goals}</span>
+    ${actions}
+  </div><div class="hint">${p.interpretation}</div>`;
+}
+
 // ---------- TEAM ----------
 $("teamGo").addEventListener("click", runTeam);
 $("teamTimelineGo").addEventListener("click", runTeamTimeline);
@@ -388,6 +429,7 @@ async function runTeam() {
   try {
     const d = await api("/api/v1/analyze/team", {
       team_name: name, league_name: state.league, season: seasonOf("teamSeason"),
+      seasons: seasonsOf("teamSeason"),
       start_date: dateOf("teamFrom"), end_date: dateOf("teamTo"),
     });
     renderTeam(node, d);
@@ -471,18 +513,123 @@ function drawTimelineChart(container, months, metricKey) {
 
 function renderTeam(node, d) {
   const s = d.style, pp = d.ppda_home_away, f = d.form_momentum;
+  const seasonsLabel = d.seasons && d.seasons.length > 1 ? ` · ${d.seasons.join("–")}` : "";
   clear(node);
   node.innerHTML = `
     <div class="grid cols-2">
-      <div class="card"><h3>Style profile · ${s.team} ${windowBadge(d)}</h3>${styleKv(s)}</div>
-      <div class="card"><h3>Pressing home / away</h3>${ppdaKv(pp)}</div>
+      <div class="card"><h3>Style profile · ${s.team}${seasonsLabel} ${windowBadge(d)}</h3>${styleKv(s)}</div>
+      <div class="card"><h3>${term("venue_factor")} splits</h3>${homeAwayKv(d.home_away_splits)}</div>
     </div>
-    <div class="card" style="margin-top:16px"><h3>${term("form_momentum")} (rolling 5 xGD)</h3><div id="formChart"></div>${f.interpretation ? `<div class="hint">${f.interpretation}</div>` : ""}</div>
-    ${(() => { drawFormChartDeferred("formChart", f); return ""; })()}
+    <div class="card" style="margin-top:16px"><h3>${term("position_trend")} · points, xPTS & rank by matchday</h3><div id="posTrend"></div></div>
+    <div class="card" style="margin-top:16px"><h3>Rolling trends (5-match)</h3>
+      <div class="controls"><div class="field"><label>Metric</label>
+        <select id="trendMetric">
+          <option value="npxGD">${term("npxgd")}</option>
+          <option value="xG_for">${term("xG")} for</option>
+          <option value="xG_against">${term("xGA")}</option>
+          <option value="goals_for">${term("goals")} for</option>
+          <option value="goals_against">Goals against</option>
+          <option value="xPTS">${term("xpts")}</option>
+          <option value="PPDA">${term("ppda")}</option>
+        </select>
+      </div></div>
+      <div id="trendChart"></div></div>
+    <div class="grid cols-2" style="margin-top:16px">
+      <div class="card"><h3>${term("half_split")}</h3>${halfSplitTable(d.half_split)}</div>
+      <div class="card"><h3>${term("luck_curve")}</h3><div id="luckChart"></div><div class="hint">${d.luck_curve.interpretation}</div></div>
+    </div>
+    ${d.strength_of_schedule && d.strength_of_schedule.available ? `<div class="grid cols-2" style="margin-top:16px">
+      <div class="card"><h3>${term("strength_of_schedule")}</h3>${sosBlock(d.strength_of_schedule)}</div>
+      <div class="card"><h3>Pressing home / away</h3>${ppdaKv(pp)}</div>
+    </div>` : `<div class="card" style="margin-top:16px"><h3>Pressing home / away</h3>${ppdaKv(pp)}</div>`}
     ${d.situational_xg_share ? `<div class="card" style="margin-top:16px"><h3>${term("situations")} xG share</h3>${situationTable(d.situational_xg_share)}</div>` : ""}
     <div class="caveat"><strong>Limitations.</strong><ul>${d.limitations.map((l) => `<li>${l}</li>`).join("")}</ul></div>
   `;
-  drawFormChart("formChart", f);
+  drawPositionTrend("posTrend", d.position_trend);
+  drawLuckChart("luckChart", d.luck_curve);
+  const drawTrend = () => drawTrendChart("trendChart", d.metric_trends, $("trendMetric").value);
+  $("trendMetric").addEventListener("change", drawTrend);
+  drawTrend();
+}
+
+function homeAwayKv(ha) {
+  if (!ha || !ha.home) return `<div class="empty">No venue splits.</div>`;
+  const row = (label, side) => side ? `<span class="k">${label}</span><span class="v">${side.matches} m · ${fmt(side.points_per_game)} ppg · xG ${fmt(side.xG_per_game)} / xGA ${fmt(side.xGA_per_game)} · win ${pct(side.win_rate)}</span>` : "";
+  return `<div class="kv">${row("Home", ha.home)}${row("Away", ha.away)}</div><div class="hint">${ha.interpretation || ""}</div>`;
+}
+
+function halfSplitTable(hs) {
+  if (!hs || !hs.first_half) return `<div class="empty">Not enough matches for a half-season split.</div>`;
+  const f = hs.first_half, snd = hs.second_half;
+  const row = (label, a, b) => `<tr><td>${label}</td><td class="num">${a}</td><td class="num">${b}</td></tr>`;
+  return `<table><thead><tr><th></th><th class="num">First half</th><th class="num">Second half</th></tr></thead><tbody>
+    ${row("Matches", f.matches, snd.matches)}
+    ${row("W / D / L", `${f.wins}/${f.draws}/${f.loses}`, `${snd.wins}/${snd.draws}/${snd.loses}`)}
+    ${row("Points per game", fmt(f.points_per_game), fmt(snd.points_per_game))}
+    ${row("xG per game", fmt(f.xG_per_game), fmt(snd.xG_per_game))}
+    ${row("xGA per game", fmt(f.xGA_per_game), fmt(snd.xGA_per_game))}
+    ${row("npxGD per game", fmt(f.npxGD_per_game), fmt(snd.npxGD_per_game))}
+  </tbody></table><div class="hint">${hs.interpretation}</div>`;
+}
+
+function sosBlock(sos) {
+  return `<div class="kv">
+    <span class="k">vs stronger opponents</span><span class="v">${sos.vs_stronger_opponents.matches} m · ${fmt(sos.vs_stronger_opponents.points_per_game)} ppg · xGD ${fmt(sos.vs_stronger_opponents.xGD_per_game)}/g</span>
+    <span class="k">vs weaker opponents</span><span class="v">${sos.vs_weaker_opponents.matches} m · ${fmt(sos.vs_weaker_opponents.points_per_game)} ppg · xGD ${fmt(sos.vs_weaker_opponents.xGD_per_game)}/g</span>
+  </div><div class="hint">${sos.interpretation}</div>`;
+}
+
+function drawPositionTrend(container, pt) {
+  const el = document.getElementById(container);
+  if (!el || !pt || !pt.matchdays || pt.matchdays.length < 2) { if (el) el.innerHTML = `<div class="empty">No trajectory data.</div>`; return; }
+  const w = 1100, h = 260, pad = 34, x0 = pad, x1 = w - pad, y0 = 18, y1 = h - 30;
+  const pts = pt.matchdays.map((m) => m.points);
+  const xpts = pt.matchdays.map((m) => m.xpts);
+  const maxP = Math.max(...pts, ...xpts, 1);
+  const x = (i) => x0 + (i * (x1 - x0)) / Math.max(pt.matchdays.length - 1, 1);
+  const y = (v) => y1 - (v / maxP) * (y1 - y0);
+  const path = (vals, color) => vals.map((v, i) => `${i ? "L" : "M"}${x(i)},${y(v)}`).join(" ");
+  const rankLabels = pt.matchdays.map((m, i) => m.rank !== null ? `<text x="${x(i)}" y="${y0 + 26}" fill="#8a98a8" font-size="8.5" text-anchor="middle">${m.rank}</text>` : "").join("");
+  el.innerHTML = `<svg class="timeline-svg" viewBox="0 0 ${w} ${h}">
+    <path d="${path(xpts, "#6b7c8f")}" fill="none" stroke="#6b7c8f" stroke-width="1.5" stroke-dasharray="4 3"/>
+    <path d="${path(pts, "#4ea1ff")}" fill="none" stroke="#4ea1ff" stroke-width="2"/>
+    ${rankLabels}
+    <text x="${x0}" y="${y0}" fill="#8a98a8" font-size="10"><tspan fill="#4ea1ff">— points</tspan>  <tspan fill="#6b7c8f">- - xPTS</tspan>  · numbers = table rank after each matchday</text>
+  </svg>`;
+}
+
+function drawLuckChart(container, lc) {
+  const el = document.getElementById(container);
+  if (!el || !lc || !lc.points || lc.points.length < 2) { if (el) el.innerHTML = `<div class="empty">No luck-curve data.</div>`; return; }
+  const w = 540, h = 220, pad = 30, x0 = pad, x1 = w - pad, y0 = 18, y1 = h - 24;
+  const vals = lc.points.map((p) => p.cumulative_g_minus_xg);
+  const lo = Math.min(...vals, 0), hi = Math.max(...vals, 0), span = Math.max(hi - lo, 0.5);
+  const x = (i) => x0 + (i * (x1 - x0)) / Math.max(vals.length - 1, 1);
+  const y = (v) => y1 - ((v - lo) / span) * (y1 - y0);
+  const path = vals.map((v, i) => `${i ? "L" : "M"}${x(i)},${y(v)}`).join(" ");
+  const zero = y(0);
+  el.innerHTML = `<svg class="timeline-svg" viewBox="0 0 ${w} ${h}">
+    <line x1="${x0}" y1="${zero}" x2="${x1}" y2="${zero}" stroke="#243040" stroke-dasharray="3 4"/>
+    <path d="${path}" fill="none" stroke="${lc.final >= 0 ? "#41d6a3" : "#ef6a5a"}" stroke-width="2"/>
+    <text x="${x0}" y="${y0}" fill="#8a98a8" font-size="9">cumulative G − xG</text>
+  </svg>`;
+}
+
+function drawTrendChart(container, mt, key) {
+  const el = document.getElementById(container);
+  if (!el || !mt || !mt.dates || mt.dates.length < 2) { if (el) el.innerHTML = `<div class="empty">No trend data.</div>`; return; }
+  const w = 1100, h = 240, pad = 34, x0 = pad, x1 = w - pad, y0 = 18, y1 = h - 28;
+  const vals = mt[key] || [];
+  const allMax = Math.max(...vals.map(Math.abs), 0.001);
+  const x = (i) => x0 + (i * (x1 - x0)) / Math.max(vals.length - 1, 1);
+  const y = (v) => y1 - ((v + allMax) / (2 * allMax)) * (y1 - y0);
+  const path = vals.map((v, i) => `${i ? "L" : "M"}${x(i)},${y(v)}`).join(" ");
+  const zero = y(0);
+  el.innerHTML = `<svg class="timeline-svg" viewBox="0 0 ${w} ${h}">
+    <line x1="${x0}" y1="${zero}" x2="${x1}" y2="${zero}" stroke="#243040" stroke-dasharray="3 4"/>
+    <path d="${path}" fill="none" stroke="#4ea1ff" stroke-width="2"/>
+    <text x="${x0}" y="${y0}" fill="#8a98a8" font-size="10">rolling ${mt.window}-match ${key}</text>
+  </svg>`;
 }
 
 function styleKv(s) {
@@ -580,7 +727,39 @@ function paceBlock(p) {
 
 // ---------- MATCH ----------
 $("matchGo").addEventListener("click", runMatch);
-$("pickMatch").addEventListener("click", async (e) => {
+$("loadRounds").addEventListener("click", loadRounds);
+$("roundSelect").addEventListener("change", () => {
+  const round = parseInt($("roundSelect").value, 10);
+  const bucket = (state.rounds || []).find((r) => r.round === round);
+  $("matchSelect").innerHTML = bucket
+    ? bucket.matches.map((m) => `<option value="${m.match_id}">${m.date} · ${m.home} ${m.home_goals}–${m.away_goals} ${m.away}</option>`).join("")
+    : `<option value="">no matches</option>`;
+  $("matchSelect").dispatchEvent(new Event("change"));
+});
+$("matchSelect").addEventListener("change", () => {
+  const id = $("matchSelect").value;
+  if (!id) return;
+  $("matchId").value = id;
+  runMatch();
+});
+$("matchSeason").addEventListener("change", () => { state.roundsLoaded = false; loadRounds(); });
+
+async function loadRounds() {
+  const season = seasonOf("matchSeason");
+  $("roundSelect").innerHTML = `<option value="">loading…</option>`;
+  try {
+    const d = await api("/api/v1/matches/rounds", { league_name: state.league, season });
+    state.rounds = d.rounds || [];
+    state.roundsLoaded = true;
+    $("roundSelect").innerHTML = `<option value="">round…</option>` +
+      state.rounds.map((r) => `<option value="${r.round}">Round ${r.round}</option>`).join("");
+  } catch (e) {
+    $("roundSelect").innerHTML = `<option value="">unavailable</option>`;
+    $("matchSelect").innerHTML = `<option value="">${e.message}</option>`;
+  }
+}
+if ($("pickMatch")) {
+  $("pickMatch").addEventListener("click", async (e) => {
   e.preventDefault();
   const link = $("pickMatch");
   link.textContent = "finding…";
@@ -596,7 +775,8 @@ $("pickMatch").addEventListener("click", async (e) => {
     link.textContent = "a recent result";
     errored($("matchContent"), err.message);
   }
-});
+  });
+}
 async function runMatch() {
   const id = $("matchId").value.trim(); if (!id) return;
   const node = $("matchContent"); loading(node);
@@ -664,7 +844,8 @@ async function runDiscover() {
   try {
     const d = await api("/api/v1/discover/players", {
       league_name: state.league,
-      season: seasonOf("leagueSeason"),
+      season: seasonOf("discoverSeason"),
+      seasons: seasonsOf("discoverSeason"),
       position_group: $("discoverPosition").value || null,
       minimum_minutes: parseFloat($("discoverMinutes").value) || 900,
       order_by: $("discoverOrderBy").value,
@@ -675,16 +856,20 @@ async function runDiscover() {
 }
 function renderDiscover(node, d) {
   clear(node);
-  node.innerHTML = `<div class="card"><h3>Top ${d.limit} ${d.position_group || "all-position"} players ≥ ${d.minimum_minutes} min · ordered by ${d.order_by} ${windowBadge(d)}</h3>
-    <table><thead><tr><th>Player</th><th>Team</th><th>Pos</th><th class="num">${term("minutes")}</th><th class="num">${term("npxG")}</th><th class="num">${term("xA")}</th><th class="num">${term("xG_chain")}</th><th class="num">${term("xG_buildup")}</th><th class="num">${term("goals")}</th><th class="num">${term("assists")}</th></tr></thead><tbody>
-      ${d.players.map((p) => `<tr><td data-name="${p.name}">${p.name}</td><td>${p.team}</td><td>${p.position_group}</td><td class="num">${fmt(p.minutes, 0)}</td><td class="num">${fmt(p.npxG)}</td><td class="num">${fmt(p.xA)}</td><td class="num">${fmt(p.xGChain)}</td><td class="num">${fmt(p.xGBuildup)}</td><td class="num">${fmt(p.goals, 0)}</td><td class="num">${fmt(p.assists, 0)}</td></tr>`).join("")}
+  const seasonsLabel = d.seasons && d.seasons.length > 1 ? ` · ${d.seasons.join("–")}` : "";
+  node.innerHTML = `<div class="card"><h3>Top ${d.limit} ${d.position_group || "all-position"} players ≥ ${d.minimum_minutes} min · ordered by ${d.order_by}${seasonsLabel} ${windowBadge(d)}</h3>
+    <table><thead><tr><th>Player</th><th>Team</th><th>Pos</th><th class="num">${term("age")}</th><th class="num">${term("team_press")}</th><th class="num">${term("minutes")}</th><th class="num">${term("npxG")}</th><th class="num">${term("xA")}</th><th class="num">${term("xG_chain")}</th><th class="num">${term("xG_buildup")}</th><th class="num">${term("goals")}</th><th class="num">${term("assists")}</th><th class="num">${term("cards")}</th></tr></thead><tbody>
+      ${d.players.map((p) => `<tr><td data-name="${p.name}">${p.name}</td><td>${p.team}</td><td>${p.position_group}</td><td class="num">${p.age ?? "—"}</td><td class="num">${fmt(p.team_ppda)}</td><td class="num">${fmt(p.minutes, 0)}</td><td class="num">${fmt(p.npxG)}</td><td class="num">${fmt(p.xA)}</td><td class="num">${fmt(p.xGChain)}</td><td class="num">${fmt(p.xGBuildup)}</td><td class="num">${fmt(p.goals, 0)}</td><td class="num">${fmt(p.assists, 0)}</td><td class="num">${fmt(p.yellow_cards, 0)}y / ${fmt(p.red_cards, 0)}r</td></tr>`).join("")}
     </tbody></table>
-    <div class="hint">Click a name to load that player in the Player tab${d.players[0] ? `. Suggested first: ${d.players[0].name}.` : ""}.</div>
+    <div class="hint">Click a name to load that player in the Player tab. Age from Wikidata; ${term("team_press")} is the team's season PPDA (lower = more intense press).</div>
+    <div class="caveat"><ul>${(d.limitations || []).map((l) => `<li>${l}</li>`).join("")}</ul></div>
   </div>`;
   node.querySelectorAll("td[data-name]").forEach((td) => td.addEventListener("click", () => {
     const name = td.getAttribute("data-name");
     $("playerName").value = name;
-    document.querySelector('nav.tabs button[data-tab="player"]').click();
+    localStorage.setItem("prem_playerName", name);
+    state.fromDiscover = true;
+    activateTab("player");
     runPlayer();
   }));
 }
