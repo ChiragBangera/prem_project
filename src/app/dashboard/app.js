@@ -488,17 +488,17 @@ function drawCareerChart(container, rows, metricKey) {
   const x = (i) => x0 + (i * (x1 - x0)) / Math.max(rows.length - 1, 1);
   const y = (v) => y1 - (v / allMax) * (y1 - y0);
   const path = vals.map((v, i) => `${i ? "L" : "M"}${x(i)},${y(v)}`).join(" ");
-  const dots = vals.map((v, i) => hoverDot(x(i), y(v), `${rows[i].season}: ${fmt(v, 3)}\n${rows[i].team || ""}\n${fmt(rows[i].minutes, 0)} min`, "#4ea1ff")).join("");
-  const labels = rows.map((r, i) => `<text x="${x(i)}" y="${y1 + 16}" fill="#8a98a8" font-size="10" text-anchor="middle">${r.season}</text>`).join("");
+  const dots = vals.map((v, i) => hoverDot(x(i), y(v), `${rows[i].season}: ${fmt(v, 3)}\n${rows[i].team || ""}\n${fmt(rows[i].minutes, 0)} min`, "#83a598")).join("");
+  const labels = rows.map((r, i) => `<text x="${x(i)}" y="${y1 + 16}" fill="#a89984" font-size="10" text-anchor="middle">${r.season}</text>`).join("");
   const entry = GLOSSARY[metricKey] || {};
   el.innerHTML = `<svg class="timeline-svg" viewBox="0 0 ${w} ${h}">
-    <line x1="${x0}" y1="${y1}" x2="${x1}" y2="${y1}" stroke="#243040"/>
-    <line x1="${x0}" y1="${y1}" x2="${x0}" y2="${y0}" stroke="#243040"/>
-    <path d="${path}" fill="none" stroke="#4ea1ff" stroke-width="2"/>${dots}
+    <line x1="${x0}" y1="${y1}" x2="${x1}" y2="${y1}" stroke="#504945"/>
+    <line x1="${x0}" y1="${y1}" x2="${x0}" y2="${y0}" stroke="#504945"/>
+    <path d="${path}" fill="none" stroke="#83a598" stroke-width="2"/>${dots}
     ${labels}
-    <text x="${x0}" y="${y0}" fill="#8a98a8" font-size="10">${entry.label || metricKey} by season</text>
-    <text x="${x0 + (x1 - x0) / 2}" y="${h - 6}" fill="#8a98a8" font-size="10" text-anchor="middle">season →</text>
-    <text x="14" y="${y0 + (y1 - y0) / 2}" fill="#8a98a8" font-size="10" text-anchor="middle" transform="rotate(-90 14 ${y0 + (y1 - y0) / 2})">${entry.label || metricKey} ↑</text>
+    <text x="${x0}" y="${y0}" fill="#a89984" font-size="10">${entry.label || metricKey} by season</text>
+    <text x="${x0 + (x1 - x0) / 2}" y="${h - 6}" fill="#a89984" font-size="10" text-anchor="middle">season →</text>
+    <text x="14" y="${y0 + (y1 - y0) / 2}" fill="#a89984" font-size="10" text-anchor="middle" transform="rotate(-90 14 ${y0 + (y1 - y0) / 2})">${entry.label || metricKey} ↑</text>
   </svg>`;
 }
 
@@ -587,18 +587,18 @@ function drawRadar(container, profile) {
   for (let g = 1; g <= 4; g++) {
     const rr = r * g / 4;
     let pts = ""; for (let i = 0; i < n; i++) { const [x, y] = pt(i, rr); pts += `${x},${y} `; }
-    rings += `<polygon points="${pts}" fill="none" stroke="#243040" stroke-width="1"/>`;
+    rings += `<polygon points="${pts}" fill="none" stroke="#504945" stroke-width="1"/>`;
   }
   let spokes = "", labels = "";
   for (let i = 0; i < n; i++) {
     const [x, y] = pt(i, r);
-    spokes += `<line x1="${cx}" y1="${cy}" x2="${x}" y2="${y}" stroke="#243040" stroke-width="1"/>`;
+    spokes += `<line x1="${cx}" y1="${cy}" x2="${x}" y2="${y}" stroke="#504945" stroke-width="1"/>`;
     const [lx, ly] = pt(i, r + 18);
-    labels += `<text x="${lx}" y="${ly}" fill="#8a98a8" font-size="10" text-anchor="middle" dominant-baseline="middle">${radarLabelTitle(profile[i].label)}${profile[i].label}</text>`;
+    labels += `<text x="${lx}" y="${ly}" fill="#a89984" font-size="10" text-anchor="middle" dominant-baseline="middle">${radarLabelTitle(profile[i].label)}${profile[i].label}</text>`;
   }
   let poly = ""; const vals = [];
-  for (let i = 0; i < n; i++) { const pct = profile[i].percentile; const rr = r * pct / 100; const [x, y] = pt(i, rr); poly += `${x},${y} `; vals.push(`<text x="${x}" y="${y - 6}" fill="#4ea1ff" font-size="9" text-anchor="middle">${Math.round(pct)}</text>`); }
-  el.innerHTML = `<svg class="radar-svg" viewBox="0 0 ${size} ${size}">${rings}${spokes}<polygon points="${poly}" fill="rgba(78,161,255,0.18)" stroke="#4ea1ff" stroke-width="2"/>${labels}${vals.join("")}</svg>`;
+  for (let i = 0; i < n; i++) { const pct = profile[i].percentile; const rr = r * pct / 100; const [x, y] = pt(i, rr); poly += `${x},${y} `; vals.push(`<text x="${x}" y="${y - 6}" fill="#83a598" font-size="9" text-anchor="middle">${Math.round(pct)}</text>`); }
+  el.innerHTML = `<svg class="radar-svg" viewBox="0 0 ${size} ${size}">${rings}${spokes}<polygon points="${poly}" fill="rgba(131,165,152,0.18)" stroke="#83a598" stroke-width="2"/>${labels}${vals.join("")}</svg>`;
 }
 
 function pressingBlock(p) {
@@ -759,18 +759,18 @@ function drawSeasonLines(container, trends, metric, opts) {
   }
   const weekTicks = [];
   for (let wk = 1; wk <= maxMatchdays; wk += 5) {
-    weekTicks.push(`<text x="${x(wk - 1)}" y="${y1 + 16}" fill="#8a98a8" font-size="9" text-anchor="middle">${wk}</text>`);
+    weekTicks.push(`<text x="${x(wk - 1)}" y="${y1 + 16}" fill="#a89984" font-size="9" text-anchor="middle">${wk}</text>`);
   }
   const axisLabel = opts.invert ? "league position (1 = top)" : "points ↑";
   el.innerHTML = `<svg class="timeline-svg" viewBox="0 0 ${w} ${h}">
-    <line x1="${x0}" y1="${y1}" x2="${x1}" y2="${y1}" stroke="#243040"/>
-    <line x1="${x0}" y1="${y1}" x2="${x0}" y2="${y0}" stroke="#243040"/>
+    <line x1="${x0}" y1="${y1}" x2="${x1}" y2="${y1}" stroke="#504945"/>
+    <line x1="${x0}" y1="${y1}" x2="${x0}" y2="${y0}" stroke="#504945"/>
     ${opts.invert ? rankTicks(x0, x1, y0, y1, opts.ymax) : ""}
     ${lines}${dots}
-    ${opts.invert ? "" : `<text x="${x0}" y="${y0 - 2}" fill="#8a98a8" font-size="10">— points &nbsp; - - xPTS &nbsp; (solid vs dotted per season)</text>`}
+    ${opts.invert ? "" : `<text x="${x0}" y="${y0 - 2}" fill="#a89984" font-size="10">— points &nbsp; - - xPTS &nbsp; (solid vs dotted per season)</text>`}
     ${weekTicks.join("")}
-    <text x="${x0 + (x1 - x0) / 2}" y="${h - 6}" fill="#8a98a8" font-size="10" text-anchor="middle">match week (team’s nth league match) →</text>
-    <text x="12" y="${y0 + (y1 - y0) / 2}" fill="#8a98a8" font-size="10" text-anchor="middle" transform="rotate(-90 12 ${y0 + (y1 - y0) / 2})">${axisLabel}</text>
+    <text x="${x0 + (x1 - x0) / 2}" y="${h - 6}" fill="#a89984" font-size="10" text-anchor="middle">match week (team’s nth league match) →</text>
+    <text x="12" y="${y0 + (y1 - y0) / 2}" fill="#a89984" font-size="10" text-anchor="middle" transform="rotate(-90 12 ${y0 + (y1 - y0) / 2})">${axisLabel}</text>
   </svg>`;
 }
 
@@ -779,8 +779,8 @@ function rankTicks(x0, x1, y0, y1, nTeams) {
   const ticks = [1, 5, 10, 15, 20].filter((t) => t <= nTeams);
   for (const t of ticks) {
     const y = y0 + ((t - 1) / (nTeams - 1)) * (y1 - y0);
-    out += `<line x1="${x0}" y1="${y}" x2="${x1}" y2="${y}" stroke="#1a2230" stroke-dasharray="2 4"/>`;
-    out += `<text x="${x0 - 4}" y="${y + 3}" fill="#8a98a8" font-size="9" text-anchor="end">${t}</text>`;
+    out += `<line x1="${x0}" y1="${y}" x2="${x1}" y2="${y}" stroke="#3c3836" stroke-dasharray="2 4"/>`;
+    out += `<text x="${x0 - 4}" y="${y + 3}" fill="#a89984" font-size="9" text-anchor="end">${t}</text>`;
   }
   return out;
 }
@@ -800,19 +800,19 @@ function drawLuckChart(container, lc) {
   const x = (i) => x0 + (i * (x1 - x0)) / Math.max(vals.length - 1, 1);
   const y = (v) => y1 - ((v - lo) / span) * (y1 - y0);
   const path = vals.map((v, i) => `${i ? "L" : "M"}${x(i)},${y(v)}`).join(" ");
-  const dots = lc.points.map((p, i) => hoverDot(x(i), y(p.cumulative_g_minus_xg), `${p.date}\ncumulative G − xG: ${fmt(p.cumulative_g_minus_xg, 2)}`, lc.final >= 0 ? "#41d6a3" : "#ef6a5a", 3.5)).join("");
+  const dots = lc.points.map((p, i) => hoverDot(x(i), y(p.cumulative_g_minus_xg), `${p.date}\ncumulative G − xG: ${fmt(p.cumulative_g_minus_xg, 2)}`, lc.final >= 0 ? "#b8bb26" : "#fb4934", 3.5)).join("");
   const zero = y(0);
   const step = Math.max(1, Math.floor(vals.length / 12));
-  const labels = lc.points.map((p, i) => (i % step === 0 ? `<text x="${x(i)}" y="${y1 + 14}" fill="#8a98a8" font-size="8.5" text-anchor="middle" transform="rotate(-30 ${x(i)} ${y1 + 14})">${p.date.slice(5)}</text>` : "")).join("");
+  const labels = lc.points.map((p, i) => (i % step === 0 ? `<text x="${x(i)}" y="${y1 + 14}" fill="#a89984" font-size="8.5" text-anchor="middle" transform="rotate(-30 ${x(i)} ${y1 + 14})">${p.date.slice(5)}</text>` : "")).join("");
   el.innerHTML = `<svg class="timeline-svg" viewBox="0 0 ${w} ${h}">
-    <line x1="${x0}" y1="${y1}" x2="${x1}" y2="${y1}" stroke="#243040"/>
-    <line x1="${x0}" y1="${y1}" x2="${x0}" y2="${y0}" stroke="#243040"/>
-    <line x1="${x0}" y1="${zero}" x2="${x1}" y2="${zero}" stroke="#243040" stroke-dasharray="3 4"/>
-    <path d="${path}" fill="none" stroke="${lc.final >= 0 ? "#41d6a3" : "#ef6a5a"}" stroke-width="2"/>${dots}
+    <line x1="${x0}" y1="${y1}" x2="${x1}" y2="${y1}" stroke="#504945"/>
+    <line x1="${x0}" y1="${y1}" x2="${x0}" y2="${y0}" stroke="#504945"/>
+    <line x1="${x0}" y1="${zero}" x2="${x1}" y2="${zero}" stroke="#504945" stroke-dasharray="3 4"/>
+    <path d="${path}" fill="none" stroke="${lc.final >= 0 ? "#b8bb26" : "#fb4934"}" stroke-width="2"/>${dots}
     ${labels}
-    <text x="${x0}" y="${y0}" fill="#8a98a8" font-size="9">cumulative G − xG · hover for dates</text>
-    <text x="${x0 + (x1 - x0) / 2}" y="${h - 6}" fill="#8a98a8" font-size="9" text-anchor="middle">match week →</text>
-    <text x="12" y="${y0 + (y1 - y0) / 2}" fill="#8a98a8" font-size="9" text-anchor="middle" transform="rotate(-90 12 ${y0 + (y1 - y0) / 2})">G − xG ↑</text>
+    <text x="${x0}" y="${y0}" fill="#a89984" font-size="9">cumulative G − xG · hover for dates</text>
+    <text x="${x0 + (x1 - x0) / 2}" y="${h - 6}" fill="#a89984" font-size="9" text-anchor="middle">match week →</text>
+    <text x="12" y="${y0 + (y1 - y0) / 2}" fill="#a89984" font-size="9" text-anchor="middle" transform="rotate(-90 12 ${y0 + (y1 - y0) / 2})">G − xG ↑</text>
   </svg>`;
 }
 
@@ -825,20 +825,20 @@ function drawTrendChart(container, mt, key) {
   const x = (i) => x0 + (i * (x1 - x0)) / Math.max(vals.length - 1, 1);
   const y = (v) => y1 - ((v + allMax) / (2 * allMax)) * (y1 - y0);
   const path = vals.map((v, i) => `${i ? "L" : "M"}${x(i)},${y(v)}`).join(" ");
-  const dots = vals.map((v, i) => hoverDot(x(i), y(v), `${mt.dates[i]}\n${key}: ${fmt(v, 2)}`, "#4ea1ff", 3.5)).join("");
+  const dots = vals.map((v, i) => hoverDot(x(i), y(v), `${mt.dates[i]}\n${key}: ${fmt(v, 2)}`, "#83a598", 3.5)).join("");
   const zero = y(0);
   const step = Math.max(1, Math.floor(vals.length / 16));
-  const labels = mt.dates.map((d, i) => (i % step === 0 ? `<text x="${x(i)}" y="${y1 + 14}" fill="#8a98a8" font-size="9" text-anchor="middle" transform="rotate(-30 ${x(i)} ${y1 + 14})">${d.slice(5)}</text>` : "")).join("");
+  const labels = mt.dates.map((d, i) => (i % step === 0 ? `<text x="${x(i)}" y="${y1 + 14}" fill="#a89984" font-size="9" text-anchor="middle" transform="rotate(-30 ${x(i)} ${y1 + 14})">${d.slice(5)}</text>` : "")).join("");
   const entry = GLOSSARY[key] || {};
   el.innerHTML = `<svg class="timeline-svg" viewBox="0 0 ${w} ${h}">
-    <line x1="${x0}" y1="${y1}" x2="${x1}" y2="${y1}" stroke="#243040"/>
-    <line x1="${x0}" y1="${y1}" x2="${x0}" y2="${y0}" stroke="#243040"/>
-    <line x1="${x0}" y1="${zero}" x2="${x1}" y2="${zero}" stroke="#243040" stroke-dasharray="3 4"/>
-    <path d="${path}" fill="none" stroke="#4ea1ff" stroke-width="2"/>${dots}
+    <line x1="${x0}" y1="${y1}" x2="${x1}" y2="${y1}" stroke="#504945"/>
+    <line x1="${x0}" y1="${y1}" x2="${x0}" y2="${y0}" stroke="#504945"/>
+    <line x1="${x0}" y1="${zero}" x2="${x1}" y2="${zero}" stroke="#504945" stroke-dasharray="3 4"/>
+    <path d="${path}" fill="none" stroke="#83a598" stroke-width="2"/>${dots}
     ${labels}
-    <text x="${x0}" y="${y0}" fill="#8a98a8" font-size="10">rolling ${mt.window}-match ${entry.label || key} · hover for dates</text>
-    <text x="${x0 + (x1 - x0) / 2}" y="${h - 6}" fill="#8a98a8" font-size="10" text-anchor="middle">match week / date →</text>
-    <text x="14" y="${y0 + (y1 - y0) / 2}" fill="#8a98a8" font-size="10" text-anchor="middle" transform="rotate(-90 14 ${y0 + (y1 - y0) / 2})">${entry.label || key} ↑</text>
+    <text x="${x0}" y="${y0}" fill="#a89984" font-size="10">rolling ${mt.window}-match ${entry.label || key} · hover for dates</text>
+    <text x="${x0 + (x1 - x0) / 2}" y="${h - 6}" fill="#a89984" font-size="10" text-anchor="middle">match week / date →</text>
+    <text x="14" y="${y0 + (y1 - y0) / 2}" fill="#a89984" font-size="10" text-anchor="middle" transform="rotate(-90 14 ${y0 + (y1 - y0) / 2})">${entry.label || key} ↑</text>
   </svg>`;
 }
 
@@ -1000,7 +1000,7 @@ function situationBreakdown(sb) {
   const head = `<tr><th>${term("situations")}</th><th class="num">${term("shots")}</th><th class="num">${term("xG")}</th><th class="num">${term("goals")}</th></tr>`;
   const rows = (obj) => Object.entries(obj).sort((a, b) => b[1].xG - a[1].xG).map(([k, v]) => `<tr><td>${k}</td><td class="num">${v.shots}</td><td class="num">${fmt(v.xG)}</td><td class="num">${v.goals}</td></tr>`).join("");
   return `<table><thead><tr><th colspan=4 style="color:var(--accent)">Home</th></tr>${head}</thead><tbody>${rows(sb.home)}</tbody></table>` +
-    `<table style="margin-top:10px"><thead><tr><th colspan=4 style="color:#41d6a3">Away</th></tr>${head}</thead><tbody>${rows(sb.away)}</tbody></table>`;
+    `<table style="margin-top:10px"><thead><tr><th colspan=4 style="color:#b8bb26">Away</th></tr>${head}</thead><tbody>${rows(sb.away)}</tbody></table>`;
 }
 function drawShotMap(container, sm) {
   const el = document.getElementById(container); if (!el) return;
@@ -1012,8 +1012,8 @@ function drawShotMap(container, sm) {
     const tip = `${s.player || "?"} ${s.minute}' — ${s.result} (xG ${fmt(s.xG, 3)})`;
     return `<circle cx="${px(s.X)}" cy="${py(s.Y)}" r="${r}" fill="${fill ? color : "none"}" stroke="${color}" stroke-width="${fill ? 2 : 1.2}" opacity="${fill ? 0.85 : 0.55}"><title>${tip}</title></circle>`;
   }).join("");
-  const lines = `<line x1="0" y1="${h/2}" x2="${w}" y2="${h/2}" stroke="#1a2230"/><line x1="${w/2}" y1="0" x2="${w/2}" y2="${h}" stroke="#1a2230"/><circle cx="${w/2}" cy="${h/2}" r="60" fill="none" stroke="#1a2230"/><rect x="0" y="${h/2-60}" width="44" height="120" fill="none" stroke="#1a2230"/><rect x="${w-44}" y="${h/2-60}" width="44" height="120" fill="none" stroke="#1a2230"/>`;
-  el.innerHTML = `<svg class="pitch-svg" viewBox="0 0 ${w} ${h}"><rect x="0" y="0" width="${w}" height="${h}" fill="#0f1620"/>${lines}<g>${circles(away, "#41d6a3")}</g><g>${circles(home, "#4ea1ff")}</g></svg><div class="hint"><span style="color:#4ea1ff">● home</span> &nbsp; <span style="color:#41d6a3">● away</span> &nbsp; radius scales with xG; filled = goal &nbsp; hover for shot details</div>`;
+  const lines = `<line x1="0" y1="${h/2}" x2="${w}" y2="${h/2}" stroke="#3c3836"/><line x1="${w/2}" y1="0" x2="${w/2}" y2="${h}" stroke="#3c3836"/><circle cx="${w/2}" cy="${h/2}" r="60" fill="none" stroke="#3c3836"/><rect x="0" y="${h/2-60}" width="44" height="120" fill="none" stroke="#3c3836"/><rect x="${w-44}" y="${h/2-60}" width="44" height="120" fill="none" stroke="#3c3836"/>`;
+  el.innerHTML = `<svg class="pitch-svg" viewBox="0 0 ${w} ${h}"><rect x="0" y="0" width="${w}" height="${h}" fill="#1d2021"/>${lines}<g>${circles(away, "#b8bb26")}</g><g>${circles(home, "#83a598")}</g></svg><div class="hint"><span style="color:#83a598">● home</span> &nbsp; <span style="color:#b8bb26">● away</span> &nbsp; radius scales with xG; filled = goal &nbsp; hover for shot details</div>`;
 }
 function drawXgTimeline(container, tl) {
   const el = document.getElementById(container); if (!el) return;
@@ -1026,19 +1026,19 @@ function drawXgTimeline(container, tl) {
   const path = (pts, color) => pts.length ? `<path d="${pts.map((p, i) => `${i ? "L" : "M"}${x(p.minute)},${y(p.cumulative_xG)}`).join(" ")}" fill="none" stroke="${color}" stroke-width="2"/>` : "";
   const dots = (pts, color) => pts.map((p) => hoverDot(x(p.minute), y(p.cumulative_xG), `minute ${p.minute}\ncumulative xG: ${fmt(p.cumulative_xG, 3)}`, color, 3.5)).join("");
   el.innerHTML = `<svg class="timeline-svg" viewBox="0 0 ${w} ${h}">
-    <line x1="${x0}" y1="${y1}" x2="${x1}" y2="${y1}" stroke="#243040"/>
-    <line x1="${x0}" y1="${y1}" x2="${x0}" y2="${y0}" stroke="#243040"/>
-    ${path(home, "#4ea1ff")}${path(away, "#41d6a3")}
-    ${dots(home, "#4ea1ff")}${dots(away, "#41d6a3")}
-    <text x="${x0}" y="${y0}" fill="#8a98a8" font-size="10"><tspan fill="#4ea1ff">— home</tspan>  <tspan fill="#41d6a3">— away</tspan>  · hover shots for minute & xG</text>
-    <text x="${x0 + (x1 - x0) / 2}" y="${h - 6}" fill="#8a98a8" font-size="10" text-anchor="middle">minute →</text>
-    <text x="14" y="${y0 + (y1 - y0) / 2}" fill="#8a98a8" font-size="10" text-anchor="middle" transform="rotate(-90 14 ${y0 + (y1 - y0) / 2})">cumulative xG ↑</text>
+    <line x1="${x0}" y1="${y1}" x2="${x1}" y2="${y1}" stroke="#504945"/>
+    <line x1="${x0}" y1="${y1}" x2="${x0}" y2="${y0}" stroke="#504945"/>
+    ${path(home, "#83a598")}${path(away, "#b8bb26")}
+    ${dots(home, "#83a598")}${dots(away, "#b8bb26")}
+    <text x="${x0}" y="${y0}" fill="#a89984" font-size="10"><tspan fill="#83a598">— home</tspan>  <tspan fill="#b8bb26">— away</tspan>  · hover shots for minute & xG</text>
+    <text x="${x0 + (x1 - x0) / 2}" y="${h - 6}" fill="#a89984" font-size="10" text-anchor="middle">minute →</text>
+    <text x="14" y="${y0 + (y1 - y0) / 2}" fill="#a89984" font-size="10" text-anchor="middle" transform="rotate(-90 14 ${y0 + (y1 - y0) / 2})">cumulative xG ↑</text>
   </svg>`;
 }
 
 // ---------- player basket (discover → compare) ----------
-const RADAR_COLORS = ["#4ea1ff", "#41d6a3", "#f5b042", "#ef6a5a", "#b18cff",
-  "#5ad1ef", "#ff8fd8", "#c5d86d", "#ff9f43", "#74b9ff", "#a29bfe", "#55efc4"];
+const RADAR_COLORS = ["#83a598", "#b8bb26", "#fabd2f", "#fb4934", "#d3869b",
+  "#8ec07c", "#fe8019", "#d79921", "#e78a4e", "#7c9a8e", "#c49a6c", "#689d6a"];
 
 function loadBasket() {
   try {
@@ -1469,14 +1469,14 @@ function drawMultiRadar(container, labels, entries) {
   for (let g = 1; g <= 4; g++) {
     const rr = r * g / 4;
     let pts = ""; for (let i = 0; i < n; i++) { const [x, y] = pt(i, rr); pts += `${x},${y} `; }
-    rings += `<polygon points="${pts}" fill="none" stroke="#243040" stroke-width="1"/>`;
+    rings += `<polygon points="${pts}" fill="none" stroke="#504945" stroke-width="1"/>`;
   }
   let spokes = "", labelsSvg = "";
   for (let i = 0; i < n; i++) {
     const [x, y] = pt(i, r);
-    spokes += `<line x1="${cx}" y1="${cy}" x2="${x}" y2="${y}" stroke="#243040" stroke-width="1"/>`;
+    spokes += `<line x1="${cx}" y1="${cy}" x2="${x}" y2="${y}" stroke="#504945" stroke-width="1"/>`;
     const [lx, ly] = pt(i, r + 20);
-    labelsSvg += `<text x="${lx}" y="${ly}" fill="#8a98a8" font-size="10" text-anchor="middle" dominant-baseline="middle">${radarLabelTitle(labels[i])}${labels[i]}</text>`;
+    labelsSvg += `<text x="${lx}" y="${ly}" fill="#a89984" font-size="10" text-anchor="middle" dominant-baseline="middle">${radarLabelTitle(labels[i])}${labels[i]}</text>`;
   }
   const polys = entries.map((entry) => {
     const byLabel = Object.fromEntries(entry.report.radar.profile.map((p) => [p.label, p.percentile]));
@@ -1568,14 +1568,14 @@ function drawCompareRadar(container, labels, profileA, profileB, nameA, nameB) {
   for (let g = 1; g <= 4; g++) {
     const rr = r * g / 4;
     let pts = ""; for (let i = 0; i < n; i++) { const [x, y] = pt(i, rr); pts += `${x},${y} `; }
-    rings += `<polygon points="${pts}" fill="none" stroke="#243040" stroke-width="1"/>`;
+    rings += `<polygon points="${pts}" fill="none" stroke="#504945" stroke-width="1"/>`;
   }
   let spokes = "", labelsSvg = "";
   for (let i = 0; i < n; i++) {
     const [x, y] = pt(i, r);
-    spokes += `<line x1="${cx}" y1="${cy}" x2="${x}" y2="${y}" stroke="#243040" stroke-width="1"/>`;
+    spokes += `<line x1="${cx}" y1="${cy}" x2="${x}" y2="${y}" stroke="#504945" stroke-width="1"/>`;
     const [lx, ly] = pt(i, r + 20);
-    labelsSvg += `<text x="${lx}" y="${ly}" fill="#8a98a8" font-size="10" text-anchor="middle" dominant-baseline="middle">${radarLabelTitle(labels[i])}${labels[i]}</text>`;
+    labelsSvg += `<text x="${lx}" y="${ly}" fill="#a89984" font-size="10" text-anchor="middle" dominant-baseline="middle">${radarLabelTitle(labels[i])}${labels[i]}</text>`;
   }
   const poly = (byLabel, color, fill) => {
     let pts = "";
@@ -1586,8 +1586,8 @@ function drawCompareRadar(container, labels, profileA, profileB, nameA, nameB) {
     }
     return `<polygon points="${pts}" fill="${fill}" stroke="${color}" stroke-width="2"/>`;
   };
-  el.innerHTML = `<svg class="radar-svg" viewBox="0 0 ${size} ${size}">${rings}${spokes}${poly(byLabelA, "#4ea1ff", "rgba(78,161,255,0.18)")}${poly(byLabelB, "#41d6a3", "rgba(65,214,163,0.14)")}${labelsSvg}</svg>
-    <div class="hint"><span style="color:#4ea1ff">● ${nameA}</span> &nbsp; <span style="color:#41d6a3">● ${nameB}</span> &nbsp; percentile vs league pool</div>`;
+  el.innerHTML = `<svg class="radar-svg" viewBox="0 0 ${size} ${size}">${rings}${spokes}${poly(byLabelA, "#83a598", "rgba(131,165,152,0.18)")}${poly(byLabelB, "#b8bb26", "rgba(184,187,38,0.14)")}${labelsSvg}</svg>
+    <div class="hint"><span style="color:#83a598">● ${nameA}</span> &nbsp; <span style="color:#b8bb26">● ${nameB}</span> &nbsp; percentile vs league pool</div>`;
 }
 
 function renderCompareTeams(node, d) {
@@ -1815,7 +1815,7 @@ function scorelineMatrix(matrix) {
       const v = matrix[h][a];
       const t = v / max;
       const isMax = v === max && v > 0;
-      const bg = t > 0.01 ? `rgba(78,161,255,${(0.05 + 0.55 * t).toFixed(3)})` : "transparent";
+      const bg = t > 0.01 ? `rgba(131,165,152,${(0.05 + 0.55 * t).toFixed(3)})` : "transparent";
       cells += `<td class="num heat${isMax ? " max" : ""}" style="background:${bg}" title="${h}-${a}: ${pct(v)}">${v >= 0.02 ? Math.round(v * 100) : ""}</td>`;
     }
     cells += "</tr>";
@@ -1837,7 +1837,7 @@ async function runSim() {
 function renderSim(node, d) {
   const teams = Object.keys(d.expected_points);
   const nTeams = teams.length;
-  const posColor = (i) => (i < 4 ? "var(--accent-2)" : i < 6 ? "var(--accent)" : i >= nTeams - 3 ? "var(--danger)" : "#3a4a5c");
+  const posColor = (i) => (i < 4 ? "var(--accent-2)" : i < 6 ? "var(--accent)" : i >= nTeams - 3 ? "var(--danger)" : "#665c54");
   const finalGoals = d.expected_final_goals || {};
   clear(node);
   node.innerHTML = `
