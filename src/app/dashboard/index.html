@@ -26,6 +26,7 @@
     <button data-tab="league">League</button>
     <button data-tab="match">Match</button>
     <button data-tab="discover">Discover</button>
+    <button data-tab="compare">Compare</button>
     <button data-tab="predict">Predict</button>
   </nav>
 
@@ -35,9 +36,13 @@
       <div class="player-pick">
         <div class="field"><label>Player name</label><input id="playerName" placeholder="e.g. Erling Haaland" style="min-width:240px" /></div>
         <div class="field"><label>Season</label><input id="playerSeason" type="number" value="2025" style="min-width:90px" /></div>
+        <div class="field"><label>From <span class="opt">(optional)</span></label><input id="playerFrom" type="date" /></div>
+        <div class="field"><label>To <span class="opt">(optional)</span></label><input id="playerTo" type="date" /></div>
         <button class="primary" id="playerGo">Analyze</button>
+        <button class="ghost" id="playerCareerGo">Career</button>
         <div id="playerResolved" class="mono" style="color:var(--muted);align-self:center;font-size:12px;"></div>
       </div>
+      <div class="hint" style="color:var(--muted);font-size:12px;">Date range (both optional) narrows the season window — e.g. From 2026-01-01 for the second half only. Career spans the last 6 seasons from the Season field.</div>
       <div id="playerContent"><div class="empty">Enter a player name to build a radar, per-90s, involvement and similarity profile.</div></div>
     </section>
 
@@ -46,6 +51,8 @@
       <div class="controls">
         <div class="field"><label>Team name</label><input id="teamName" placeholder="e.g. Arsenal" /></div>
         <div class="field"><label>Season</label><input id="teamSeason" type="number" value="2025" style="min-width:90px" /></div>
+        <div class="field"><label>From <span class="opt">(optional)</span></label><input id="teamFrom" type="date" /></div>
+        <div class="field"><label>To <span class="opt">(optional)</span></label><input id="teamTo" type="date" /></div>
         <button class="primary" id="teamGo">Analyze</button>
       </div>
       <div id="teamContent"><div class="empty">Enter a team name for PPDA, xGD, form/momentum and situational splits.</div></div>
@@ -55,6 +62,8 @@
     <section class="view" id="view-league">
       <div class="controls">
         <div class="field"><label>Season</label><input id="leagueSeason" type="number" value="2025" style="min-width:90px" /></div>
+        <div class="field"><label>From <span class="opt">(optional)</span></label><input id="leagueFrom" type="date" /></div>
+        <div class="field"><label>To <span class="opt">(optional)</span></label><input id="leagueTo" type="date" /></div>
         <button class="primary" id="leagueGo">Analyze</button>
       </div>
       <div id="leagueContent"><div class="empty">Click Analyze for the xPTS "is-lying" table, variance, PPDA ranking and league pace.</div></div>
@@ -87,9 +96,28 @@
             <option value="assists">Assists</option>
           </select>
         </div>
+        <div class="field"><label>From <span class="opt">(optional)</span></label><input id="discoverFrom" type="date" /></div>
+        <div class="field"><label>To <span class="opt">(optional)</span></label><input id="discoverTo" type="date" /></div>
         <button class="primary" id="discoverGo">Discover</button>
       </div>
       <div id="discoverContent"><div class="empty">Filter the league player table by position and minutes; rank by involvement metrics.</div></div>
+    </section>
+
+    <!-- COMPARE -->
+    <section class="view" id="view-compare">
+      <div class="controls">
+        <div class="field"><label>Mode</label>
+          <select id="compareMode"><option value="players">Players</option><option value="teams">Teams</option></select>
+        </div>
+        <div class="field"><label id="compareLabelA">Player 1</label><input id="compareA" placeholder="e.g. Mohamed Salah" /></div>
+        <div class="field"><label id="compareLabelB">Player 2</label><input id="compareB" placeholder="e.g. Bukayo Saka" /></div>
+        <div class="field"><label>Season</label><input id="compareSeason" type="number" value="2025" style="min-width:90px" /></div>
+        <div class="field"><label>From <span class="opt">(optional)</span></label><input id="compareFrom" type="date" /></div>
+        <div class="field"><label>To <span class="opt">(optional)</span></label><input id="compareTo" type="date" /></div>
+        <button class="primary" id="compareGo">Compare</button>
+      </div>
+      <div class="hint" style="color:var(--muted);font-size:12px;">Players share one percentile pool per season; teams compare style + this season's meetings. Date range optional.</div>
+      <div id="compareContent"><div class="empty">Compare two players (overlaid radar, shared percentile pool) or two teams (style profile + head-to-head).</div></div>
     </section>
 
     <!-- PREDICT -->

@@ -236,6 +236,34 @@ class AnalyzePlayerRequest(BaseModel):
     player_name: str | None = None
     league_name: str = "EPL"
     season: int = 2025
+    start_date: str | None = None
+    end_date: str | None = None
+
+
+class CareerRequest(BaseModel):
+    player_name: str | None = None
+    player_id: int | None = None
+    league_name: str = "EPL"
+    seasons: list[int] | None = None
+    season_end: int | None = None
+
+
+class ComparePlayersRequest(BaseModel):
+    player_1: str
+    player_2: str
+    league_name: str = "EPL"
+    season: int = 2025
+    start_date: str | None = None
+    end_date: str | None = None
+
+
+class CompareTeamsRequest(BaseModel):
+    team_1: str
+    team_2: str
+    league_name: str = "EPL"
+    season: int = 2025
+    start_date: str | None = None
+    end_date: str | None = None
 
 
 class AnalyzeTeamRequest(BaseModel):
@@ -243,11 +271,15 @@ class AnalyzeTeamRequest(BaseModel):
     league_name: str = "EPL"
     season: int = 2025
     with_shots: bool = False
+    start_date: str | None = None
+    end_date: str | None = None
 
 
 class AnalyzeLeagueRequest(BaseModel):
     league_name: str = "EPL"
     season: int = 2025
+    start_date: str | None = None
+    end_date: str | None = None
 
 
 class DiscoverPlayersRequest(BaseModel):
@@ -257,6 +289,8 @@ class DiscoverPlayersRequest(BaseModel):
     minimum_minutes: float = 900
     order_by: str = "npxG"
     limit: int = 20
+    start_date: str | None = None
+    end_date: str | None = None
 
 
 @app.post(
@@ -274,6 +308,82 @@ async def analyze_player(payload: AnalyzePlayerRequest, request: Request):
             player_name=payload.player_name,
             league_name=payload.league_name,
             season=payload.season,
+            start_date=payload.start_date,
+            end_date=payload.end_date,
+        )
+    except ValueError as exc:
+        return JSONResponse(
+            status_code=422,
+            content={"error": "invalid_parameters", "detail": str(exc)},
+        )
+
+
+@app.post(
+    "/api/v1/analyze/player/career",
+    tags=["Analytics"],
+    responses={
+        422: {"model": ErrorResponse},
+        502: {"model": ErrorResponse},
+    },
+)
+async def player_career(payload: CareerRequest, request: Request):
+    try:
+        return await request.app.state.analytics.player_career(
+            player_name=payload.player_name,
+            player_id=payload.player_id,
+            league_name=payload.league_name,
+            seasons=payload.seasons,
+            season_end=payload.season_end,
+        )
+    except ValueError as exc:
+        return JSONResponse(
+            status_code=422,
+            content={"error": "invalid_parameters", "detail": str(exc)},
+        )
+
+
+@app.post(
+    "/api/v1/compare/players",
+    tags=["Analytics"],
+    responses={
+        422: {"model": ErrorResponse},
+        502: {"model": ErrorResponse},
+    },
+)
+async def compare_players(payload: ComparePlayersRequest, request: Request):
+    try:
+        return await request.app.state.analytics.compare_players(
+            player_1=payload.player_1,
+            player_2=payload.player_2,
+            league_name=payload.league_name,
+            season=payload.season,
+            start_date=payload.start_date,
+            end_date=payload.end_date,
+        )
+    except ValueError as exc:
+        return JSONResponse(
+            status_code=422,
+            content={"error": "invalid_parameters", "detail": str(exc)},
+        )
+
+
+@app.post(
+    "/api/v1/compare/teams",
+    tags=["Analytics"],
+    responses={
+        422: {"model": ErrorResponse},
+        502: {"model": ErrorResponse},
+    },
+)
+async def compare_teams(payload: CompareTeamsRequest, request: Request):
+    try:
+        return await request.app.state.analytics.compare_teams(
+            team_1=payload.team_1,
+            team_2=payload.team_2,
+            league_name=payload.league_name,
+            season=payload.season,
+            start_date=payload.start_date,
+            end_date=payload.end_date,
         )
     except ValueError as exc:
         return JSONResponse(
@@ -297,6 +407,8 @@ async def analyze_team(payload: AnalyzeTeamRequest, request: Request):
             league_name=payload.league_name,
             season=payload.season,
             with_shots=payload.with_shots,
+            start_date=payload.start_date,
+            end_date=payload.end_date,
         )
     except ValueError as exc:
         return JSONResponse(
@@ -308,13 +420,24 @@ async def analyze_team(payload: AnalyzeTeamRequest, request: Request):
 @app.post(
     "/api/v1/analyze/league",
     tags=["Analytics"],
-    responses={502: {"model": ErrorResponse}},
+    responses={
+        422: {"model": ErrorResponse},
+        502: {"model": ErrorResponse},
+    },
 )
 async def analyze_league(payload: AnalyzeLeagueRequest, request: Request):
-    return await request.app.state.analytics.analyze_league(
-        league_name=payload.league_name,
-        season=payload.season,
-    )
+    try:
+        return await request.app.state.analytics.analyze_league(
+            league_name=payload.league_name,
+            season=payload.season,
+            start_date=payload.start_date,
+            end_date=payload.end_date,
+        )
+    except ValueError as exc:
+        return JSONResponse(
+            status_code=422,
+            content={"error": "invalid_parameters", "detail": str(exc)},
+        )
 
 
 @app.post(
@@ -329,17 +452,28 @@ async def analyze_match(match_id: int, request: Request):
 @app.post(
     "/api/v1/discover/players",
     tags=["Analytics"],
-    responses={502: {"model": ErrorResponse}},
+    responses={
+        422: {"model": ErrorResponse},
+        502: {"model": ErrorResponse},
+    },
 )
 async def discover_players(payload: DiscoverPlayersRequest, request: Request):
-    return await request.app.state.analytics.discover_players(
-        league_name=payload.league_name,
-        season=payload.season,
-        position_group=payload.position_group,
-        minimum_minutes=payload.minimum_minutes,
-        order_by=payload.order_by,
-        limit=payload.limit,
-    )
+    try:
+        return await request.app.state.analytics.discover_players(
+            league_name=payload.league_name,
+            season=payload.season,
+            position_group=payload.position_group,
+            minimum_minutes=payload.minimum_minutes,
+            order_by=payload.order_by,
+            limit=payload.limit,
+            start_date=payload.start_date,
+            end_date=payload.end_date,
+        )
+    except ValueError as exc:
+        return JSONResponse(
+            status_code=422,
+            content={"error": "invalid_parameters", "detail": str(exc)},
+        )
 
 
 class PredictMatchRequest(BaseModel):

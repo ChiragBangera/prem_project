@@ -48,6 +48,8 @@ section.view.active { display: block; }
 .controls { display: flex; gap: 10px; align-items: end; flex-wrap: wrap; margin-bottom: 18px; }
 .field { display: flex; flex-direction: column; gap: 4px; }
 .field label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
+.field label .opt { text-transform: none; color: #5c6a7a; }
+.field input[type=date] { min-width: 150px; color-scheme: dark; }
 .field input, .field select, .field input[type=number] {
   background: var(--panel); color: var(--text); border: 1px solid var(--border);
   padding: 8px 10px; border-radius: 6px; font-size: 13px; min-width: 180px; font-family: var(--sans);
