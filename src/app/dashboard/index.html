@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Premier League Analytics Lab</title>
-  <link rel="stylesheet" href="/dashboard/styles.css?v=9" />
+  <link rel="stylesheet" href="/dashboard/styles.css?v=10" />
 </head>
 <body>
   <header class="topbar">
@@ -91,9 +91,7 @@
     <section class="view" id="view-discover">
       <div class="controls">
         <div class="field"><label>Season(s) · pick up to 5</label><div class="season-multi" id="discoverSeasons" data-max="5"></div></div>
-        <div class="field"><label>Position group</label>
-          <select id="discoverPosition"><option value="">All</option><option value="F">Forward</option><option value="M">Midfielder</option><option value="D">Defender</option><option value="GK">Goalkeeper</option></select>
-        </div>
+        <div class="field"><label>Position(s) · raw</label><div class="season-multi position-multi" id="discoverPositions" data-max="8"></div></div>
         <div class="field"><label>Min minutes</label><input id="discoverMinutes" type="number" value="900" style="min-width:90px" /></div>
         <div class="field"><label>Show</label>
           <select id="discoverLimit"><option value="20">20</option><option value="50">50</option><option value="100">100</option></select>
@@ -210,6 +208,6 @@
     metrics ship only what is honestly computable from this dataset
   </footer>
 
-  <script src="/dashboard/app.js?v=9"></script>
+  <script src="/dashboard/app.js?v=10"></script>
 </body>
 </html>

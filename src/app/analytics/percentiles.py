@@ -72,10 +72,10 @@ POSITION_GROUPS = {
 
 
 def position_group(position_code: str | None) -> str:
-    """Map an Understat position string ('F S', 'D', 'M') to a group key.
+    """Legacy single-family guess from the first token (alphabetical!).
 
-    Note: Understat's multi-role league strings ('D M S') are alphabetical,
-    NOT primary-first — prefer favorite_position (player_data) when available.
+    Prefer group_from_favorite / position_families — the league string's first
+    token is NOT the player's primary role.
     """
     if not position_code:
         return ""
@@ -92,19 +92,55 @@ def position_group(position_code: str | None) -> str:
 
 
 def group_from_favorite(favorite_position: str | None) -> str:
-    """Map Understat's favorite_position ('MC', 'FWR', 'AMC', 'DC'...) to a group."""
+    """Map Understat's favorite_position to a role family.
+
+    Understat's raw codes follow classic football notation: DC/DL/DR = centre/
+    left/right BACKS (defence), but DMC/DML = defensive MIDFIELDERS — the
+    family check is prefix-aware (DMC is midfield, not defence).
+    """
     if not favorite_position:
         return ""
     head = favorite_position.strip().upper()
-    if head.startswith("G"):
+    if head == "NON":
+        return ""
+    if head.startswith("GK"):
         return "GK"
-    if head.startswith("F"):
+    if head.startswith(("FW", "FWL", "FWR", "ST")):
         return "F"
-    if head.startswith("D"):
-        return "D"
-    if head.startswith(("M", "A")):
+    if head.startswith(("DMC", "DML", "MC", "ML", "MR", "AM", "AMC", "AML", "AMR", "DM", "M")):
         return "M"
-    return head[0]
+    if head.startswith(("DC", "DL", "DR", "SW", "WB", "D")):
+        return "D"
+    return ""
+
+
+def position_families(position_code: str | None) -> set[str]:
+    """Families a multi-role league string belongs to.
+
+    Understat league strings are alphabetical role lists ('D M S' = appeared
+    as D, M and substitute). The 'S' token is a substitute marker, not a role.
+    """
+    if not position_code:
+        return set()
+    families = set()
+    for token in position_code.strip().upper().split():
+        if token == "S":
+            continue
+        if token.startswith("G"):
+            families.add("GK")
+        elif token.startswith("F"):
+            families.add("F")
+        elif token.startswith("M"):
+            families.add("M")
+        elif token.startswith("D"):
+            families.add("D")
+    return families
+
+
+def filter_by_families(rows: list[dict], families: set[str]) -> list[dict]:
+    if not families:
+        return list(rows)
+    return [r for r in rows if position_families(r.get("position")) & families]
 
 
 def percentile_rank(value: float, within: Iterable[float]) -> float:

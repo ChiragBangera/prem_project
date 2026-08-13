@@ -10,8 +10,9 @@ from .percentiles import (
     player_minutes,
     player_per90,
     position_group,
+    position_families,
     filter_by_minutes,
-    filter_by_position,
+    filter_by_families,
     radar_profile,
     PLAYER_RADAR_METRICS,
 )
@@ -57,7 +58,8 @@ def radar(player: dict, peers: list[dict], minimum_minutes: float = 900.0) -> di
     reports how many peers survived.
     """
     group = position_group(player.get("position"))
-    same_position = filter_by_position(peers, group)
+    families = position_families(player.get("position"))
+    same_position = filter_by_families(peers, families)
     same_position = filter_by_minutes(same_position, minimum_minutes)
 
     profile = radar_profile(player, same_position)
@@ -199,8 +201,8 @@ def similar_players(target: dict, pool: list[dict], top_k: int = 5, minimum_minu
     position group). Pool should be league-scoped; we filter by position and
     minutes internally.
     """
-    group = position_group(target.get("position"))
-    candidates = filter_by_position(pool, group)
+    families = position_families(target.get("position"))
+    candidates = filter_by_families(pool, families)
     candidates = filter_by_minutes(candidates, minimum_minutes)
     candidates = [c for c in candidates if c.get("id") != target.get("id")]
 
@@ -216,7 +218,7 @@ def similar_players(target: dict, pool: list[dict], top_k: int = 5, minimum_minu
     scored.sort(key=lambda pair: pair[0], reverse=True)
     return {
         "target": target.get("player_name"),
-        "position_group": group,
+        "position_group": sorted(families),
         "pool_after_filters": len(candidates),
         "matches": [
             {

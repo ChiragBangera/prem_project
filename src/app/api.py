@@ -304,6 +304,7 @@ class DiscoverPlayersRequest(BaseModel):
     league_name: str = "EPL"
     season: int = 2025
     position_group: str | None = None
+    positions: list[str] | None = None
     minimum_minutes: float = 900
     order_by: str = "npxG"
     limit: int = 20
@@ -580,6 +581,7 @@ async def discover_players(payload: DiscoverPlayersRequest, request: Request):
             seasons=payload.seasons,
             min_age=payload.min_age,
             max_age=payload.max_age,
+            positions=payload.positions,
         )
     except ValueError as exc:
         return JSONResponse(

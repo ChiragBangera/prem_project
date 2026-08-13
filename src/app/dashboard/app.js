@@ -40,7 +40,7 @@ function windowBadge(d) {
 const PERSIST_IDS = ["playerName", "teamName", "leagueSeason",
   "matchSeason", "matchId",
   "predHome", "predAway", "predSeason", "simSeason", "calSeason",
-  "compareA", "compareB", "compareSeason", "discoverMinutes", "discoverPosition", "discoverOrderBy"];
+  "compareA", "compareB", "compareSeason", "discoverMinutes", "discoverOrderBy"];
 PERSIST_IDS.forEach((id) => {
   const el = document.getElementById(id);
   if (!el) return;
@@ -185,6 +185,59 @@ function seasonsOf(id) {
   return null;
 }
 
+function buildPositionMulti(hostId, maxSelections) {
+  const host = document.getElementById(hostId);
+  if (!host) return;
+  const options = [
+    ["GK", "GK · goalkeeper"], ["DC", "DC · centre-back"], ["DL", "DL · left-back"],
+    ["DR", "DR · right-back"], ["DMC", "DMC · defensive midfield"], ["DML", "DML · left defensive mid"],
+    ["MC", "MC · centre midfield"], ["ML", "ML · left midfield"], ["MR", "MR · right midfield"],
+    ["AMC", "AMC · attacking mid"], ["AML", "AML · left attacking mid"], ["AMR", "AMR · right attacking mid"],
+    ["FWL", "FWL · left forward"], ["FWR", "FWR · right forward"], ["FW", "FW · forward"],
+  ];
+  let selected = [];
+  try {
+    const saved = JSON.parse(localStorage.getItem(`prem_${hostId}`) || "[]");
+    if (Array.isArray(saved)) selected = saved.filter((v) => options.some(([code]) => code === v));
+  } catch (_) { /* ignore */ }
+  host.dataset.values = JSON.stringify(selected);
+  host.classList.add("season-multi");
+  host.innerHTML = `
+    <button type="button" class="season-btn" data-season-btn>${selected.length ? selected.join(", ") : "all positions"}</button>
+    <div class="season-panel" data-season-panel>
+      <div class="season-hint">Pick specific roles (empty = all). DMC/DML are midfield, not defence.</div>
+      ${options.map(([code, label]) => `<label class="season-option"><input type="checkbox" value="${code}" ${selected.includes(code) ? "checked" : ""}/> ${label}</label>`).join("")}
+    </div>`;
+  const btn = host.querySelector("[data-season-btn]");
+  const panel = host.querySelector("[data-season-panel]");
+  btn.addEventListener("click", (e) => { e.stopPropagation(); panel.classList.toggle("open"); });
+  document.addEventListener("click", (e) => { if (!host.contains(e.target)) panel.classList.remove("open"); });
+  host.querySelectorAll("input[type=checkbox]").forEach((checkbox) => {
+    checkbox.addEventListener("change", () => {
+      let current = JSON.parse(host.dataset.values || "[]");
+      const code = checkbox.value;
+      if (checkbox.checked) {
+        if (current.length >= maxSelections) { checkbox.checked = false; panel.querySelector(".season-hint").textContent = `Maximum ${maxSelections} — uncheck one first`; return; }
+        current = [...current, code];
+      } else {
+        current = current.filter((v) => v !== code);
+      }
+      host.dataset.values = JSON.stringify(current);
+      localStorage.setItem(`prem_${hostId}`, JSON.stringify(current));
+      btn.textContent = current.length ? current.join(", ") : "all positions";
+      panel.querySelector(".season-hint").textContent = "Pick specific roles (empty = all). DMC/DML are midfield, not defence.";
+      runDiscover();
+    });
+  });
+}
+
+function selectedPositionValues(hostId) {
+  const host = document.getElementById(hostId);
+  if (!host) return null;
+  const values = JSON.parse(host.dataset.values || "[]");
+  return values.length ? values : null;
+}
+
 function buildSeasonMulti(hostId, maxSeasons) {
   const host = document.getElementById(hostId);
   if (!host) return;
@@ -266,6 +319,7 @@ function populateSeasonSelects() {
   buildSeasonMulti("playerSeasons", 5);
   buildSeasonMulti("teamSeasons", 5);
   buildSeasonMulti("discoverSeasons", 5);
+  buildPositionMulti("discoverPositions", 8);
 }
 
 function hoverDot(cx, cy, tip, color, r = 4) {
@@ -991,7 +1045,7 @@ async function runDiscover() {
       league_name: state.league,
       season: seasonOf("discoverSeasons"),
       seasons: seasonsOf("discoverSeasons"),
-      position_group: $("discoverPosition").value || null,
+      positions: selectedPositionValues("discoverPositions"),
       minimum_minutes: parseFloat($("discoverMinutes").value) || 900,
       order_by: $("discoverOrderBy").value,
       limit: parseInt($("discoverLimit").value, 10) || 20,
@@ -1016,7 +1070,7 @@ function renderDiscover(node, d) {
       ${d.players.map((p) => {
         const checked = state.basket.some((b) => b.name === p.name) ? "checked" : "";
         return `<tr><td><input type="checkbox" class="basket-check" data-name="${p.name}" data-team="${p.team}" data-age="${p.age ?? ""}" ${checked}/></td>
-        <td data-name="${p.name}">${p.name}</td><td>${p.team}</td><td>${p.position_group}</td><td class="num">${p.age ?? "—"}</td><td class="num">${fmt(p.team_ppda)}</td><td class="num">${fmt(p.minutes, 0)}</td><td class="num">${fmt(p.npxG)}</td><td class="num">${fmt(p.npxG_per90, 3)}</td><td class="num">${fmt(p.xA)}</td><td class="num">${fmt(p.xA_per90, 3)}</td><td class="num">${fmt(p.goal_involvement_per90, 3)}</td><td class="num">${fmt(p.xG_per_shot, 3)}</td><td class="num">${p.g_minus_xg >= 0 ? "+" : ""}${fmt(p.g_minus_xg)}</td><td class="num">${fmt(p.goals, 0)}</td><td class="num">${fmt(p.assists, 0)}</td><td class="num">${fmt(p.yellow_cards, 0)}y / ${fmt(p.red_cards, 0)}r</td></tr>`;
+        <td data-name="${p.name}">${p.name}</td><td>${p.team}</td><td title="${p.position}">${p.favorite_position || p.position_group || p.position || "—"}</td><td class="num">${p.age ?? "—"}</td><td class="num">${fmt(p.team_ppda)}</td><td class="num">${fmt(p.minutes, 0)}</td><td class="num">${fmt(p.npxG)}</td><td class="num">${fmt(p.npxG_per90, 3)}</td><td class="num">${fmt(p.xA)}</td><td class="num">${fmt(p.xA_per90, 3)}</td><td class="num">${fmt(p.goal_involvement_per90, 3)}</td><td class="num">${fmt(p.xG_per_shot, 3)}</td><td class="num">${p.g_minus_xg >= 0 ? "+" : ""}${fmt(p.g_minus_xg)}</td><td class="num">${fmt(p.goals, 0)}</td><td class="num">${fmt(p.assists, 0)}</td><td class="num">${fmt(p.yellow_cards, 0)}y / ${fmt(p.red_cards, 0)}r</td></tr>`;
       }).join("")}
     </tbody></table>
     <div class="hint">Tick players to build a basket, then Compare → to compare all of them at once. Age from Wikidata; ${term("team_press")} is the team's season PPDA.</div>

@@ -182,6 +182,23 @@ class CareerTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertIn("g_minus_xg", body["players"][0])
         self.assertEqual(body["limit"], 50)
 
+    async def test_group_from_favorite_dmc_is_midfield(self):
+        from app.analytics.percentiles import group_from_favorite, position_families
+
+        self.assertEqual(group_from_favorite("DMC"), "M")
+        self.assertEqual(group_from_favorite("DML"), "M")
+        self.assertEqual(group_from_favorite("MC"), "M")
+        self.assertEqual(group_from_favorite("AMC"), "M")
+        self.assertEqual(group_from_favorite("DC"), "D")
+        self.assertEqual(group_from_favorite("DR"), "D")
+        self.assertEqual(group_from_favorite("FW"), "F")
+        self.assertEqual(group_from_favorite("FWR"), "F")
+        self.assertEqual(group_from_favorite("GK"), "GK")
+        self.assertEqual(group_from_favorite("Non"), "")
+        self.assertEqual(position_families("D M S"), {"D", "M"})
+        self.assertEqual(position_families("F M S"), {"F", "M"})
+        self.assertEqual(position_families("GK"), {"GK"})
+
     async def test_compare_teams_returns_styles_and_meetings(self):
         response = await self.client.post(
             "/api/v1/compare/teams",

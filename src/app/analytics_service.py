@@ -581,6 +581,7 @@ class AnalyticsService:
         seasons: list[int] | str | None = None,
         min_age: int | None = None,
         max_age: int | None = None,
+        positions: list[str] | None = None,
     ) -> dict:
         start_date, end_date = _valid_date_range(start_date, end_date)
         target_seasons = parse_seasons(seasons) or [season]
@@ -615,6 +616,14 @@ class AnalyticsService:
 
         if position_group:
             filtered = [p for p in filtered if player_groups[int(p.get("id", 0))] == position_group.upper()]
+
+        if positions:
+            wanted = {pos.strip().upper() for pos in positions if pos and pos.strip()}
+            if wanted:
+                filtered = [
+                    p for p in filtered
+                    if (p.get("_favorite_position") or "").strip().upper() in wanted
+                ]
 
         min_age = min_age if min_age is not None else None
         max_age = max_age if max_age is not None else None
