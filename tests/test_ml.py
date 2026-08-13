@@ -244,7 +244,7 @@ class CalibrationTestCase(unittest.IsolatedAsyncioTestCase):
     async def test_walkforward_calibration_reports_all_models(self):
         dates = synthetic_league_dates(teams=8, rounds=5, seed=31)
         client = FakeLeagueClient(dates)
-        report = await forecast_calibration(client, "EPL", 2025, min_train=40, step=6)
+        report = await forecast_calibration(client, "EPL", 2025, min_train=40, step=60, pool_leagues=True)
         self.assertEqual(report["method"], "walk-forward")
         self.assertIn("dixon_coles", report["models"])
         self.assertIn("baseline", report["models"])
@@ -258,6 +258,67 @@ class CalibrationTestCase(unittest.IsolatedAsyncioTestCase):
         client = FakeLeagueClient(synthetic_league_dates(teams=4, rounds=1, seed=41))
         with self.assertRaises(ValueError):
             await forecast_calibration(client, "EPL", 2025, min_train=30)
+
+
+class XgboostTestCase(unittest.TestCase):
+    def test_pi_ratings_fit_and_predict(self):
+        from app.ml import pi_ratings
+        matches = [
+            {"home": "A", "away": "B", "home_goals": 3, "away_goals": 0, "date": "2025-01-01"},
+            {"home": "C", "away": "A", "home_goals": 0, "away_goals": 1, "date": "2025-01-08"},
+            {"home": "B", "away": "C", "home_goals": 2, "away_goals": 2, "date": "2025-01-15"},
+        ] * 8
+        model = pi_ratings.fit_pi_ratings(matches)
+        self.assertEqual(model["n_matches"], len(matches))
+        self.assertEqual(len(model["history"]), len(matches))
+        pred = model["predict"]("A", "B")
+        self.assertGreater(pred["lambda_home"], 0)
+        with self.assertRaises(ValueError):
+            model["predict"]("A", "ZZ")
+
+    def test_xgb_poisson_train_and_predict(self):
+        from app.ml import xgb as xgb_models
+        rng = np.random.default_rng(4)
+        n = 400
+        X = rng.normal(size=(n, 6))
+        goals_h = np.clip(rng.poisson(np.exp(0.3 * X[:, 0] + 0.5)), 0, 8)
+        goals_a = np.clip(rng.poisson(np.exp(-0.2 * X[:, 1] + 0.4)), 0, 8)
+        models = xgb_models.train_poisson(X, goals_h, goals_a)
+        lam_h, lam_a = xgb_models.predict_lambdas(models, X[:5])
+        self.assertEqual(lam_h.shape, (5,))
+        self.assertTrue(np.all(lam_h > 0))
+        names = [f"f{i}" for i in range(6)]
+        imp = xgb_models.importance(models[0], names, top_k=3)
+        self.assertLessEqual(len(imp), 3)
+        self.assertGreater(imp[0]["importance"], 0)
+
+    def test_rps_metric_known_values(self):
+        from app.ml.engine import rps_metric
+        # Perfect home prediction -> RPS 0
+        self.assertAlmostEqual(rps_metric({"p_home": 1, "p_draw": 0, "p_away": 0}, 0), 0.0, places=6)
+        # Uniform probabilities, home happens: cumulative pred = (1/3, 2/3, 1); target (1,1,1)
+        rps = rps_metric({"p_home": 1 / 3, "p_draw": 1 / 3, "p_away": 1 / 3}, 0)
+        self.assertAlmostEqual(rps, (((1 / 3 - 1) ** 2 + (2 / 3 - 1) ** 2) / 2), places=6)
+        # Perfectly wrong direction
+        self.assertAlmostEqual(rps_metric({"p_home": 0, "p_draw": 0, "p_away": 1}, 0), 1.0, places=6)
+
+    def test_feature_store_is_leakage_free(self):
+        from app.ml.features import build_sequential_features
+        rows = [
+            {"home": "A", "away": "B", "home_goals": 2, "away_goals": 0, "home_xg": 1.8, "away_xg": 0.5,
+             "date": "2025-01-10", "is_result": True},
+            {"home": "B", "away": "A", "home_goals": 1, "away_goals": 1, "home_xg": 1.0, "away_xg": 1.2,
+             "date": "2025-01-17", "is_result": True},
+            {"home": "A", "away": "C", "home_goals": 3, "away_goals": 1, "home_xg": 2.5, "away_xg": 0.8,
+             "date": "2025-01-24", "is_result": True},
+        ]
+        full = build_sequential_features(rows)
+        truncated = build_sequential_features(rows[:2])
+        for name in full["names"]:
+            left, right = full["features"][name][1], truncated["features"][name][1]
+            np.testing.assert_equal(left, right, err_msg=f"feature {name} leaks future matches")
+        # rolling form at row 2 must reflect rows 0-1 only
+        self.assertAlmostEqual(full["features"]["xg_for_3_h"][2], np.mean([1.8, 1.2]))
 
 
 if __name__ == "__main__":

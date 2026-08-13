@@ -103,6 +103,14 @@ GLOSSARY_GROUPS: list[dict] = [
              "The engine behind scoreline probabilities. Fit on xG here, so it predicts underlying quality rather than lucky results."),
             ("elo", "Elo ratings", "A sequential rating system: each result transfers points between teams based on expectation.",
              "A pure results-based cross-check; it sees no xG and no scorelines."),
+            ("pi_ratings", "pi-ratings", "Constantinou & Fenton's dynamic rating system: attack/defence ratings updated per match by the discrepancy between actual and expected scores, with draws relaxed.",
+             "The rating family the research literature ranks as the best feature set for gradient-boosted models."),
+            ("xgboost", "XGBoost hybrid", "Gradient-boosted trees trained on pre-match features (ratings, rolling xG form, PPDA, rest, H2H, Understat forecast, availability proxy); the goals variant regresses expected goals and converts them through the scoreline machinery.",
+             "The literature's strongest goals-only recipe (Hubáček et al. 2019; Razali et al. 2022). Features are strictly pre-match — no leakage."),
+            ("feature_importance", "Feature importance", "Share of total tree-split gain each feature contributed (XGBoost gain-based).",
+             "What the model leaned on, not a causal claim. Ratings and Understat forecast usually dominate."),
+            ("pooled_training", "Pooled training", "Training the model on all four leagues' matches of the same season, testing only on the target league.",
+             "More training data per season — the recipe behind the best published accuracy (55.8%)."),
             ("lambda", "λ (expected goals)", "The model's predicted goals for each side in a match.",
              "λ_home 1.4 vs λ_away 0.9 → the model expects roughly 1.4–0.9. These ARE the goal projections."),
             ("rho", "ρ (rho)", "The Dixon-Coles low-score correction: adjusts the probability of 0-0, 1-0, 0-1, 1-1.",
@@ -159,6 +167,8 @@ GLOSSARY_GROUPS: list[dict] = [
              "Lower is better; a coin-flip baseline is ~0.65. The number to compare models with."),
             ("log_loss", "Log loss", "Negative log of the probability assigned to the actual outcome, averaged.",
              "Punishes confident wrongness heavily. Lower is better."),
+            ("rps", "RPS (ranked probability score)", "Squared error between cumulative predicted and observed outcome probabilities over the ordered home-draw-away categories.",
+             "The literature's standard proper scoring rule for football (lower is better); punishes near-misses less than accuracy does."),
             ("accuracy", "Prediction accuracy", "Share of predictions where the model's most likely outcome happened.",
              "The intuitive but weakest measure — a 60%-confident correct call and a 33%-confident correct call both count."),
             ("baseline", "Naive baseline", "The historical home/draw/away frequency of the training window.",
@@ -213,4 +223,11 @@ def glossary_response() -> dict:
             for group in GLOSSARY_GROUPS
         ],
         "by_key": by_key,
+        "feature_labels": _feature_labels(),
     }
+
+
+def _feature_labels() -> dict:
+    from app.ml.features import FEATURE_EXPLANATIONS
+
+    return {key: label for key, (label, _) in FEATURE_EXPLANATIONS.items()}

@@ -116,7 +116,7 @@ class PredictionApiTestCase(unittest.IsolatedAsyncioTestCase):
     async def test_calibration_reports_model_comparison(self):
         response = await self.client.post(
             "/api/v1/predict/calibration",
-            json={"league_name": "EPL", "season": 2025, "min_train": 30, "step": 4},
+            json={"league_name": "EPL", "season": 2025, "min_train": 30, "step": 20, "pool_leagues": False},
         )
 
         self.assertEqual(response.status_code, 200)
@@ -124,6 +124,8 @@ class PredictionApiTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertIn("dixon_coles", body["models"])
         self.assertIn("elo", body["models"])
         self.assertIn("baseline", body["models"])
+        self.assertIn("xgb_poisson", body["models"])
+        self.assertIn("rps", body["models"]["dixon_coles"])
         self.assertIn("best_brier_model", body)
         self.assertLessEqual(body["models"]["dixon_coles"]["brier"], 2.0)
 

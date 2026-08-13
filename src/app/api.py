@@ -518,6 +518,7 @@ class PredictMatchRequest(BaseModel):
     home: str
     away: str
     use_xg: bool = True
+    pool_leagues: bool = True
 
 
 class SimulateSeasonRequest(BaseModel):
@@ -533,6 +534,7 @@ class CalibrateRequest(BaseModel):
     use_xg: bool = True
     min_train: int = 30
     step: int = 5
+    pool_leagues: bool = True
 
 
 @app.post(
@@ -551,6 +553,7 @@ async def predict_match(payload: PredictMatchRequest, request: Request):
             home=payload.home,
             away=payload.away,
             use_xg=payload.use_xg,
+            pool_leagues=payload.pool_leagues,
         )
     except ValueError as exc:
         return JSONResponse(
@@ -598,6 +601,7 @@ async def calibrate(payload: CalibrateRequest, request: Request):
             use_xg=payload.use_xg,
             min_train=payload.min_train,
             step=payload.step,
+            pool_leagues=payload.pool_leagues,
         )
     except ValueError as exc:
         return JSONResponse(

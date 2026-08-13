@@ -29,6 +29,7 @@ let GLOSSARY = {};
     const d = await api("/api/v1/glossary", null, "GET");
     GLOSSARY = d.by_key || {};
     window.__GLOSSARY_GROUPS__ = d.groups || [];
+    window.__FEATURE_LABELS__ = d.feature_labels || {};
     if (state.tab === "info") renderInfo();
   } catch (_) { /* info degrades gracefully */ }
 })();
@@ -781,6 +782,7 @@ async function runPredict() {
 
 function renderForecast(node, d) {
   const dc = d.model.dixon_coles, el = d.model.elo, ens = d.model.ensemble;
+  const pi = d.model.pi_ratings, xg = d.model.xgboost;
   const adj = d.model.adjusted, adjLayers = d.model.adjustments, avail = d.model.availability;
   clear(node);
   node.innerHTML = `
@@ -800,6 +802,14 @@ function renderForecast(node, d) {
       <div class="card"><h3>${term("ensemble")}</h3>${ens.available ? miniProbs(ens) + `<div class="hint">weight ${ens.weight} on Dixon-Coles</div>` : `<div class="empty">needs ≥40 played matches</div>`}</div>
     </div>
     <div class="grid cols-2" style="margin-top:16px">
+      <div class="card"><h3>${term("pi_ratings")}</h3>${miniProbs(pi)}<div class="hint">score-margin ratings, updated sequentially · ${pi.n_matches} matches</div></div>
+      <div class="card"><h3>${term("xgboost")}</h3>${xg && xg.available
+        ? miniProbs(xg) + `<div class="kv"><span class="k">λ</span><span class="v">${fmt(xg.lambda_home)} – ${fmt(xg.lambda_away)}</span><span class="k">Trained on</span><span class="v">${xg.n_train} matches${xg.pooled ? " · " + term("pooled_training") : ""}</span><span class="k">Kind</span><span class="v">${xg.kind || xg.variant}</span></div>`
+        : `<div class="empty">${xg ? xg.reason || "unavailable" : "unavailable"}</div>`}</div>
+    </div>
+    ${xg && xg.available && xg.feature_importance && xg.feature_importance.length ? `
+    <div class="card" style="margin-top:16px"><h3>${term("feature_importance")} · what the model leaned on</h3>${importanceBars(xg.feature_importance)}</div>` : ""}
+    <div class="grid cols-2" style="margin-top:16px">
       <div class="card"><h3>${term("scoreline_matrix")} · home ↓ away →</h3>${scorelineMatrix(adj.scoreline_matrix || dc.scoreline_matrix)}</div>
       <div class="card"><h3>${term("over_under")} & ${term("btts")}</h3>${marketsGrid(adj.derived)}</div>
     </div>
@@ -809,6 +819,17 @@ function renderForecast(node, d) {
     </div>
     <div class="caveat"><strong>Interpretation.</strong> ${d.interpretation}<ul>${d.limitations.map((l) => `<li>${l}</li>`).join("")}</ul></div>
   `;
+}
+
+function importanceBars(entries) {
+  const max = Math.max(...entries.map((e) => e.importance), 0.001);
+  const labels = window.__FEATURE_LABELS__ || {};
+  return entries.map((e) => `
+    <div class="bar-row">
+      <span class="bar-label" title="${e.feature}">${labels[e.feature] || e.feature}</span>
+      <div class="bar-track"><div class="bar-fill" style="width:${Math.max(2, (e.importance / max) * 100)}%"></div></div>
+      <span class="bar-val">${Math.round((e.importance / max) * 100)}</span>
+    </div>`).join("");
 }
 
 function miniProbs(p) {
@@ -957,26 +978,33 @@ async function runCal() {
 }
 
 function renderCal(node, d) {
-  const names = { dixon_coles: "Dixon-Coles (xG)", elo: "Elo (results)", ensemble: "Ensemble (DC+Elo blend)", understat: "Understat forecast", baseline: "Naive baseline" };
+  const names = {
+    dixon_coles: "Dixon-Coles (xG)", elo: "Elo (results)", pi_ratings: "pi-ratings",
+    ensemble: "Ensemble (DC+Elo)", xgb_poisson: "XGBoost (goals)", xgb_xg: "XGBoost (xG)",
+    xgb_outcome: "XGBoost (W/D/L)", understat: "Understat forecast", baseline: "Naive baseline",
+  };
   const rows = Object.entries(d.models).map(([key, m]) => ({ key, name: names[key] || key, ...m }));
   const best = d.best_brier_model;
   clear(node);
   node.innerHTML = `
     <div class="card">
       <h3>Walk-forward calibration · ${LEAGUE_LABEL[d.league_name] || d.league_name} ${d.season}</h3>
-      <div class="kv"><span class="k">Protocol</span><span class="v">${d.method} · fit on ${d.fit_on} · refit every ${d.step} matches · ${d.n_played} played matches</span></div>
+      <div class="kv"><span class="k">Protocol</span><span class="v">${d.method} · fit on ${d.fit_on} · refit every ${d.step} matches · ${d.n_played} played matches${d.pooled_training_matches ? ` · ${d.pooled_training_matches} pooled training matches` : ""}</span></div>
       <table style="margin-top:10px">
-        <thead><tr><th>Model</th><th class="num">Predictions</th><th class="num">Brier</th><th class="num">Log loss</th><th class="num">Accuracy</th></tr></thead>
+        <thead><tr><th>Model</th><th class="num">Predictions</th><th class="num">${term("brier")}</th><th class="num">${term("log_loss")}</th><th class="num">${term("rps")}</th><th class="num">${term("accuracy")}</th></tr></thead>
         <tbody>
           ${rows.map((r) => `<tr class="${r.key === best ? "model-best" : ""}">
             <td>${r.name}${r.key === best ? ' <span class="badge good">best</span>' : ""}</td>
             <td class="num">${r.n}</td><td class="num">${fmt(r.brier, 4)}</td>
-            <td class="num">${fmt(r.log_loss, 4)}</td><td class="num">${pct(r.accuracy)}</td></tr>`).join("")}
+            <td class="num">${fmt(r.log_loss, 4)}</td><td class="num">${fmt(r.rps, 4)}</td>
+            <td class="num">${pct(r.accuracy)}</td></tr>`).join("")}
         </tbody>
       </table>
-      <div class="hint">Lower Brier / log loss and higher accuracy are better. ${d.interpretation}</div>
-      <div class="caveat"><ul>${d.limitations.map((l) => `<li>${l}</li>`).join("")}</ul></div>
+      <div class="hint">Lower ${term("brier")} / ${term("log_loss")} / ${term("rps")} and higher accuracy are better. ${d.interpretation}</div>
     </div>
+    ${d.feature_importance && d.feature_importance.length ? `
+    <div class="card" style="margin-top:16px"><h3>${term("feature_importance")} · across all XGBoost models</h3>${importanceBars(d.feature_importance)}</div>` : ""}
+    <div class="caveat"><ul>${d.limitations.map((l) => `<li>${l}</li>`).join("")}</ul></div>
   `;
 }
 

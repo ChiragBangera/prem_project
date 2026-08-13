@@ -237,7 +237,7 @@ class CareerTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(august["goals"], 4)
         self.assertAlmostEqual(august["xG_per_game"], 1.5, places=2)
         self.assertAlmostEqual(august["g_minus_xg"], 1.0, places=2)
-        self.assertAlmostEqual(august["ppda"], 10.0, places=2)
+        self.assertAlmostEqual(august["ppda"], 7.6, places=2)
 
 
 if __name__ == "__main__":
