@@ -33,6 +33,10 @@ GLOSSARY_GROUPS: list[dict] = [
         "entries": [
             ("xG", "xG (expected goals)", "Probability-weighted shot quality: each shot is worth the chance a similar shot goes in (0–1), summed.",
              "The core 'how good were the chances' measure. High xG with low goals = unlucky finishing (or great goalkeeping)."),
+            ("xGA", "xGA (expected goals against)", "The xG value of the chances a team conceded.",
+             "The defensive mirror of xG; xG − xGA per game is the best single quality measure."),
+            ("big_chance", "Big chance", "A shot with xG ≥ 0.20 — roughly a 1-in-5 or better scoring opportunity.",
+             "Big-chance counts separate genuine openings from speculative volume."),
             ("npxG", "NP xG (non-penalty xG)", "xG excluding penalties.",
              "Removes the penalty kick distorting effect; fairer for open-play comparison."),
             ("npg", "Non-penalty goals", "Goals scored excluding penalties.",

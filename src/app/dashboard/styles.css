@@ -66,7 +66,7 @@ button.ghost:hover { color: var(--text); border-color: var(--muted); }
 .grid.cols-3 { grid-template-columns: repeat(3, 1fr); }
 @media (max-width: 900px) { .grid.cols-2, .grid.cols-3 { grid-template-columns: 1fr; } }
 
-.card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 16px 18px; }
+.card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 16px 18px; overflow-x: auto; }
 .card h2 { margin: 0 0 4px; font-size: 14px; font-weight: 600; }
 .card h3 { margin: 0 0 8px; font-size: 12px; color: var(--muted); font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px; }
 .card .hint { color: var(--muted); font-size: 12px; margin-top: 8px; }
@@ -148,6 +148,13 @@ th .term { color: inherit; border-bottom-color: rgba(78,161,255,0.35); }
 .prob-bar.small .seg { font-size: 10px; }
 
 .empty { color: var(--muted); text-align: center; padding: 40px; font-size: 13px; }
+.examples { margin-top: 12px; font-size: 12px; color: var(--muted); }
+.examples .example {
+  color: var(--accent); cursor: pointer; text-decoration: underline dotted;
+  text-underline-offset: 3px;
+}
+.examples .example:hover { color: #6cb3ff; }
+.loading .elapsed { color: var(--muted); font-family: var(--mono); }
 .loading { color: var(--muted); padding: 20px; font-size: 13px; }
 .loading::after { content: ""; display: inline-block; width: 10px; height: 10px; border: 2px solid var(--muted); border-top-color: transparent; border-radius: 50%; animation: spin 0.8s linear infinite; margin-left: 8px; vertical-align: middle; }
 @keyframes spin { to { transform: rotate(360deg); } }

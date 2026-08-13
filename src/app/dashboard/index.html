@@ -44,7 +44,7 @@
         <div id="playerResolved" class="mono" style="color:var(--muted);align-self:center;font-size:12px;"></div>
       </div>
       <div class="hint" style="color:var(--muted);font-size:12px;">Date range (both optional) narrows the season window — e.g. From 2026-01-01 for the second half only. Career spans the last 6 seasons from the Season field.</div>
-      <div id="playerContent"><div class="empty">Enter a player name to build a radar, per-90s, involvement and similarity profile.</div></div>
+      <div id="playerContent"><div class="empty">Enter a player name to build a radar, per-90s, involvement and similarity profile.<div class="examples">Try: <span class="example" data-id="playerName" data-value="Erling Haaland" data-action="runPlayer">Erling Haaland</span> · <span class="example" data-id="playerName" data-value="Bukayo Saka" data-action="runPlayer">Bukayo Saka</span> · <span class="example" data-id="playerName" data-value="Mohamed Salah" data-action="runPlayer">Mohamed Salah</span></div></div></div>
     </section>
 
     <!-- TEAM -->
@@ -57,7 +57,7 @@
         <button class="primary" id="teamGo">Analyze</button>
         <button class="ghost" id="teamTimelineGo">Monthly timeline</button>
       </div>
-      <div id="teamContent"><div class="empty">Enter a team name for PPDA, xGD, form/momentum and situational splits.</div></div>
+      <div id="teamContent"><div class="empty">Enter a team name for PPDA, xGD, form/momentum and situational splits.<div class="examples">Try: <span class="example" data-id="teamName" data-value="Arsenal" data-action="runTeam">Arsenal</span> · <span class="example" data-id="teamName" data-value="Barcelona" data-action="runTeam">Barcelona</span> · <span class="example" data-id="teamName" data-value="Arsenal" data-action="runTeamTimeline">Arsenal monthly</span></div></div></div>
     </section>
 
     <!-- LEAGUE -->
@@ -78,7 +78,7 @@
         <button class="primary" id="matchGo">Analyze</button>
         <span class="hint" style="color:var(--muted);font-size:12px;align-self:center;">Find an id from <a href="#" id="pickMatch">a recent result</a></span>
       </div>
-      <div id="matchContent"><div class="empty">Enter a match id for shot map, xG timeline, big-chance inventory and narrative.</div></div>
+      <div id="matchContent"><div class="empty">Enter a match id for shot map, xG timeline, big-chance inventory and narrative.<div class="examples">Try: <span class="example" data-id="matchId" data-value="28778" data-action="runMatch">28778</span> · or use "a recent result" above</div></div></div>
     </section>
 
     <!-- DISCOVER -->
@@ -119,7 +119,7 @@
         <button class="primary" id="compareGo">Compare</button>
       </div>
       <div class="hint" style="color:var(--muted);font-size:12px;">Players share one percentile pool per season; teams compare style + this season's meetings. Date range optional.</div>
-      <div id="compareContent"><div class="empty">Compare two players (overlaid radar, shared percentile pool) or two teams (style profile + head-to-head).</div></div>
+      <div id="compareContent"><div class="empty">Compare two players (overlaid radar, shared percentile pool) or two teams (style profile + head-to-head).<div class="examples">Try: <span class="example" data-id="compareA" data-value="Mohamed Salah" data-action="">Mohamed Salah</span> vs <span class="example" data-id="compareB" data-value="Bukayo Saka" data-action="runCompare">Bukayo Saka</span> · <span class="example" data-id="compareMode" data-value="teams" data-action="">teams</span></div></div></div>
     </section>
 
     <!-- PREDICT -->
@@ -156,7 +156,7 @@
         </div>
         <div class="hint">Refits every few matches through the season and scores predictions out-of-sample vs Understat's own forecast and a naive baseline.</div>
       </div>
-      <div id="predictContent" style="margin-top:16px"><div class="empty">Forecast a match, simulate the run-in, or calibrate the models against the season.</div></div>
+      <div id="predictContent" style="margin-top:16px"><div class="empty">Forecast a match, simulate the run-in, or calibrate the models against the season.<div class="examples">Try: <span class="example" data-id="predHome" data-value="Arsenal" data-action="runPredict">Arsenal</span> vs <span class="example" data-id="predAway" data-value="Liverpool" data-action="runPredict">Liverpool</span></div></div></div>
     </section>
 
     <!-- INFO -->
