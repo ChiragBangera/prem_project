@@ -103,7 +103,39 @@ class AnalyticsService:
             }
 
         season_rows = await asyncio.gather(*(fetch_season(s) for s in target_seasons))
-        return career_engine.career_trajectory(season_rows, player_name, league_name)
+        groups = None
+        try:
+            player_data = await self.client.get_player_data(player_id)
+            groups = player_data.get("groups")
+        except Exception:
+            groups = None
+        return career_engine.career_trajectory(season_rows, player_name, league_name, player_groups=groups)
+
+    async def team_timeline(
+        self,
+        team_name: str,
+        league_name: str = "EPL",
+        seasons: list[int] | None = None,
+        season_end: int | None = None,
+    ) -> dict:
+        from .analytics import team_timeline as timeline_engine
+
+        if seasons:
+            target_seasons = sorted(int(s) for s in seasons)
+        else:
+            end = season_end or 2025
+            target_seasons = [end - 1, end]
+
+        import asyncio
+
+        history_by_season = await asyncio.gather(
+            *(self.client.get_team_history(team_name, s, league_name) for s in target_seasons)
+        )
+        return timeline_engine.team_timeline(
+            {season: history for season, history in zip(target_seasons, history_by_season)},
+            team_name,
+            league_name,
+        )
 
     async def compare_players(
         self,

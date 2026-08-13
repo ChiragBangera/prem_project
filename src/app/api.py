@@ -169,6 +169,12 @@ async def health_check():
     return {"status": "ok", "version": __version__}
 
 
+@app.get("/api/v1/glossary", tags=["Project"])
+async def glossary():
+    from app.analytics.glossary import glossary_response
+    return glossary_response()
+
+
 @app.get("/api/v1/endpoints", tags=["Data"], response_model=EndpointListResponse)
 async def list_endpoints():
     return {
@@ -275,6 +281,13 @@ class AnalyzeTeamRequest(BaseModel):
     end_date: str | None = None
 
 
+class TeamTimelineRequest(BaseModel):
+    team_name: str
+    league_name: str = "EPL"
+    seasons: list[int] | None = None
+    season_end: int | None = None
+
+
 class AnalyzeLeagueRequest(BaseModel):
     league_name: str = "EPL"
     season: int = 2025
@@ -331,6 +344,29 @@ async def player_career(payload: CareerRequest, request: Request):
         return await request.app.state.analytics.player_career(
             player_name=payload.player_name,
             player_id=payload.player_id,
+            league_name=payload.league_name,
+            seasons=payload.seasons,
+            season_end=payload.season_end,
+        )
+    except ValueError as exc:
+        return JSONResponse(
+            status_code=422,
+            content={"error": "invalid_parameters", "detail": str(exc)},
+        )
+
+
+@app.post(
+    "/api/v1/analyze/team/timeline",
+    tags=["Analytics"],
+    responses={
+        422: {"model": ErrorResponse},
+        502: {"model": ErrorResponse},
+    },
+)
+async def team_timeline(payload: TeamTimelineRequest, request: Request):
+    try:
+        return await request.app.state.analytics.team_timeline(
+            team_name=payload.team_name,
             league_name=payload.league_name,
             seasons=payload.seasons,
             season_end=payload.season_end,

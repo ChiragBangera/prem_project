@@ -28,6 +28,7 @@
     <button data-tab="discover">Discover</button>
     <button data-tab="compare">Compare</button>
     <button data-tab="predict">Predict</button>
+    <button data-tab="info">Info</button>
   </nav>
 
   <main>
@@ -54,6 +55,7 @@
         <div class="field"><label>From <span class="opt">(optional)</span></label><input id="teamFrom" type="date" /></div>
         <div class="field"><label>To <span class="opt">(optional)</span></label><input id="teamTo" type="date" /></div>
         <button class="primary" id="teamGo">Analyze</button>
+        <button class="ghost" id="teamTimelineGo">Monthly timeline</button>
       </div>
       <div id="teamContent"><div class="empty">Enter a team name for PPDA, xGD, form/momentum and situational splits.</div></div>
     </section>
@@ -156,7 +158,18 @@
       </div>
       <div id="predictContent" style="margin-top:16px"><div class="empty">Forecast a match, simulate the run-in, or calibrate the models against the season.</div></div>
     </section>
+
+    <!-- INFO -->
+    <section class="view" id="view-info">
+      <div class="controls">
+        <div class="field"><label>Search metrics</label><input id="infoSearch" placeholder="e.g. xGChain, Brier, PPDA…" style="min-width:300px" /></div>
+      </div>
+      <div class="hint" style="color:var(--muted);font-size:12px;">Every metric, derived metric, and projection the app shows — what it means and how to read it. Hover any highlighted metric anywhere in the app for the same explanation.</div>
+      <div id="infoContent"></div>
+    </section>
   </main>
+
+  <div id="tooltip" class="tooltip"></div>
 
   <footer>
     Unofficial project · data: <a href="https://understat.com" target="_blank" rel="noopener">Understat</a> ·

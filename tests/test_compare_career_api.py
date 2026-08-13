@@ -189,6 +189,56 @@ class CareerTestCase(unittest.IsolatedAsyncioTestCase):
         _, _, start, end = self.fake.league_table_calls[-1]
         self.assertEqual((start, end), ("2026-04-01", None))
 
+    async def test_glossary_endpoint_exposes_explanations(self):
+        response = await self.client.get("/api/v1/glossary")
+
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertGreaterEqual(len(body["groups"]), 5)
+        self.assertIn("xG", body["by_key"])
+        entry = body["by_key"]["xG"]
+        self.assertIn("label", entry)
+        self.assertIn("long", entry)
+        self.assertIn("brier", body["by_key"])
+        self.assertIn("champion", body["by_key"])
+
+    async def test_team_timeline_monthly_aggregation(self):
+        async def fake_history(team_name, season, league_name="EPL"):
+            return {
+                "1": {"date": f"{season}-08-10 15:00:00", "xG": 2.0, "xGA": 0.5, "npxGD": 1.5,
+                      "scored": 3, "missed": 1, "pts": 3, "xpts": 2.6, "wins": 1, "draws": 0, "loses": 0,
+                      "ppda": {"att": 200, "def": 20}, "ppda_allowed": {"att": 150, "def": 15},
+                      "deep": 10, "deep_allowed": 4, "h_a": "h"},
+                "2": {"date": f"{season}-08-20 15:00:00", "xG": 1.0, "xGA": 1.0, "npxGD": 0.0,
+                      "scored": 1, "missed": 1, "pts": 1, "xpts": 1.0, "wins": 0, "draws": 1, "loses": 0,
+                      "ppda": {"att": 180, "def": 30}, "ppda_allowed": {"att": 170, "def": 25},
+                      "deep": 5, "deep_allowed": 6, "h_a": "a"},
+                "3": {"date": f"{season}-09-05 15:00:00", "xG": 0.5, "xGA": 2.0, "npxGD": -1.5,
+                      "scored": 0, "missed": 2, "pts": 0, "xpts": 0.3, "wins": 0, "draws": 0, "loses": 1,
+                      "ppda": {"att": 190, "def": 19}, "ppda_allowed": {"att": 160, "def": 16},
+                      "deep": 3, "deep_allowed": 8, "h_a": "h"},
+            }
+
+        self.fake.get_team_history = fake_history
+        response = await self.client.post(
+            "/api/v1/analyze/team/timeline",
+            json={"team_name": "Team A", "league_name": "EPL", "seasons": [2024, 2025]},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual([s["season"] for s in body["seasons"]], [2024, 2025])
+        season_2024 = body["seasons"][0]
+        self.assertEqual(len(season_2024["months"]), 2)
+        august = season_2024["months"][0]
+        self.assertEqual(august["month"], "2024-08")
+        self.assertEqual(august["matches"], 2)
+        self.assertEqual(august["points"], 4)
+        self.assertEqual(august["goals"], 4)
+        self.assertAlmostEqual(august["xG_per_game"], 1.5, places=2)
+        self.assertAlmostEqual(august["g_minus_xg"], 1.0, places=2)
+        self.assertAlmostEqual(august["ppda"], 10.0, places=2)
+
 
 if __name__ == "__main__":
     unittest.main()

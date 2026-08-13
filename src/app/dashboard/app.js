@@ -22,6 +22,65 @@ function errored(node, msg) { node.innerHTML = `<div class="error">${msg}</div>`
 
 const LEAGUE_LABEL = { EPL: "EPL", La_liga: "La Liga", Serie_A: "Serie A", Ligue_1: "Ligue 1" };
 
+// ---------- glossary / explanations ----------
+let GLOSSARY = {};
+(async () => {
+  try {
+    const d = await api("/api/v1/glossary", null, "GET");
+    GLOSSARY = d.by_key || {};
+    window.__GLOSSARY_GROUPS__ = d.groups || [];
+    if (state.tab === "info") renderInfo();
+  } catch (_) { /* info degrades gracefully */ }
+})();
+
+function term(key, fallback) {
+  const entry = GLOSSARY[key];
+  const label = entry ? entry.label : fallback || key;
+  return `<span class="term" data-term="${key}">${label}</span>`;
+}
+
+const tooltipEl = document.getElementById("tooltip");
+document.addEventListener("mouseover", (e) => {
+  const t = e.target.closest(".term");
+  if (!t) return;
+  const entry = GLOSSARY[t.dataset.term];
+  if (!entry) return;
+  tooltipEl.innerHTML = `<strong>${entry.label}</strong><br>${entry.short}<br><span class="tt-long">${entry.long}</span>`;
+  tooltipEl.classList.add("show");
+});
+document.addEventListener("mousemove", (e) => {
+  if (!tooltipEl.classList.contains("show")) return;
+  const w = tooltipEl.offsetWidth, h = tooltipEl.offsetHeight;
+  let x = e.clientX + 14, y = e.clientY + 14;
+  if (x + w > window.innerWidth - 8) x = e.clientX - w - 12;
+  if (y + h > window.innerHeight - 8) y = e.clientY - h - 12;
+  tooltipEl.style.left = `${Math.max(8, x)}px`;
+  tooltipEl.style.top = `${Math.max(8, y)}px`;
+});
+document.addEventListener("mouseout", (e) => {
+  if (e.target.closest(".term")) tooltipEl.classList.remove("show");
+});
+
+function renderInfo() {
+  const node = document.getElementById("infoContent");
+  if (!node) return;
+  const query = (document.getElementById("infoSearch").value || "").trim().toLowerCase();
+  const groups = window.__GLOSSARY_GROUPS__ || [];
+  node.innerHTML = groups.map((g) => {
+    const entries = g.entries.filter((en) =>
+      !query || en.label.toLowerCase().includes(query) || en.key.toLowerCase().includes(query)
+        || en.short.toLowerCase().includes(query) || en.long.toLowerCase().includes(query)
+    );
+    if (!entries.length) return "";
+    return `<div class="card" style="margin-top:16px"><h3>${g.group}</h3>
+      ${entries.map((en) => `<div class="gloss"><div class="gloss-label">${en.label}</div>
+        <div class="gloss-short">${en.short}</div>
+        <div class="gloss-long">${en.long}</div></div>`).join("")}
+    </div>`;
+  }).join("") || `<div class="empty">No metrics match "${query}".</div>`;
+}
+document.getElementById("infoSearch").addEventListener("input", renderInfo);
+
 // ---------- tabs & league ----------
 document.getElementById("tabs").addEventListener("click", (e) => {
   const btn = e.target.closest("button[data-tab]");
@@ -29,6 +88,7 @@ document.getElementById("tabs").addEventListener("click", (e) => {
   state.tab = btn.dataset.tab;
   document.querySelectorAll("nav.tabs button").forEach((b) => b.classList.toggle("active", b === btn));
   document.querySelectorAll("section.view").forEach((s) => s.classList.toggle("active", s.id === `view-${state.tab}`));
+  if (state.tab === "info") renderInfo();
 });
 document.getElementById("leaguePicker").addEventListener("click", (e) => {
   const btn = e.target.closest("button[data-league]");
@@ -77,49 +137,97 @@ async function runCareer() {
 function renderCareer(node, d) {
   clear(node);
   const present = d.seasons.filter((s) => s.present);
+  const latest = present[present.length - 1];
   node.innerHTML = `
     <div class="card"><h3>Career trajectory · ${d.player_name} · ${LEAGUE_LABEL[d.league_name] || d.league_name}</h3>
+      <div class="controls">
+        <div class="field"><label>Chart metric</label>
+          <select id="careerMetric">
+            <option value="xGChain_per90">${term("xG_chain")} /90</option>
+            <option value="xGBuildup_per90">${term("xG_buildup")} /90</option>
+            <option value="goal_involvement_per90">${term("goal_involvement")} /90</option>
+            <option value="xG_per90">${term("xG")} /90</option>
+            <option value="goals_per90">${term("goals")} /90</option>
+            <option value="xG_per_shot">${term("xG_per_shot")}</option>
+            <option value="conversion">${term("conversion")}</option>
+            <option value="shots_per90">${term("shots")} /90</option>
+            <option value="key_passes_per90">${term("key_passes")} /90</option>
+          </select>
+        </div>
+      </div>
       <div id="careerChart"></div>
-      <div class="hint">xGChain / xGBuildup per 90 by season — the honest way to read impact across minute loads.</div>
+      <div class="hint">Hover any highlighted metric for what it means. Per-90 rates are the fair cross-season comparison.</div>
     </div>
     <div class="card" style="margin-top:16px"><h3>Season by season</h3>
-      <table><thead><tr><th>Season</th><th>Team</th><th>Pos</th><th class="num">Games</th><th class="num">Min</th><th class="num">G</th><th class="num">xG</th><th class="num">NP xG</th><th class="num">A</th><th class="num">xA</th><th class="num">Chain/90</th><th class="num">Buildup/90</th></tr></thead><tbody>
+      <table><thead><tr><th>Season</th><th>Team</th><th>Pos</th><th class="num">Games</th><th class="num">Min</th><th class="num">${term("goals")}</th><th class="num">${term("xG")}</th><th class="num">${term("npxG")}</th><th class="num">${term("assists")}</th><th class="num">${term("xA")}</th><th class="num">${term("shots")}</th><th class="num">${term("xG_per_shot")}</th><th class="num">${term("conversion")}</th><th class="num">${term("goal_involvement")}/90</th><th class="num">${term("cards")}</th></tr></thead><tbody>
         ${d.seasons.map((s, i) => {
-          if (!s.present) return `<tr><td>${s.season}</td><td colspan=11 style="color:var(--muted)">— not in this league that season</td></tr>`;
+          if (!s.present) return `<tr><td>${s.season}</td><td colspan=14 style="color:var(--muted)">— not in this league that season</td></tr>`;
           const changed = i > 0 && d.seasons[i - 1].present && d.seasons[i - 1].team !== s.team;
           return `<tr><td>${s.season}</td><td>${s.team}${changed ? ' <span class="badge good">new team</span>' : ""}</td><td>${s.position_group || "—"}</td>
             <td class="num">${fmt(s.games, 0)}</td><td class="num">${fmt(s.minutes, 0)}</td>
             <td class="num">${fmt(s.goals, 0)}</td><td class="num">${fmt(s.xG)}</td><td class="num">${fmt(s.npxG)}</td>
             <td class="num">${fmt(s.assists, 0)}</td><td class="num">${fmt(s.xA)}</td>
-            <td class="num">${fmt(s.xGChain_per90, 3)}</td><td class="num">${fmt(s.xGBuildup_per90, 3)}</td></tr>`;
+            <td class="num">${fmt(s.shots, 0)}</td><td class="num">${fmt(s.xG_per_shot, 3)}</td><td class="num">${fmt(s.conversion, 3)}</td>
+            <td class="num">${fmt(s.goal_involvement_per90, 3)}</td>
+            <td class="num">${fmt(s.yellow_cards, 0)}y / ${fmt(s.red_cards, 0)}r</td></tr>`;
         }).join("")}
       </tbody></table>
       ${d.team_changes.length ? `<div class="hint">Team changes: ${d.team_changes.map((c) => `${c.season}: ${c.from} → ${c.to}`).join(" · ")}</div>` : ""}
     </div>
+    ${latest && latest.shot_profile ? `
+    <div class="grid cols-2" style="margin-top:16px">
+      <div class="card"><h3>${term("situations")} · ${latest.season}</h3>${shareBars(latest.shot_profile.situations)}</div>
+      <div class="card"><h3>${term("shot_zones")} · ${latest.season}</h3>${shareBars(latest.shot_profile.zones)}</div>
+    </div>
+    <div class="grid cols-2" style="margin-top:16px">
+      <div class="card"><h3>${term("shot_types")} · ${latest.season}</h3>${shareBars(latest.shot_profile.types)}</div>
+      <div class="card"><h3>${term("starter_sub")} · ${latest.season}</h3>${roleSplit(latest.role_split)}</div>
+    </div>` : ""}
     <div class="caveat"><strong>Interpretation.</strong> ${d.interpretation}<ul>${d.limitations.map((l) => `<li>${l}</li>`).join("")}</ul></div>
   `;
-  drawCareerChart("careerChart", d.seasons.filter((s) => s.present));
+  const draw = () => drawCareerChart("careerChart", present, $("careerMetric").value);
+  $("careerMetric").addEventListener("change", draw);
+  draw();
 }
 
-function drawCareerChart(container, rows) {
+function shareBars(rows) {
+  if (!rows || !rows.length) return `<div class="empty">No shot-profile data.</div>`;
+  return rows.map((r) => `
+    <div class="bar-row">
+      <span class="bar-label">${r.name}</span>
+      <div class="bar-track"><div class="bar-fill" style="width:${Math.max(2, r.xG_share * 100)}%"></div></div>
+      <span class="bar-val">${Math.round(r.xG_share * 100)}% of xG · ${fmt(r.goals, 0)} G / ${fmt(r.shots, 0)} shots</span>
+    </div>`).join("");
+}
+
+function roleSplit(roles) {
+  if (!roles || !roles.length) return `<div class="empty">No role data.</div>`;
+  const total = roles.reduce((a, r) => a + r.minutes, 0) || 1;
+  return roles.map((r) => `
+    <div class="bar-row">
+      <span class="bar-label">${r.role}</span>
+      <div class="bar-track"><div class="bar-fill green" style="width:${Math.max(2, (r.minutes / total) * 100)}%"></div></div>
+      <span class="bar-val">${fmt(r.minutes, 0)} min (${Math.round((r.minutes / total) * 100)}%) · ${fmt(r.games, 0)} games</span>
+    </div>`).join("");
+}
+
+function drawCareerChart(container, rows, metricKey) {
   const el = document.getElementById(container);
   if (!el) return;
   if (rows.length < 2) { el.innerHTML = `<div class="empty">Not enough seasons present for a trajectory chart.</div>`; return; }
   const w = 1100, h = 260, pad = 34, x0 = pad, x1 = w - pad, y0 = 18, y1 = h - 30;
-  const seasons = rows.map((r) => r.season);
-  const chain = rows.map((r) => r.xGChain_per90);
-  const buildup = rows.map((r) => r.xGBuildup_per90);
-  const allMax = Math.max(...chain, ...buildup, 0.001);
+  const vals = rows.map((r) => Number(r[metricKey]) || 0);
+  const allMax = Math.max(...vals, 0.001);
   const x = (i) => x0 + (i * (x1 - x0)) / Math.max(rows.length - 1, 1);
   const y = (v) => y1 - (v / allMax) * (y1 - y0);
-  const path = (vals, color) => vals.map((v, i) => `${i ? "L" : "M"}${x(i)},${y(v)}`).join(" ");
-  const dots = (vals, color) => vals.map((v, i) => `<circle cx="${x(i)}" cy="${y(v)}" r="3.5" fill="${color}"/>`).join("");
+  const path = vals.map((v, i) => `${i ? "L" : "M"}${x(i)},${y(v)}`).join(" ");
+  const dots = vals.map((v, i) => `<circle cx="${x(i)}" cy="${y(v)}" r="3.5" fill="#4ea1ff"><title>${rows[i].season}: ${fmt(v, 3)}</title></circle>`).join("");
   const labels = rows.map((r, i) => `<text x="${x(i)}" y="${y1 + 16}" fill="#8a98a8" font-size="10" text-anchor="middle">${r.season}</text>`).join("");
+  const entry = GLOSSARY[metricKey] || {};
   el.innerHTML = `<svg class="timeline-svg" viewBox="0 0 ${w} ${h}">
-    <path d="${path(chain, "#4ea1ff")}" fill="none" stroke="#4ea1ff" stroke-width="2"/>${dots(chain, "#4ea1ff")}
-    <path d="${path(buildup, "#41d6a3")}" fill="none" stroke="#41d6a3" stroke-width="2"/>${dots(buildup, "#41d6a3")}
+    <path d="${path}" fill="none" stroke="#4ea1ff" stroke-width="2"/>${dots}
     ${labels}
-    <text x="${x0}" y="${y0}" fill="#8a98a8" font-size="10"><tspan fill="#4ea1ff">— xGChain/90</tspan>  <tspan fill="#41d6a3">— xGBuildup/90</tspan></text>
+    <text x="${x0}" y="${y0}" fill="#8a98a8" font-size="10">${entry.label || metricKey} by season</text>
   </svg>`;
 }
 
@@ -145,16 +253,16 @@ function renderPlayer(node, d) {
 }
 
 function per90Table(b) {
-  const rows = [["goals", "Goals"], ["xG", "xG"], ["npxG", "NP xG"], ["assists", "Assists"], ["xA", "xA"], ["shots", "Shots"], ["key_passes", "Key passes"], ["xGChain", "xG chain"], ["xGBuildup", "xG buildup"]];
-  return `<table><thead><tr><th></th><th class="num">Total</th><th class="num">Per 90</th></tr></thead><tbody>
-    ${rows.map(([k, lbl]) => `<tr><td>${lbl}</td><td class="num">${fmt(b.raw[k])}</td><td class="num">${fmt(b.per90[k], 3)}</td></tr>`).join("")}
+  const rows = [["goals", "goals"], ["xG", "xG"], ["npxG", "npxG"], ["assists", "assists"], ["xA", "xA"], ["shots", "shots"], ["key_passes", "key_passes"], ["xGChain", "xG_chain"], ["xGBuildup", "xG_buildup"]];
+  return `<table><thead><tr><th></th><th class="num">Total</th><th class="num">${term("per90")}</th></tr></thead><tbody>
+    ${rows.map(([k, gk]) => `<tr><td>${term(gk)}</td><td class="num">${fmt(b.raw[k])}</td><td class="num">${fmt(b.per90[k], 3)}</td></tr>`).join("")}
   </tbody></table><div class="hint">${fmt(b.minutes, 0)} minutes over ${fmt(b.games, 0)} games · ${b.position_group || b.position || "—"}</div>`;
 }
 
 function involvement(i) {
   return `<div class="kv">
-    <span class="k">xGChain</span><span class="v">${fmt(i.xGChain)} · ${fmt(i.xGChain_per90, 3)}/90</span>
-    <span class="k">xGBuildup</span><span class="v">${fmt(i.xGBuildup)} · ${fmt(i.xGBuildup_per90, 3)}/90</span>
+    <span class="k">${term("xG_chain")}</span><span class="v">${fmt(i.xGChain)} · ${fmt(i.xGChain_per90, 3)}/90</span>
+    <span class="k">${term("xG_buildup")}</span><span class="v">${fmt(i.xGBuildup)} · ${fmt(i.xGBuildup_per90, 3)}/90</span>
     <span class="k">Buildup share of chain</span><span class="v">${i.buildup_share_of_chain == null ? "N/A" : fmt(i.buildup_share_of_chain, 3)}</span>
   </div><div class="hint">High buildup-vs-chain = pure deep creator; low = shot/assist-involving finisher.</div>`;
 }
@@ -163,18 +271,18 @@ function finishing(f) {
   const ci = f.g_minus_xg_ci95 ? `${f.g_minus_xg_ci95.low} to ${f.g_minus_xg_ci95.high}` : "N/A";
   const cls = f.g_minus_xg > 0 ? "good" : f.g_minus_xg < 0 ? "bad" : "";
   return `<div class="kv">
-    <span class="k">Goals</span><span class="v">${fmt(f.goals, 0)}</span>
-    <span class="k">xG</span><span class="v">${fmt(f.xG)}</span>
-    <span class="k">G − xG</span><span class="v"><span class="badge ${cls}">${f.g_minus_xg >= 0 ? "+" : ""}${fmt(f.g_minus_xg)}</span></span>
+    <span class="k">${term("goals")}</span><span class="v">${fmt(f.goals, 0)}</span>
+    <span class="k">${term("xG")}</span><span class="v">${fmt(f.xG)}</span>
+    <span class="k">${term("g_minus_xg")}</span><span class="v"><span class="badge ${cls}">${f.g_minus_xg >= 0 ? "+" : ""}${fmt(f.g_minus_xg)}</span></span>
     <span class="k">Std error</span><span class="v">± ${fmt(f.g_minus_xg_std_error)}</span>
-    <span class="k">95% CI</span><span class="v">${ci}</span>
+    <span class="k">${term("finishing_ci")}</span><span class="v">${ci}</span>
   </div><div class="hint">${f.interpretation}</div>`;
 }
 
 function shotSelection(s) {
   return `<div class="kv">
-    <span class="k">Shots</span><span class="v">${fmt(s.shots, 0)} · ${fmt(s.shots_per90, 2)}/90</span>
-    <span class="k">xG per shot</span><span class="v">${s.xG_per_shot == null ? "N/A" : fmt(s.xG_per_shot, 4)}</span>
+    <span class="k">${term("shots")}</span><span class="v">${fmt(s.shots, 0)} · ${fmt(s.shots_per90, 2)}/90</span>
+    <span class="k">${term("xG_per_shot")}</span><span class="v">${s.xG_per_shot == null ? "N/A" : fmt(s.xG_per_shot, 4)}</span>
     <span class="k">NP xG per shot</span><span class="v">${s.npxG_per_shot == null ? "N/A" : fmt(s.npxG_per_shot, 4)}</span>
   </div><div class="hint">${s.interpretation}</div>`;
 }
@@ -215,6 +323,7 @@ function drawRadar(container, profile) {
 
 // ---------- TEAM ----------
 $("teamGo").addEventListener("click", runTeam);
+$("teamTimelineGo").addEventListener("click", runTeamTimeline);
 async function runTeam() {
   const name = $("teamName").value.trim(); if (!name) return;
   const node = $("teamContent"); loading(node);
@@ -225,6 +334,81 @@ async function runTeam() {
     });
     renderTeam(node, d);
   } catch (e) { errored(node, e.message); }
+}
+async function runTeamTimeline() {
+  const name = $("teamName").value.trim(); if (!name) return;
+  const node = $("teamContent"); loading(node);
+  try {
+    const d = await api("/api/v1/analyze/team/timeline", {
+      team_name: name, league_name: state.league, season_end: seasonOf("teamSeason"),
+    });
+    renderTeamTimeline(node, d);
+  } catch (e) { errored(node, e.message); }
+}
+
+function renderTeamTimeline(node, d) {
+  const months = d.seasons.flatMap((s) => s.months.map((m) => ({ ...m, season: s.season })));
+  clear(node);
+  node.innerHTML = `
+    <div class="card"><h3>Monthly timeline · ${d.team_name} · ${d.seasons.map((s) => s.season).join(" & ")}</h3>
+      <div class="controls">
+        <div class="field"><label>Chart metric</label>
+          <select id="timelineMetric">
+            <option value="xG_per_game">${term("xG")} / game</option>
+            <option value="xGA_per_game">${term("xGA")} / game</option>
+            <option value="npxGD_per_game">${term("npxgd")} / game</option>
+            <option value="points_per_game">Points / game</option>
+            <option value="ppda">${term("ppda")}</option>
+            <option value="oppda">${term("oppda")}</option>
+            <option value="g_minus_xg">${term("g_minus_xg")} (month)</option>
+            <option value="deep">${term("deep")} (month)</option>
+          </select>
+        </div>
+      </div>
+      <div id="timelineChart"></div>
+      <div class="hint">Months are not equal (fixture counts differ) — per-game and aggregate metrics are marked as such.</div>
+    </div>
+    ${d.seasons.map((s) => `
+    <div class="card" style="margin-top:16px"><h3>${s.season} · monthly table (${s.n_matches} matches)</h3>
+      <table><thead><tr><th>Month</th><th class="num">M</th><th class="num">W/D/L</th><th class="num">Pts</th><th class="num">Pts/g</th><th class="num">${term("goals")}</th><th class="num">${term("xG")}</th><th class="num">${term("xGA")}</th><th class="num">${term("npxgd")}/g</th><th class="num">${term("g_minus_xg")}</th><th class="num">${term("xpts")}</th><th class="num">${term("ppda")}</th><th class="num">${term("deep")}</th></tr></thead><tbody>
+        ${s.months.map((m) => `<tr><td>${m.month}</td><td class="num">${m.matches}</td><td class="num">${m.wins}-${m.draws}-${m.loses}</td>
+          <td class="num">${m.points}</td><td class="num">${fmt(m.points_per_game)}</td>
+          <td class="num">${m.goals}-${m.goals_against}</td><td class="num">${fmt(m.xG)}</td><td class="num">${fmt(m.xGA)}</td>
+          <td class="num">${m.npxGD_per_game >= 0 ? "+" : ""}${fmt(m.npxGD_per_game)}</td>
+          <td class="num">${m.g_minus_xg >= 0 ? "+" : ""}${fmt(m.g_minus_xg)}</td>
+          <td class="num">${fmt(m.xpts)}</td><td class="num">${fmt(m.ppda)}</td><td class="num">${m.deep} / ${m.deep_allowed}</td></tr>`).join("")}
+      </tbody></table></div>`).join("")}
+    <div class="caveat"><strong>Interpretation.</strong> ${d.interpretation}<ul>${d.limitations.map((l) => `<li>${l}</li>`).join("")}</ul></div>
+  `;
+  const draw = () => drawTimelineChart("timelineChart", months, $("timelineMetric").value);
+  $("timelineMetric").addEventListener("change", draw);
+  draw();
+}
+
+function drawTimelineChart(container, months, metricKey) {
+  const el = document.getElementById(container);
+  if (!el) return;
+  if (months.length < 2) { el.innerHTML = `<div class="empty">Not enough monthly data.</div>`; return; }
+  const w = 1100, h = 260, pad = 40, x0 = pad, x1 = w - pad, y0 = 18, y1 = h - 30;
+  const vals = months.map((m) => Number(m[metricKey]) || 0);
+  const allMax = Math.max(...vals.map(Math.abs), 0.001);
+  const mid = metricKey.includes("g_minus") || metricKey.includes("npxGD") ? 0 : null;
+  const lo = mid === 0 ? -allMax : 0;
+  const hi = allMax;
+  const x = (i) => x0 + (i * (x1 - x0)) / Math.max(months.length - 1, 1);
+  const y = (v) => y1 - ((v - lo) / (hi - lo)) * (y1 - y0);
+  const color = (m) => (m.season === months[months.length - 1].season ? "#4ea1ff" : "#6b7c8f");
+  const path = months.map((m, i) => `${i ? "L" : "M"}${x(i)},${y(Number(m[metricKey]) || 0)}`).join(" ");
+  const dots = months.map((m, i) => `<circle cx="${x(i)}" cy="${y(Number(m[metricKey]) || 0)}" r="3.5" fill="${color(m)}"><title>${m.month} (${m.season}): ${fmt(m[metricKey], 2)}</title></circle>`).join("");
+  const labels = months.map((m, i) => `<text x="${x(i)}" y="${y1 + 16}" fill="#8a98a8" font-size="9" text-anchor="middle" transform="rotate(-30 ${x(i)} ${y1 + 16})">${m.month.slice(5)}</text>`).join("");
+  const zero = mid === 0 ? y(0) : null;
+  const entry = GLOSSARY[metricKey] || {};
+  el.innerHTML = `<svg class="timeline-svg" viewBox="0 0 ${w} ${h}">
+    ${zero !== null ? `<line x1="${x0}" y1="${zero}" x2="${x1}" y2="${zero}" stroke="#243040" stroke-dasharray="3 4"/>` : ""}
+    <path d="${path}" fill="none" stroke="#4ea1ff" stroke-width="2"/>${dots}
+    ${labels}
+    <text x="${x0}" y="${y0}" fill="#8a98a8" font-size="10">${entry.label || metricKey} · <tspan fill="#6b7c8f">grey = older season</tspan></text>
+  </svg>`;
 }
 
 function renderTeam(node, d) {
@@ -245,19 +429,19 @@ function renderTeam(node, d) {
 
 function styleKv(s) {
   return `<div class="kv">
-    <span class="k">xG / game</span><span class="v">${fmt(s.xG_per_game)}</span>
+    <span class="k">${term("xG")} / game</span><span class="v">${fmt(s.xG_per_game)}</span>
     <span class="k">xGA / game</span><span class="v">${fmt(s.xGA_per_game)}</span>
     <span class="k">xG diff / game</span><span class="v">${fmt(s.xG_diff_per_game)}</span>
-    <span class="k">NP xGD</span><span class="v">${fmt(s.npxGD)}</span>
-    <span class="k">PPDA</span><span class="v">${fmt(s.PPDA)} · opp ${fmt(s.OPPDA)}</span>
-    <span class="k">Deep completions</span><span class="v">${s.deep_completions} / allowed ${s.deep_completions_allowed}</span>
-    <span class="k">xPTS</span><span class="v">${fmt(s.xPTS)}</span>
+    <span class="k">${term("npxgd")}</span><span class="v">${fmt(s.npxGD)}</span>
+    <span class="k">${term("ppda")}</span><span class="v">${fmt(s.PPDA)} · ${term("oppda")} ${fmt(s.OPPDA)}</span>
+    <span class="k">${term("deep")}</span><span class="v">${s.deep_completions} / allowed ${s.deep_completions_allowed}</span>
+    <span class="k">${term("xpts")}</span><span class="v">${fmt(s.xPTS)}</span>
   </div><div class="hint">${s.interpretation}</div>`;
 }
 function ppdaKv(p) {
   return `<div class="kv">
-    <span class="k">PPDA home</span><span class="v">${fmt(p.ppda_home)} (${p.matches_home} m)</span>
-    <span class="k">PPDA away</span><span class="v">${fmt(p.ppda_away)} (${p.matches_away} m)</span>
+    <span class="k">${term("ppda")} home</span><span class="v">${fmt(p.ppda_home)} (${p.matches_home} m)</span>
+    <span class="k">${term("ppda")} away</span><span class="v">${fmt(p.ppda_away)} (${p.matches_away} m)</span>
   </div><div class="hint">${p.interpretation || ""}</div>`;
 }
 function drawFormChartDeferred() {} // noop placeholder so the template literal ordering is stable
@@ -297,43 +481,43 @@ function renderLeague(node, d) {
   clear(node);
   node.innerHTML = `
     <div class="grid cols-2">
-      <div class="card"><h3>xPTS "is-lying" · biggest over/under</h3>
-        <table><thead><tr><th>Team</th><th class="num">PTS</th><th class="num">xPTS</th><th class="num">Gap</th></tr></thead><tbody>
+      <div class="card"><h3>${term("is_lying")} · biggest over/under</h3>
+        <table><thead><tr><th>Team</th><th class="num">PTS</th><th class="num">${term("xpts")}</th><th class="num">Gap</th></tr></thead><tbody>
           ${[lying.biggest_overperformer, lying.biggest_underperformer].filter(Boolean).map((r) => `<tr><td>${r.team}</td><td class="num">${r.points}</td><td class="num">${fmt(r.xPTS)}</td><td class="num">${gap(r.xPTS_gap)}</td></tr>`).join("")}
         </tbody></table>
       </div>
-      <div class="card"><h3>Finishing & defensive variance</h3>${varianceBlock(d.variance)}</div>
+      <div class="card"><h3>${term("variance")}</h3>${varianceBlock(d.variance)}</div>
     </div>
     <div class="card" style="margin-top:16px"><h3>Full "is-lying" table · ${LEAGUE_LABEL[state.league] || state.league}</h3>${isLyingTable(lying)}</div>
     <div class="grid cols-2" style="margin-top:16px">
-      <div class="card"><h3>PPDA ranking (low = intense press)</h3>${ppdaTable(d.ppda_ranking)}</div>
-      <div class="card"><h3>League pace</h3>${paceBlock(d.pace)}</div>
+      <div class="card"><h3>${term("ppda")} ranking (low = intense press)</h3>${ppdaTable(d.ppda_ranking)}</div>
+      <div class="card"><h3>${term("pace")}</h3>${paceBlock(d.pace)}</div>
     </div>
     <div class="caveat"><strong>Limitations.</strong><ul>${d.limitations.map((l) => `<li>${l}</li>`).join("")}</ul></div>
   `;
 }
 function gap(v) { return `<span class="badge ${v > 0 ? "good" : v < 0 ? "bad" : ""}">${v >= 0 ? "+" : ""}${fmt(v)}</span>`; }
 function isLyingTable(lying) {
-  return `<table><thead><tr><th>Team</th><th class="num">PTS</th><th class="num">xPTS</th><th class="num">Gap</th><th class="num">G−xG</th><th class="num">xGA−GA</th></tr></thead><tbody>
+  return `<table><thead><tr><th>Team</th><th class="num">PTS</th><th class="num">${term("xpts")}</th><th class="num">Gap</th><th class="num">${term("g_minus_xg")}</th><th class="num">xGA−GA</th></tr></thead><tbody>
     ${lying.rows.map((r) => `<tr><td>${r.team}</td><td class="num">${r.points}</td><td class="num">${fmt(r.xPTS)}</td><td class="num">${gap(r.xPTS_gap)}</td><td class="num">${fmt(r.g_minus_xg)}</td><td class="num">${fmt(r.xga_minus_ga)}</td></tr>`).join("")}
   </tbody></table>`;
 }
 function varianceBlock(v) {
   const f = v.finishing_variance, d = v.defensive_variance;
   return `<div class="kv">
-    <span class="k">Mean G−xG</span><span class="v">${fmt(f.mean_g_minus_xg)}</span>
-    <span class="k">Stdev G−xG</span><span class="v">${fmt(f.stdev_g_minus_xg)}</span>
+    <span class="k">Mean ${term("g_minus_xg")}</span><span class="v">${fmt(f.mean_g_minus_xg)}</span>
+    <span class="k">Stdev ${term("g_minus_xg")}</span><span class="v">${fmt(f.stdev_g_minus_xg)}</span>
     <span class="k">Mean xGA−GA</span><span class="v">${fmt(d.mean_xga_minus_ga)}</span>
     <span class="k">Stdev xGA−GA</span><span class="v">${fmt(d.stdev_xga_minus_ga)}</span>
   </div><div class="hint">${v.interpretation}</div>`;
 }
 function ppdaTable(p) {
-  return `<table><thead><tr><th>Team</th><th class="num">PPDA</th><th class="num">OPPDA</th><th class="num">DC</th><th class="num">DC allowed</th></tr></thead><tbody>
+  return `<table><thead><tr><th>Team</th><th class="num">${term("ppda")}</th><th class="num">${term("oppda")}</th><th class="num">${term("deep")}</th><th class="num">DC allowed</th></tr></thead><tbody>
     ${p.ranking.map((r) => `<tr><td>${r.team}</td><td class="num">${fmt(r.PPDA)}</td><td class="num">${fmt(r.OPPDA)}</td><td class="num">${r.deep_completions}</td><td class="num">${r.deep_completions_allowed}</td></tr>`).join("")}
   </tbody></table><div class="hint">${p.interpretation}</div>`;
 }
 function paceBlock(p) {
-  return `<div class="kv"><span class="k">xG / game</span><span class="v">${fmt(p.xG_per_game)}</span><span class="k">xGA / game</span><span class="v">${fmt(p.xGA_per_game)}</span><span class="k">Matches</span><span class="v">${p.matches}</span></div><div class="hint">${p.interpretation}</div>`;
+  return `<div class="kv"><span class="k">${term("xG")} / game</span><span class="v">${fmt(p.xG_per_game)}</span><span class="k">xGA / game</span><span class="v">${fmt(p.xGA_per_game)}</span><span class="k">Matches</span><span class="v">${p.matches}</span></div><div class="hint">${p.interpretation}</div>`;
 }
 
 // ---------- MATCH ----------
@@ -495,9 +679,9 @@ function renderComparePlayers(node, d, nameA, nameB) {
 }
 
 function comparePer90(pa, pb) {
-  const rows = [["goals", "Goals"], ["xG", "xG"], ["npxG", "NP xG"], ["assists", "Assists"], ["xA", "xA"], ["shots", "Shots"], ["key_passes", "Key passes"]];
+  const rows = [["goals", "goals"], ["xG", "xG"], ["npxG", "npxG"], ["assists", "assists"], ["xA", "xA"], ["shots", "shots"], ["key_passes", "key_passes"]];
   return `<table><thead><tr><th></th><th class="num">${pa.player.name}</th><th class="num">${pb.player.name}</th></tr></thead><tbody>
-    ${rows.map(([k, lbl]) => `<tr><td>${lbl}</td><td class="num">${fmt(pa.per90_breakdown.per90[k], 3)}</td><td class="num">${fmt(pb.per90_breakdown.per90[k], 3)}</td></tr>`).join("")}
+    ${rows.map(([k, gk]) => `<tr><td>${term(gk)}</td><td class="num">${fmt(pa.per90_breakdown.per90[k], 3)}</td><td class="num">${fmt(pb.per90_breakdown.per90[k], 3)}</td></tr>`).join("")}
   </tbody></table>
   <div class="hint">${pa.player.name}: ${fmt(pa.per90_breakdown.minutes, 0)} min · ${pb.player.name}: ${fmt(pb.per90_breakdown.minutes, 0)} min</div>`;
 }
@@ -505,9 +689,9 @@ function comparePer90(pa, pb) {
 function compareInvolvement(pa, pb) {
   const i1 = pa.involvement_profile, i2 = pb.involvement_profile;
   return `<div class="kv">
-    <span class="k">xGChain</span><span class="v">${pa.player.name}: ${fmt(i1.xGChain)} · ${fmt(i1.xGChain_per90, 3)}/90</span>
+    <span class="k">${term("xG_chain")}</span><span class="v">${pa.player.name}: ${fmt(i1.xGChain)} · ${fmt(i1.xGChain_per90, 3)}/90</span>
     <span class="k"></span><span class="v">${pb.player.name}: ${fmt(i2.xGChain)} · ${fmt(i2.xGChain_per90, 3)}/90</span>
-    <span class="k">xGBuildup</span><span class="v">${pa.player.name}: ${fmt(i1.xGBuildup)} · ${fmt(i1.xGBuildup_per90, 3)}/90</span>
+    <span class="k">${term("xG_buildup")}</span><span class="v">${pa.player.name}: ${fmt(i1.xGBuildup)} · ${fmt(i1.xGBuildup_per90, 3)}/90</span>
     <span class="k"></span><span class="v">${pb.player.name}: ${fmt(i2.xGBuildup)} · ${fmt(i2.xGBuildup_per90, 3)}/90</span>
   </div>`;
 }
@@ -515,7 +699,7 @@ function compareInvolvement(pa, pb) {
 function compareFinishing(pa, pb) {
   const f1 = pa.finishing_overperformance, f2 = pb.finishing_overperformance;
   return `<div class="kv">
-    <span class="k">G − xG</span><span class="v">${pa.player.name}: <span class="badge ${f1.g_minus_xg > 0 ? "good" : f1.g_minus_xg < 0 ? "bad" : ""}">${f1.g_minus_xg >= 0 ? "+" : ""}${fmt(f1.g_minus_xg)}</span></span>
+    <span class="k">${term("g_minus_xg")}</span><span class="v">${pa.player.name}: <span class="badge ${f1.g_minus_xg > 0 ? "good" : f1.g_minus_xg < 0 ? "bad" : ""}">${f1.g_minus_xg >= 0 ? "+" : ""}${fmt(f1.g_minus_xg)}</span></span>
     <span class="k"></span><span class="v">${pb.player.name}: <span class="badge ${f2.g_minus_xg > 0 ? "good" : f2.g_minus_xg < 0 ? "bad" : ""}">${f2.g_minus_xg >= 0 ? "+" : ""}${fmt(f2.g_minus_xg)}</span></span>
     <span class="k">± std error</span><span class="v">${fmt(f1.g_minus_xg_std_error)} vs ${fmt(f2.g_minus_xg_std_error)}</span>
   </div><div class="hint">${f1.interpretation}</div>`;
@@ -596,33 +780,86 @@ async function runPredict() {
 }
 
 function renderForecast(node, d) {
-  const dc = d.model.dixon_coles, el = d.model.elo;
+  const dc = d.model.dixon_coles, el = d.model.elo, ens = d.model.ensemble;
+  const adj = d.model.adjusted, adjLayers = d.model.adjustments, avail = d.model.availability;
   clear(node);
   node.innerHTML = `
     <div class="card">
       <h3>${d.match.home} vs ${d.match.away} · ${LEAGUE_LABEL[d.league_name] || d.league_name} ${d.season}</h3>
-      ${probBar(dc)}
-      <div class="prob-bar-labels"><span>home ${pct(dc.p_home)}</span><span>draw ${pct(dc.p_draw)}</span><span>away ${pct(dc.p_away)}</span></div>
+      ${probBar(adj)}
+      <div class="prob-bar-labels"><span>home ${pct(adj.p_home)}</span><span>draw ${pct(adj.p_draw)}</span><span>away ${pct(adj.p_away)}</span></div>
       <div class="kv">
-        <span class="k">Dixon-Coles expected goals</span><span class="v">${fmt(dc.lambda_home)} – ${fmt(dc.lambda_away)}</span>
-        <span class="k">Most likely scoreline</span><span class="v">${dc.most_likely_score[0]}–${dc.most_likely_score[1]} (${pct(dc.most_likely_score_prob)})</span>
-        <span class="k">Fit</span><span class="v">${dc.n_matches} matches · home adv ${fmt(dc.home_advantage)} · ρ ${fmt(dc.rho)}</span>
+        <span class="k">${term("lambda")} (adjusted)</span><span class="v">${fmt(adj.lambda_home)} – ${fmt(adj.lambda_away)}</span>
+        <span class="k">${term("most_likely_score")}</span><span class="v">${adj.most_likely_score[0]}–${adj.most_likely_score[1]} (${pct(dc.most_likely_score_prob)})</span>
+        <span class="k">Fit</span><span class="v">${dc.n_matches} matches · ${term("home_advantage")} ${fmt(dc.home_advantage)} · ρ ${fmt(dc.rho)}</span>
       </div>
     </div>
+    <div class="grid cols-3" style="margin-top:16px">
+      <div class="card"><h3>${term("dixon_coles")} (base)</h3>${miniProbs(dc)}<div class="hint">fit on ${dc.fit_on}, no adjustments</div></div>
+      <div class="card"><h3>${term("elo")}</h3>${miniProbs(el)}<div class="hint">results only · ${d.match.home} ${el.ratings[d.match.home] ?? "—"} vs ${d.match.away} ${el.ratings[d.match.away] ?? "—"}</div></div>
+      <div class="card"><h3>${term("ensemble")}</h3>${ens.available ? miniProbs(ens) + `<div class="hint">weight ${ens.weight} on Dixon-Coles</div>` : `<div class="empty">needs ≥40 played matches</div>`}</div>
+    </div>
     <div class="grid cols-2" style="margin-top:16px">
-      <div class="card"><h3>Scoreline probability matrix · home ↓ away →</h3>${scorelineMatrix(dc.scoreline_matrix)}</div>
-      <div class="card"><h3>Elo cross-check (results only)</h3>
-        ${probBar(el)}
-        <div class="prob-bar-labels"><span>home ${pct(el.p_home)}</span><span>draw ${pct(el.p_draw)}</span><span>away ${pct(el.p_away)}</span></div>
-        <div class="kv">
-          <span class="k">${d.match.home}</span><span class="v">${el.ratings[d.match.home] ?? "—"} Elo</span>
-          <span class="k">${d.match.away}</span><span class="v">${el.ratings[d.match.away] ?? "—"} Elo</span>
-        </div>
-        <div class="hint">Elo sees results only — a pure cross-check against the xG-fit model.</div>
-      </div>
+      <div class="card"><h3>${term("scoreline_matrix")} · home ↓ away →</h3>${scorelineMatrix(adj.scoreline_matrix || dc.scoreline_matrix)}</div>
+      <div class="card"><h3>${term("over_under")} & ${term("btts")}</h3>${marketsGrid(adj.derived)}</div>
+    </div>
+    <div class="grid cols-2" style="margin-top:16px">
+      <div class="card"><h3>${term("venue_factor")} & ${term("form_overlay")}</h3>${adjustmentKv(adjLayers)}</div>
+      <div class="card"><h3>${term("availability")}</h3>${availabilityBlock(avail)}</div>
     </div>
     <div class="caveat"><strong>Interpretation.</strong> ${d.interpretation}<ul>${d.limitations.map((l) => `<li>${l}</li>`).join("")}</ul></div>
   `;
+}
+
+function miniProbs(p) {
+  return `<div class="prob-bar small">
+    <div class="seg home" style="width:${p.p_home * 100}%">${Math.round(p.p_home * 100)}</div>
+    <div class="seg draw" style="width:${p.p_draw * 100}%">${Math.round(p.p_draw * 100)}</div>
+    <div class="seg away" style="width:${p.p_away * 100}%">${Math.round(p.p_away * 100)}</div>
+  </div>`;
+}
+
+function marketsGrid(derived) {
+  if (!derived) return `<div class="empty">No market probabilities.</div>`;
+  const ou = derived.over_under || {};
+  const rows = Object.entries(ou).map(([line, v]) => `
+    <div class="kv"><span class="k">Over ${line} / Under ${line}</span>
+    <span class="v">${pct(v.over)} / ${pct(v.under)}</span></div>`).join("");
+  return `<div class="kv">${rows}
+    <span class="k">${term("btts")}</span><span class="v">${pct(derived.both_teams_score)}</span>
+    <span class="k">${term("clean_sheet")} (home)</span><span class="v">${pct(derived.clean_sheet_home)}</span>
+    <span class="k">${term("clean_sheet")} (away)</span><span class="v">${pct(derived.clean_sheet_away)}</span>
+  </div>`;
+}
+
+function adjustmentKv(adjLayers) {
+  const venue = adjLayers.venue, form = adjLayers.form;
+  const venueRow = (team) => team && team.available
+    ? `<span class="k">${team.team} — ${term("venue_factor")}</span><span class="v">home ${fmt(team.home_xg_per_game)} xG/g vs away ${fmt(team.away_xg_per_game)} · factor <span class="badge ${team.factor >= 0 ? "good" : "bad"}">${team.factor >= 0 ? "+" : ""}${fmt(team.factor, 4)}</span></span>`
+    : `<span class="k">${team ? team.team : "?"} — venue</span><span class="v">insufficient data</span>`;
+  const formRow = (team) => team && team.available
+    ? `<span class="k">${team.team} — ${term("form_overlay")}</span><span class="v">recent 5: ${fmt(team.recent_xg_per_game)} xG/g vs season ${fmt(team.season_xg_per_game)} · factor <span class="badge ${team.factor >= 0 ? "good" : "bad"}">${team.factor >= 0 ? "+" : ""}${fmt(team.factor, 4)}</span></span>`
+    : `<span class="k">${team ? team.team : "?"} — form</span><span class="v">insufficient data</span>`;
+  return `<div class="kv">${venueRow(venue.home)}${venueRow(venue.away)}${formRow(form.home)}${formRow(form.away)}</div>`;
+}
+
+function availabilityBlock(avail) {
+  const card = (side, team) => {
+    if (!team) return "";
+    if (!team.available) return `<div class="kv"><span class="k">${side}</span><span class="v">${team.player}: not enough on/off-pitch data</span></div>`;
+    const down = team.multiplier < 1;
+    return `<div class="kv">
+      <span class="k">${side} key creator</span><span class="v">${team.player} (xGChain ${fmt(team.xGChain)})</span>
+      <span class="k">team xG/g with them</span><span class="v">${fmt(team.team_xG_per_game_with)} (${team.n_with} matches)</span>
+      <span class="k">team xG/g without</span><span class="v">${fmt(team.team_xG_per_game_without)} (${team.n_without} matches) <span class="badge ${down ? "bad" : "good"}">×${fmt(team.multiplier, 3)}</span></span>
+    </div>`;
+  };
+  const scenario = avail.scenario
+    ? `<div class="kv"><span class="k">If all listed creators are absent</span>
+        <span class="v">${pct(avail.scenario.p_home)} / ${pct(avail.scenario.p_draw)} / ${pct(avail.scenario.p_away)}</span></div>`
+    : "";
+  return `${card("home", avail.home)}${card("away", avail.away)}${scenario}
+    <div class="hint">With/without is the team's own xG per game in matches the player started vs missed — a conditional, not a claim about lineups.</div>`;
 }
 
 function probBar(p) {
@@ -667,33 +904,44 @@ function renderSim(node, d) {
   const teams = Object.keys(d.expected_points);
   const nTeams = teams.length;
   const posColor = (i) => (i < 4 ? "var(--accent-2)" : i < 6 ? "var(--accent)" : i >= nTeams - 3 ? "var(--danger)" : "#3a4a5c");
+  const finalGoals = d.expected_final_goals || {};
   clear(node);
   node.innerHTML = `
     <div class="card">
       <h3>Rest-of-season simulation · ${LEAGUE_LABEL[d.league_name] || d.league_name} ${d.season}</h3>
       <div class="kv">
-        <span class="k">State</span><span class="v">${d.n_played} played · ${d.n_remaining} remaining fixtures · ${d.n_sims} Monte-Carlo sims</span>
-        <span class="k">Model</span><span class="v">Dixon-Coles on ${d.model.fit_on} · home adv ${fmt(d.model.home_advantage)} · ρ ${fmt(d.model.rho)}</span>
+        <span class="k">State</span><span class="v">${d.n_played} played · ${d.n_remaining} remaining fixtures · ${d.n_sims} ${term("monte_carlo")} sims</span>
+        <span class="k">Model</span><span class="v">Dixon-Coles on ${d.model.fit_on} · ${term("home_advantage")} ${fmt(d.model.home_advantage)} · ρ ${fmt(d.model.rho)}</span>
       </div>
       <table style="margin-top:10px">
-        <thead><tr><th>Team</th><th class="num">PTS</th><th class="num">xPTS</th><th class="num">Δ</th><th class="num">Top 4</th><th class="num">Releg.</th><th>Final position distribution</th></tr></thead>
+        <thead><tr><th>Team</th><th class="num">PTS</th><th class="num">${term("expected_points")}</th><th class="num">Δ</th><th class="num">${term("champion")}</th><th class="num">${term("p_top_4")}</th><th class="num">${term("p_relegation")}</th><th class="num">${term("season_end_goals")} F</th><th class="num">A</th><th>Final position distribution</th></tr></thead>
         <tbody>
           ${teams.map((t) => {
             const cur = d.current_points[t] ?? 0;
             const exp = d.expected_points[t];
             const delta = exp - cur;
-            const p4 = d.p_top_4[t] ?? 0, pr = d.p_relegation[t] ?? 0;
+            const p4 = d.p_top_4[t] ?? 0, pr = d.p_relegation[t] ?? 0, pc = d.p_champion[t] ?? 0;
             const dist = d.final_position_distribution[t] || [];
+            const gf = finalGoals[t], ga = d.expected_goals_against[t] ?? 0;
             return `<tr><td>${t}</td><td class="num">${cur}</td><td class="num">${fmt(exp, 1)}</td>
               <td class="num">${delta >= 0 ? "+" : ""}${fmt(delta, 1)}</td>
+              <td class="num">${pc >= 0.005 ? pct(pc) : "—"}</td>
               <td class="num">${pct(p4)}</td><td class="num">${pct(pr)}</td>
+              <td class="num">${fmt(gf, 1)}</td><td class="num">${fmt(ga, 1)}</td>
               <td><div class="pos-row" title="position distribution">${dist.map((c, i) => `<span class="pos-seg" style="flex:${Math.max(c, 0.01)};background:${posColor(i)}" title="P${i + 1}: ${pct(c / d.n_sims)}"></span>`).join("")}</div></td></tr>`;
           }).join("")}
         </tbody>
       </table>
-      <div class="hint">Bar = simulated final-position distribution (green = top 4, red = bottom 3). Δ = expected minus current points.</div>
-      <div class="caveat"><ul>${d.limitations.map((l) => `<li>${l}</li>`).join("")}</ul></div>
+      <div class="hint">Bar = simulated final-position distribution (green = top 4, red = bottom 3). Δ = expected minus current points. F/A = projected season-end goals for/against.</div>
     </div>
+    ${d.top_scorer_projection && d.top_scorer_projection.length ? `
+    <div class="card" style="margin-top:16px"><h3>${term("top_scorer_projection")}</h3>
+      <table><thead><tr><th>Player</th><th>Team</th><th class="num">Goals now</th><th class="num">${term("npxG")}</th><th class="num">npxG/90</th><th class="num">Games left</th><th class="num">Projected total</th></tr></thead><tbody>
+        ${d.top_scorer_projection.map((p) => `<tr><td>${p.player}</td><td>${p.team}</td><td class="num">${p.goals_now}</td><td class="num">${fmt(p.npxG)}</td><td class="num">${fmt(p.npxG_per90, 3)}</td><td class="num">${p.games_remaining}</td><td class="num">${fmt(p.projected_season_end_goals, 1)}</td></tr>`).join("")}
+      </tbody></table>
+      <div class="hint">Assumes typical minutes continue and scales each player's npxG/90 by their team's remaining fixtures. Rough by design.</div>
+    </div>` : ""}
+    <div class="caveat"><ul>${d.limitations.map((l) => `<li>${l}</li>`).join("")}</ul></div>
   `;
 }
 
@@ -709,7 +957,7 @@ async function runCal() {
 }
 
 function renderCal(node, d) {
-  const names = { dixon_coles: "Dixon-Coles (xG)", elo: "Elo (results)", understat: "Understat forecast", baseline: "Naive baseline" };
+  const names = { dixon_coles: "Dixon-Coles (xG)", elo: "Elo (results)", ensemble: "Ensemble (DC+Elo blend)", understat: "Understat forecast", baseline: "Naive baseline" };
   const rows = Object.entries(d.models).map(([key, m]) => ({ key, name: names[key] || key, ...m }));
   const best = d.best_brier_model;
   clear(node);

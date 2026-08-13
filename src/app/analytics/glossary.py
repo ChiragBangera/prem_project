@@ -1,0 +1,216 @@
+from __future__ import annotations
+
+"""Metric glossary: every metric, derived metric, and projection the product
+surfaces, with a plain-language definition and a "how to read it" line.
+
+The dashboard renders these as hover tooltips / an Info tab; the API exposes
+them at GET /api/v1/glossary so any client can explain what it is showing.
+"""
+
+
+GLOSSARY_GROUPS: list[dict] = [
+    {
+        "group": "Basics",
+        "entries": [
+            ("goals", "Goals (G)", "Actual goals scored in league matches.",
+             "A count of what happened, not what should have happened. Compare against xG to see luck."),
+            ("assists", "Assists (A)", "Passes that directly led to a goal.",
+             "Assists depend on the finisher converting the chance; xA removes that dependency."),
+            ("shots", "Shots", "Total shot attempts by the player or team.",
+             "Volume without quality: pair with xG/shot to see if shots are high- or low-value."),
+            ("key_passes", "Key passes", "Passes that directly created a shot.",
+             "A creation-volume metric. Understat counts the pass before the shot as key."),
+            ("minutes", "Minutes", "Minutes played in league matches.",
+             "The denominator for all per-90 metrics; use it to judge sample size."),
+            ("games", "Games", "League appearances.",
+             "Appearances can include short cameos; minutes is the better workload measure."),
+            ("cards", "Yellow / red cards", "Bookings received.",
+             "Style and discipline signal; red cards also cost the team future availability."),
+        ],
+    },
+    {
+        "group": "Expected goals (xG) family",
+        "entries": [
+            ("xG", "xG (expected goals)", "Probability-weighted shot quality: each shot is worth the chance a similar shot goes in (0–1), summed.",
+             "The core 'how good were the chances' measure. High xG with low goals = unlucky finishing (or great goalkeeping)."),
+            ("npxG", "NP xG (non-penalty xG)", "xG excluding penalties.",
+             "Removes the penalty kick distorting effect; fairer for open-play comparison."),
+            ("npg", "Non-penalty goals", "Goals scored excluding penalties.",
+             "The realised counterpart of npxG."),
+            ("xG_chain", "xGChain", "Total xG of every possession the player participated in (their own shot or the build-up).",
+             "A participation metric: how much attacking flow the player touches. Penalises nothing, rewards involvement."),
+            ("xG_buildup", "xGBuildup", "xGChain minus the player's own shots and key passes — the earlier build-up xG.",
+             "Isolates deep progress: high buildup = the player starts attacks; high chain + low buildup = finishes them."),
+            ("xA", "xA (expected assists)", "The xG of the shots a player's passes created.",
+             "Assist quality independent of the finisher; a better vision metric than raw assists."),
+            ("xG_per_shot", "xG per shot", "Average shot quality: total xG divided by shots.",
+             "High = shoots from good locations; low = volume from range. A style fingerprint."),
+        ],
+    },
+    {
+        "group": "Derived per-90 metrics",
+        "entries": [
+            ("per90", "Per 90", "Any counting stat divided by minutes and multiplied by 90 — a rate per full match.",
+             "The honest way to compare players or seasons with different minute loads."),
+            ("goal_involvement", "npxG + xA (goal involvement)", "Non-penalty xG plus expected assists — the xG value of everything the player creates and takes.",
+             "One number for attacking output. League-leading values are ~0.8+ per 90."),
+            ("conversion", "Conversion rate", "Goals divided by shots.",
+             "Realised finishing efficiency. Small-sample noisy; xG per shot is the stable cousin."),
+        ],
+    },
+    {
+        "group": "Finishing & performance vs expectation",
+        "entries": [
+            ("g_minus_xg", "G − xG (finishing overperformance)", "Goals scored minus xG.",
+             "Positive = scored more than chance quality suggests. Mostly luck + goalkeeping + composure; regresses to the mean."),
+            ("finishing_ci", "95% confidence interval", "The range around G − xG within which the true overperformance lies with 95% confidence.",
+             "If the interval includes 0, the player is statistically indistinguishable from expectation."),
+            ("percentile", "Percentile", "The share of same-position peers (same league/season) the player beats on a metric.",
+             "50 = league average; 90 = top 10%. Always relative to the chosen season's pool."),
+            ("radar", "Radar / pizza chart", "Percentile profile across several metrics plotted on one chart.",
+             "The shape, not the size, is the style fingerprint. Axes are independent percentiles."),
+            ("similar_players", "Similar players", "Nearest neighbours by cosine similarity over a standardised metric vector (league-wide pool).",
+             "Statistically alike players from any team — a scouting-style shortcut, not an eye-test verdict."),
+        ],
+    },
+    {
+        "group": "Team style metrics",
+        "entries": [
+            ("ppda", "PPDA (passes per defensive action)", "Opponent passes allowed per defensive action (tackle/interception/foul) in the attacking 60% of the pitch.",
+             "Lower = more intense press. Understat's proxy — no pressure-event data."),
+            ("oppda", "OPPDA", "PPDA faced: how much pressing the team's opponents apply.",
+             "Shows whether opponents press the team hard — useful for style matchups."),
+            ("deep", "Deep completions", "Completed passes ending within ~20m of the opponent goal (excl. crosses).",
+             "Penetration metric: how often a team plays the ball into dangerous areas."),
+            ("xpts", "xPTS (expected points)", "The points a team 'should' have if each match's chances produced points at historical rates.",
+             "Big PTS − xPTS gap = the table is flattering or harsh; gaps mean-revert."),
+            ("npxgd", "NP xGD (non-penalty xG difference)", "npxG scored minus npxG conceded.",
+             "The best single-team strength summary; ~ +0.5/game is title-contender level in a top league."),
+            ("is_lying", "\"Is the table lying?\"", "League xPTS vs actual points view.",
+             "Teams sorted by the gap between reality and expectation — who's overperforming and likely to regress."),
+            ("variance", "Finishing / defensive variance", "Spread (stdev) of G − xG and xGA − GA across the league.",
+             "Measures how much luck is in the league's results; wider = more unpredictable table."),
+            ("pace", "League pace", "Average xG and xGA per game across the league.",
+             "How attacking the league is; also a cross-league style comparison."),
+            ("form_momentum", "Form momentum", "Rolling 5-match xG difference (xGD) trajectory.",
+             "Short-term quality trend, less noisy than results-based form."),
+        ],
+    },
+    {
+        "group": "Prediction models",
+        "entries": [
+            ("dixon_coles", "Dixon-Coles model", "A bivariate Poisson model (Dixon & Coles 1997) that fits each team's attack and defence strength from match xG, with a low-score correction (rho) and home advantage.",
+             "The engine behind scoreline probabilities. Fit on xG here, so it predicts underlying quality rather than lucky results."),
+            ("elo", "Elo ratings", "A sequential rating system: each result transfers points between teams based on expectation.",
+             "A pure results-based cross-check; it sees no xG and no scorelines."),
+            ("lambda", "λ (expected goals)", "The model's predicted goals for each side in a match.",
+             "λ_home 1.4 vs λ_away 0.9 → the model expects roughly 1.4–0.9. These ARE the goal projections."),
+            ("rho", "ρ (rho)", "The Dixon-Coles low-score correction: adjusts the probability of 0-0, 1-0, 0-1, 1-1.",
+             "Typically slightly negative because draws/1-0s happen a bit more than independent Poissons predict."),
+            ("home_advantage", "Home advantage", "The fitted boost (in expected-goals log-scale, or Elo points) a team gets at home.",
+             "~0.2–0.35 goals in top leagues. Model-fit from the season's data, not assumed."),
+            ("most_likely_score", "Most likely scoreline", "The single scoreline with the highest probability in the model.",
+             "Often only ~10–15% likely — it is the mode, not a forecast of certainty."),
+            ("scoreline_matrix", "Scoreline matrix", "Full 0–8 by 0–8 probability grid for every possible score.",
+             "The source of over/under and clean-sheet probabilities."),
+            ("over_under", "Over / under 2.5 goals", "Probability the match total goals exceed (or stay under) the line, from the scoreline matrix.",
+             "Total-goals market probabilities — model-implied, not bookmaker odds."),
+            ("btts", "Both teams to score", "Probability both sides score at least once.",
+             "High when both attacks are strong and both defences weak."),
+            ("clean_sheet", "Clean sheet probability", "Chance a team concedes zero goals.",
+             "Reads off the scoreline matrix for the specific matchup."),
+            ("ensemble", "Ensemble", "A blend of Dixon-Coles and Elo probabilities, weighted to minimise Brier score on a holdout of the season.",
+             "Two different lenses (chance quality vs results) usually beat either alone."),
+            ("venue_factor", "Team-specific venue effect", "Each team's own home/away xG split vs the league-average split, applied as an adjustment to predicted goals.",
+             "Some teams have stronger (or weaker) home identities than the league average."),
+            ("form_overlay", "Recent-form overlay", "A small adjustment from the last 5 matches' xG vs the season baseline.",
+             "Captures hot/cold streaks; deliberately damped so noise doesn't dominate."),
+            ("availability", "Availability sensitivity", "How a team's xG per game changes when its top creators (by xGChain) are absent vs present, and what the prediction becomes in each scenario.",
+             "Injuries are unknowable in advance — this shows the conditional downside honestly."),
+        ],
+    },
+    {
+        "group": "Season projections",
+        "entries": [
+            ("monte_carlo", "Monte-Carlo simulation", "Simulating the remaining fixtures thousands of times using the fitted model and tallying outcomes.",
+             "Each simulation is one possible future; the average is the projection, the spread is the uncertainty."),
+            ("expected_points", "Expected points (projection)", "Average final points across all simulations.",
+             "The model's season-end projection, including current points banked."),
+            ("p_top_4", "Top-4 probability", "Share of simulations in which the team finishes 1st–4th.",
+             "Champions League qualification likelihood under the model."),
+            ("p_relegation", "Relegation probability", "Share of simulations finishing in the bottom three.",
+             "Bottom-three cutoff differs per league; the model uses each league's size."),
+            ("champion", "Champion probability", "Share of simulations finishing 1st.",
+             "The title race in one number."),
+            ("position_distribution", "Position distribution", "For each finishing position, the share of simulations the team lands there.",
+             "The full uncertainty picture, not just the most likely slot."),
+            ("season_end_goals", "Season-end goal projection", "Current goals plus average simulated goals in remaining fixtures.",
+             "A team-level 'goals for' projection; player-level versions scale by each player's share of team npxG."),
+            ("top_scorer_projection", "Top scorer projection", "Current goals plus projected additions from remaining fixtures, using each player's npxG/90 and typical minutes.",
+             "A rough, minutes-assuming projection — injuries and role changes will break it."),
+        ],
+    },
+    {
+        "group": "Calibration & honesty",
+        "entries": [
+            ("calibration", "Walk-forward calibration", "Refit the model repeatedly as the season progresses and score every prediction out-of-sample.",
+             "The honest test: only predictions made before each match count."),
+            ("brier", "Brier score", "Mean squared error of probability forecasts (0 = perfect, 1 = perfectly wrong).",
+             "Lower is better; a coin-flip baseline is ~0.65. The number to compare models with."),
+            ("log_loss", "Log loss", "Negative log of the probability assigned to the actual outcome, averaged.",
+             "Punishes confident wrongness heavily. Lower is better."),
+            ("accuracy", "Prediction accuracy", "Share of predictions where the model's most likely outcome happened.",
+             "The intuitive but weakest measure — a 60%-confident correct call and a 33%-confident correct call both count."),
+            ("baseline", "Naive baseline", "The historical home/draw/away frequency of the training window.",
+             "If a model can't beat this, it adds nothing. Shown on every calibration."),
+            ("limitations", "Limitations", "What a metric cannot tell you, stated with every report.",
+             "Read these before betting on anything: no lineups, no game-state, no tracking data."),
+        ],
+    },
+    {
+        "group": "Shot profile",
+        "entries": [
+            ("situations", "Situations", "How a player's shots split across OpenPlay, SetPiece, FromCorner, CounterAttack, Penalty, DirectFreekick.",
+             "Penalty-heavy xG inflates totals; the split shows what's reproducible from open play."),
+            ("shot_zones", "Shot zones", "Shots from the six-yard box, penalty area, and outside the box.",
+             "Where the player generates chances — poacher profile vs range shooter."),
+            ("shot_types", "Shot types", "Left foot / right foot / head split of shots and xG.",
+             "Body-part balance: one-dimensional finishers are easier to defend."),
+            ("starter_sub", "Starter vs sub minutes", "Minutes played as a starter vs off the bench, per season.",
+             "Role evolution: declining starters often move to impact-sub roles before minutes drop."),
+        ],
+    },
+]
+
+
+def glossary_entries() -> list[dict]:
+    entries = []
+    for group in GLOSSARY_GROUPS:
+        for key, label, short, long in group["entries"]:
+            entries.append(
+                {
+                    "key": key,
+                    "group": group["group"],
+                    "label": label,
+                    "short": short,
+                    "long": long,
+                }
+            )
+    return entries
+
+
+def glossary_response() -> dict:
+    by_key = {entry["key"]: entry for entry in glossary_entries()}
+    return {
+        "groups": [
+            {
+                "group": group["group"],
+                "entries": [
+                    {"key": key, "label": label, "short": short, "long": long}
+                    for key, label, short, long in group["entries"]
+                ],
+            }
+            for group in GLOSSARY_GROUPS
+        ],
+        "by_key": by_key,
+    }

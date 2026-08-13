@@ -165,17 +165,21 @@ def match_probabilities(model: dict, home: str, away: str, max_goals: int = 8) -
     j = teams.index(away)
     lam_h = math.exp(float(model["attack"][i] - model["defense"][j] + model["home_advantage"]))
     lam_a = math.exp(float(model["attack"][j] - model["defense"][i]))
+    return outcome_probs_from_lambdas(lam_h, lam_a, model["rho"], max_goals=max_goals)
 
+
+def outcome_probs_from_lambdas(lam_h: float, lam_a: float, rho: float, max_goals: int = 8) -> dict:
+    """Win/draw/loss + scoreline matrix for arbitrary expected goals (no team names)."""
     matrix = np.zeros((max_goals + 1, max_goals + 1))
     for h_ in range(max_goals + 1):
         for a_ in range(max_goals + 1):
             base = _poisson(h_, lam_h) * _poisson(a_, lam_a)
             if h_ == 0 and a_ == 0:
-                base *= (1 - model["rho"])
+                base *= (1 - rho)
             elif (h_ == 1 and a_ == 0) or (h_ == 0 and a_ == 1):
-                base *= (1 + model["rho"])
+                base *= (1 + rho)
             elif h_ == 1 and a_ == 1:
-                base *= (1 - model["rho"])
+                base *= (1 - rho)
             matrix[h_, a_] = base
     matrix /= matrix.sum()
 
@@ -185,13 +189,52 @@ def match_probabilities(model: dict, home: str, away: str, max_goals: int = 8) -
     flat = int(np.argmax(matrix))
     best_h, best_a = flat // (max_goals + 1), flat % (max_goals + 1)
     return {
-        "home": home, "away": away,
-        "lambda_home": round(lam_h, 3), "lambda_away": round(lam_a, 3),
-        "p_home": round(p_home, 4), "p_draw": round(p_draw, 4), "p_away": round(p_away, 4),
+        "lambda_home": round(lam_h, 3),
+        "lambda_away": round(lam_a, 3),
+        "p_home": round(p_home, 4),
+        "p_draw": round(p_draw, 4),
+        "p_away": round(p_away, 4),
         "most_likely_score": [int(best_h), int(best_a)],
         "most_likely_score_prob": round(float(matrix[best_h, best_a]), 4),
-        "xG_home": round(lam_h, 3), "xG_away": round(lam_a, 3),
         "scoreline_matrix": matrix.tolist(),
+        "derived": _derived_market_probs(matrix),
+    }
+
+
+def _derived_market_probs(matrix: np.ndarray) -> dict:
+    """Over/under, both-teams-score, and clean-sheet probabilities from the matrix."""
+    max_goals = matrix.shape[0] - 1
+    p_under = {line: 0.0 for line in (1.5, 2.5, 3.5)}
+    p_over = dict(p_under)
+    p_btts = 0.0
+    p_home_cs = 0.0
+    p_away_cs = 0.0
+    for h_ in range(max_goals + 1):
+        for a_ in range(max_goals + 1):
+            prob = float(matrix[h_, a_])
+            total = h_ + a_
+            for line in p_under:
+                if total < line:
+                    p_under[line] += prob
+                else:
+                    p_over[line] += prob
+            if h_ >= 1 and a_ >= 1:
+                p_btts += prob
+            if a_ == 0:
+                p_home_cs += prob
+            if h_ == 0:
+                p_away_cs += prob
+    return {
+        "over_under": {
+            str(line): {
+                "over": round(p_over[line], 4),
+                "under": round(p_under[line], 4),
+            }
+            for line in (1.5, 2.5, 3.5)
+        },
+        "both_teams_score": round(p_btts, 4),
+        "clean_sheet_home": round(p_home_cs, 4),
+        "clean_sheet_away": round(p_away_cs, 4),
     }
 
 
@@ -246,6 +289,8 @@ def simulate_season(model, fixtures, current_points=None, n_sims=5000, seed=7):
         accepted[rows[keep], cols[keep]] = True
 
     points = np.zeros((len(teams), n_sims), dtype=int)
+    goals_for = np.zeros((len(teams), n_sims), dtype=float)
+    goals_against = np.zeros((len(teams), n_sims), dtype=float)
     for i, team in enumerate(teams):
         if team in fixed:
             points[i] += int(fixed[team])
@@ -265,6 +310,10 @@ def simulate_season(model, fixtures, current_points=None, n_sims=5000, seed=7):
             np.add.at(points[:, sim], h_idx_v[draws], 1)
             np.add.at(points[:, sim], a_idx_v[draws], 1)
             np.add.at(points[:, sim], a_idx_v[~(wins | draws)], 3)
+            np.add.at(goals_for[:, sim], h_idx_v, h_goals[valid, sim])
+            np.add.at(goals_against[:, sim], h_idx_v, a_goals[valid, sim])
+            np.add.at(goals_for[:, sim], a_idx_v, a_goals[valid, sim])
+            np.add.at(goals_against[:, sim], a_idx_v, h_goals[valid, sim])
 
     # final positions per sim: rank descending by points, ties broken alphabetically
     n_teams = len(teams)
@@ -280,6 +329,8 @@ def simulate_season(model, fixtures, current_points=None, n_sims=5000, seed=7):
     p_top4 = {}
     p_releg = {}
     xpts = {}
+    expected_goals_for = {}
+    expected_goals_against = {}
     rank_counts = {team: np.zeros(n_teams, dtype=int) for team in teams}
     for i, team in enumerate(teams):
         r = ranks[i]
@@ -288,11 +339,20 @@ def simulate_season(model, fixtures, current_points=None, n_sims=5000, seed=7):
         p_top4[team] = float(np.mean(r <= 4))
         p_releg[team] = float(np.mean(r >= n_teams - 2))
         xpts[team] = round(float(final[i].mean()), 2)
+        expected_goals_for[team] = round(float(goals_for[i].mean()), 1)
+        expected_goals_against[team] = round(float(goals_against[i].mean()), 1)
 
     sort_order = sorted(teams, key=lambda t: -xpts[t])
+    champion = {
+        t: round(float(np.mean(ranks[i] == 1)), 4)
+        for i, t in enumerate(teams)
+    }
     return {
         "n_sims": n_sims,
         "expected_points": {t: xpts[t] for t in sort_order},
+        "expected_goals_for": {t: expected_goals_for[t] for t in sort_order},
+        "expected_goals_against": {t: expected_goals_against[t] for t in sort_order},
+        "p_champion": {t: champion[t] for t in sort_order},
         "p_top_4": {t: round(p_top4[t], 4) for t in sort_order},
         "p_relegation": {t: round(p_releg[t], 4) for t in sort_order},
         "final_position_distribution": {

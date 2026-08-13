@@ -74,6 +74,16 @@ class PoissonFitTestCase(unittest.TestCase):
         with self.assertRaises(ValueError):
             poisson.match_probabilities(self.model, "A", "NotATeam")
 
+    def test_derived_market_probabilities_are_consistent(self):
+        probs = poisson.match_probabilities(self.model, "A", "B")
+        derived = probs["derived"]
+        for line in ("1.5", "2.5", "3.5"):
+            pair = derived["over_under"][line]
+            self.assertAlmostEqual(pair["over"] + pair["under"], 1.0, places=3)
+        self.assertTrue(0.0 <= derived["both_teams_score"] <= 1.0)
+        self.assertTrue(0.0 <= derived["clean_sheet_home"] <= 1.0)
+        self.assertTrue(0.0 <= derived["clean_sheet_away"] <= 1.0)
+
     def test_decay_weights_recent_matches(self):
         recent = [
             {"home": "A", "away": "B", "home_goals": 2.0, "away_goals": 0.8, "date": "2025-06-01"},
@@ -120,6 +130,14 @@ class PoissonSimulationTestCase(unittest.TestCase):
     def test_simulation_empty_fixtures(self):
         sim = poisson.simulate_season(self.model, [], n_sims=100)
         self.assertEqual(sim["n_sims"], 0)
+
+    def test_simulation_exposes_champion_and_goal_projections(self):
+        fixtures = [{"home": "T0", "away": "T1"}, {"home": "T2", "away": "T3"}]
+        sim = poisson.simulate_season(self.model, fixtures, n_sims=1000, seed=7)
+        self.assertAlmostEqual(sum(sim["p_champion"].values()), 1.0, places=3)
+        self.assertEqual(set(sim["expected_goals_for"]), set(sim["expected_points"]))
+        self.assertGreater(sim["expected_goals_for"]["T0"], 0)
+        self.assertGreater(sim["expected_goals_against"]["T1"], 0)
 
     def test_simulated_points_match_dc_implied_expectation(self):
         probs = poisson.match_probabilities(self.model, "T0", "T5")
