@@ -299,6 +299,25 @@ class AnalyticsService:
         except Exception:
             pass
         from .analytics.percentiles import group_from_favorite
+        from .analytics import career as career_engine
+
+        if hasattr(self.client, "get_player_data"):
+            profile_results = await asyncio.gather(
+                *(self.client.get_player_data(int(player.get("id", 0))) for _, player in pairs),
+                return_exceptions=True,
+            )
+            for (name, player), result in zip(pairs, profile_results):
+                if isinstance(result, BaseException):
+                    continue
+                groups = result.get("groups") if isinstance(result, dict) else None
+                profile = career_engine.shot_profile_for_season(groups, season)
+                reports[name]["comparison_profile"] = {
+                    "shot_profile": profile["shot_profile"] if profile else None,
+                    "role_split": profile["role_split"] if profile else None,
+                    "minute_buckets": player_engine.shot_minute_buckets(shots_by_name.get(name) or []),
+                    "home_away": player_engine.home_away_shot_split(shots_by_name.get(name) or []),
+                }
+
         favorites = await asyncio.gather(
             *(self._favorite_position(int(player.get("id", 0))) for _, player in pairs),
             return_exceptions=True,

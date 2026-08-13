@@ -1050,6 +1050,144 @@ function renderDiscover(node, d) {
 
 // ---------- COMPARE ----------
 $("compareGo").addEventListener("click", runCompare);
+$("compareHighlight").addEventListener("change", () => {
+  localStorage.setItem("prem_compareHighlight", $("compareHighlight").checked ? "1" : "0");
+  applyHighlightState();
+});
+function applyHighlightState() {
+  const on = $("compareHighlight").checked;
+  $("compareContent").classList.toggle("hl-off", !on);
+}
+(function initHighlight() {
+  const saved = localStorage.getItem("prem_compareHighlight");
+  if (saved === "0") $("compareHighlight").checked = false;
+})();
+
+function playerColors(names) {
+  const colors = {};
+  names.forEach((n, i) => { colors[n] = RADAR_COLORS[i % RADAR_COLORS.length]; });
+  return colors;
+}
+
+function compareHeaderChips(d, names) {
+  const colors = playerColors(names);
+  return `<div class="compare-chips">${names.map((n) => {
+    const p = d.players[n].player;
+    return `<span class="compare-chip"><span class="dot" style="background:${colors[n]}"></span>${n}${p.age != null ? ` (${p.age})` : ""}<span class="chip-team">${p.team_title || ""} · ${p.favorite_position || p.position_group || ""}</span></span>`;
+  }).join("")}</div>`;
+}
+
+function groupedBars(rows, names, colors) {
+  return `<table class="gbars"><thead><tr><th></th>${names.map((n) =>
+    `<th class="num"><span class="dot" style="background:${colors[n]}"></span>${n}</th>`).join("")}</tr></thead><tbody>
+    ${rows.map((row) => {
+      const values = row.values;
+      const max = Math.max(...values.map((v) => v.value), 0.0001);
+      return `<tr><td>${row.label}</td>${values.map((v) => {
+        const best = v.value === max && max > 0;
+        return `<td class="num"><div class="gbar">
+          <div class="bar-track"><div class="bar-fill" style="width:${Math.max(2, (v.value / max) * 100)}%;background:${colors[v.name]}"></div></div>
+          <span class="bar-val${best ? " best-val" : ""}">${v.text}</span></div></td>`;
+      }).join("")}</tr>`;
+    }).join("")}
+  </tbody></table>`;
+}
+
+function profileSection(d, names, title, termKey, kind) {
+  const colors = playerColors(names);
+  const withProfile = names.filter((n) => {
+    const cp = d.players[n].comparison_profile;
+    return cp && cp.shot_profile && cp.shot_profile[kind] && cp.shot_profile[kind].length;
+  });
+  if (!withProfile.length) return "";
+  const categories = [...new Set(withProfile.flatMap((n) => d.players[n].comparison_profile.shot_profile[kind].map((s) => s.name)))];
+  const rows = categories.map((cat) => ({
+    label: cat,
+    values: names.map((n) => {
+      const cp = d.players[n].comparison_profile;
+      const entry = cp && cp.shot_profile ? cp.shot_profile[kind].find((s) => s.name === cat) : null;
+      return {
+        name: n,
+        value: entry ? entry.xG_share : 0,
+        text: entry ? `${Math.round(entry.xG_share * 100)}% · ${entry.shots} sh` : "—",
+      };
+    }),
+  }));
+  return `<div class="card" style="margin-top:16px"><h3>${term(termKey)} · xG share</h3>${groupedBars(rows, names, colors)}
+    <div class="hint">Bar = share of the player's own xG; value = shots in that category.</div></div>`;
+}
+
+function roleSplitSection(d, names) {
+  const colors = playerColors(names);
+  const withProfile = names.filter((n) => {
+    const cp = d.players[n].comparison_profile;
+    return cp && cp.role_split && cp.role_split.length;
+  });
+  if (!withProfile.length) return "";
+  const roles = [...new Set(withProfile.flatMap((n) => d.players[n].comparison_profile.role_split.map((r) => r.role)))];
+  const rows = roles.map((role) => ({
+    label: role,
+    values: names.map((n) => {
+      const cp = d.players[n].comparison_profile;
+      const entry = cp && cp.role_split ? cp.role_split.find((r) => r.role === role) : null;
+      const total = cp && cp.role_split ? cp.role_split.reduce((a, r) => a + r.minutes, 0) || 1 : 1;
+      return {
+        name: n,
+        value: entry ? entry.minutes / total : 0,
+        text: entry ? `${fmt(entry.minutes, 0)} min · ${fmt(entry.games, 0)} g` : "—",
+      };
+    }),
+  }));
+  return `<div class="card" style="margin-top:16px"><h3>${term("starter_sub")} · minutes share</h3>${groupedBars(rows, names, colors)}</div>`;
+}
+
+function minuteBucketSection(d, names) {
+  const colors = playerColors(names);
+  const withData = names.filter((n) => {
+    const cp = d.players[n].comparison_profile;
+    return cp && cp.minute_buckets && cp.minute_buckets.length;
+  });
+  if (!withData.length) return "";
+  const buckets = d.players[withData[0]].comparison_profile.minute_buckets.map((b) => b.label);
+  const rows = buckets.map((label) => ({
+    label,
+    values: names.map((n) => {
+      const cp = d.players[n].comparison_profile;
+      const entry = cp && cp.minute_buckets ? cp.minute_buckets.find((b) => b.label === label) : null;
+      return {
+        name: n,
+        value: entry ? entry.xG : 0,
+        text: entry ? `${fmt(entry.xG)} xG · ${entry.shots} sh${entry.goals ? ` · ${entry.goals} G` : ""}` : "—",
+      };
+    }),
+  }));
+  return `<div class="card" style="margin-top:16px"><h3>When they shoot · xG by 15-minute bucket</h3>${groupedBars(rows, names, colors)}</div>`;
+}
+
+function homeAwaySection(d, names) {
+  const colors = playerColors(names);
+  const withData = names.filter((n) => {
+    const cp = d.players[n].comparison_profile;
+    return cp && cp.home_away && (cp.home_away.home.shots + cp.home_away.away.shots) > 0;
+  });
+  if (!withData.length) return "";
+  const rows = ["home", "away"].map((venue) => ({
+    label: venue,
+    values: names.map((n) => {
+      const cp = d.players[n].comparison_profile;
+      if (!cp || !cp.home_away) return { name: n, value: 0, text: "—" };
+      const h = cp.home_away.home, a = cp.home_away.away;
+      const total = h.xG + a.xG || 1;
+      const entry = venue === "home" ? h : a;
+      return {
+        name: n,
+        value: entry.xG / total,
+        text: `${fmt(entry.xG)} xG · ${entry.shots} sh · ${entry.goals} G`,
+      };
+    }),
+  }));
+  return `<div class="card" style="margin-top:16px"><h3>Home vs away · xG split</h3>${groupedBars(rows, names, colors)}</div>`;
+}
 $("compareMode").addEventListener("change", () => {
   const mode = $("compareMode").value;
   const players = mode === "players";
@@ -1098,7 +1236,8 @@ function renderComparePlayersMulti(node, d) {
     name, color: RADAR_COLORS[i % RADAR_COLORS.length], report: d.players[name],
   }));
   node.innerHTML = `
-    <div class="card"><h3>${term("radar")} · ${names.length} players · shared pool (${d.pool_size}) ${windowBadge(d)}</h3>
+    ${compareHeaderChips(d, names)}
+    <div class="card" style="margin-top:12px"><h3>${term("radar")} · ${names.length} players · shared pool (${d.pool_size}) ${windowBadge(d)}</h3>
       <div id="compareRadar"></div>
       ${names.length > 5 ? `<div class="hint">Radar shows the first 5; tables include all ${names.length}.</div>` : ""}
     </div>
@@ -1109,9 +1248,16 @@ function renderComparePlayersMulti(node, d) {
       <div class="card"><h3>Creative dominance</h3>${multiCreative(d, names)}</div>
     </div>
     <div class="card" style="margin-top:16px"><h3>${term("regain_xg")}</h3>${multiPressing(d, names)}</div>
+    ${profileSection(d, names, "Shot situations", "situations", "situations")}
+    ${profileSection(d, names, "Shot zones", "shot_zones", "zones")}
+    ${profileSection(d, names, "Shot types", "shot_types", "types")}
+    ${roleSplitSection(d, names)}
+    ${minuteBucketSection(d, names)}
+    ${homeAwaySection(d, names)}
     <div class="caveat"><strong>Limitations.</strong><ul>${d.limitations.map((l) => `<li>${l}</li>`).join("")}</ul></div>
   `;
   drawMultiRadar("compareRadar", d.radar_labels, radarEntries);
+  applyHighlightState();
 }
 
 function multiPer90(d, names) {
@@ -1229,7 +1375,8 @@ function renderComparePlayers(node, d, nameA, nameB) {
   const pa = d.players[nameA], pb = d.players[nameB];
   clear(node);
   node.innerHTML = `
-    <div class="grid cols-2">
+    ${compareHeaderChips(d, [nameA, nameB])}
+    <div class="grid cols-2" style="margin-top:12px">
       <div class="card"><h3>${term("percentile")} ${term("radar")} · shared pool (${d.pool_size} players) ${windowBadge(d)}</h3><div id="compareRadar"></div></div>
       <div class="card"><h3>${term("per90")} comparison</h3>${comparePer90(pa, pb)}</div>
     </div>
@@ -1242,9 +1389,16 @@ function renderComparePlayers(node, d, nameA, nameB) {
       <div class="card"><h3>Creative dominance</h3>${multiCreative(d, [nameA, nameB])}</div>
     </div>
     <div class="card" style="margin-top:16px"><h3>${term("regain_xg")}</h3>${multiPressing(d, [nameA, nameB])}</div>
+    ${profileSection(d, [nameA, nameB], "Shot situations", "situations", "situations")}
+    ${profileSection(d, [nameA, nameB], "Shot zones", "shot_zones", "zones")}
+    ${profileSection(d, [nameA, nameB], "Shot types", "shot_types", "types")}
+    ${roleSplitSection(d, [nameA, nameB])}
+    ${minuteBucketSection(d, [nameA, nameB])}
+    ${homeAwaySection(d, [nameA, nameB])}
     <div class="caveat"><strong>Limitations.</strong><ul>${d.limitations.map((l) => `<li>${l}</li>`).join("")}</ul></div>
   `;
   drawCompareRadar("compareRadar", d.radar_labels, pa.radar.profile, pb.radar.profile, nameA, nameB);
+  applyHighlightState();
 }
 
 function comparePer90(pa, pb) {

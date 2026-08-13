@@ -115,19 +115,28 @@ def _attach_shot_profile(row: dict, player_groups: dict | None, season: int) -> 
         row["shot_profile"] = None
         row["role_split"] = None
         return
+    profile = shot_profile_for_season(player_groups, season)
+    row["shot_profile"] = profile["shot_profile"] if profile else None
+    row["role_split"] = profile["role_split"] if profile else None
+
+
+def shot_profile_for_season(player_groups: dict | None, season: int) -> dict | None:
+    """Situations / zones / types shares + starter-sub split for one season.
+
+    Returns None when the groups payload is missing or empty for the season.
+    """
+    if not player_groups:
+        return None
     season_key = str(season)
 
     situations = _season_entries(player_groups.get("situation", {}), season_key)
     zones = _season_entries(player_groups.get("shotZones", {}), season_key)
     types = _season_entries(player_groups.get("shotTypes", {}), season_key)
     positions = _season_entries(player_groups.get("position", {}), season_key)
+    if not situations and not zones and not types and not positions:
+        return None
 
     total_xg = sum(to_float(entry.get("xG")) for entry in situations) or None
-    row["shot_profile"] = {
-        "situations": _share_rows(situations, total_xg, "situation"),
-        "zones": _share_rows(zones, total_xg, "shotZones"),
-        "types": _share_rows(types, total_xg, "shotTypes"),
-    }
     role_rows = [
         {
             "role": entry.get("position") or entry.get("positionGroup", "?"),
@@ -136,7 +145,14 @@ def _attach_shot_profile(row: dict, player_groups: dict | None, season: int) -> 
         }
         for entry in positions
     ]
-    row["role_split"] = role_rows or None
+    return {
+        "shot_profile": {
+            "situations": _share_rows(situations, total_xg, "situation"),
+            "zones": _share_rows(zones, total_xg, "shotZones"),
+            "types": _share_rows(types, total_xg, "shotTypes"),
+        },
+        "role_split": role_rows or None,
+    }
 
 
 def _season_entries(group: dict, season_key: str) -> list[dict]:

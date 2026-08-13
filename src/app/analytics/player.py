@@ -280,6 +280,39 @@ def player_report(player: dict, league_peers: list[dict], team_roster: list[dict
 REGAIN_ACTIONS = {"BallRecovery", "Dispossessed", "BlockedPass", "Rebound"}
 
 
+def shot_minute_buckets(shots: list[dict]) -> list[dict]:
+    """Shots, xG and goals in 15-minute buckets (0-15 ... 75-90+)."""
+    buckets = [(0, 15, "0–15'"), (15, 30, "15–30'"), (30, 45, "30–45'"),
+               (45, 60, "45–60'"), (60, 75, "60–75'"), (75, 200, "75–90+'")]
+    rows = []
+    for start, end, label in buckets:
+        in_bucket = [s for s in shots if start <= to_float(s.get("minute")) < end]
+        rows.append(
+            {
+                "label": label,
+                "shots": len(in_bucket),
+                "xG": round_value(sum(to_float(s.get("xG")) for s in in_bucket), 2),
+                "goals": sum(1 for s in in_bucket if str(s.get("result", "")).lower() == "goal"),
+            }
+        )
+    return rows
+
+
+def home_away_shot_split(shots: list[dict]) -> dict:
+    """Shot volume, xG and goals split by venue."""
+    home = [s for s in shots if s.get("h_a") == "h"]
+    away = [s for s in shots if s.get("h_a") == "a"]
+
+    def summarize(rows):
+        return {
+            "shots": len(rows),
+            "xG": round_value(sum(to_float(s.get("xG")) for s in rows), 2),
+            "goals": sum(1 for s in rows if str(s.get("result", "")).lower() == "goal"),
+        }
+
+    return {"home": summarize(home), "away": summarize(away)}
+
+
 def pressing_output(shots: list[dict]) -> dict:
     """Chances the player finished from possession-regain situations.
 
