@@ -16,6 +16,7 @@ from app.analytics_service import AnalyticsService
 from app.endpoint_manifest import get_endpoint_manifest, get_endpoint_spec
 from app.endpoint_runner import EndpointRunner
 from app.errors import UnderstatRequestError
+from app.prediction_service import PredictionService
 from app.question_answering import FootballQuestionAnswerer
 from app.stat_data import UnderstatData
 
@@ -101,6 +102,7 @@ async def lifespan(app: FastAPI):
     app.state.runner = EndpointRunner(client=client)
     app.state.answerer = FootballQuestionAnswerer(client=client)
     app.state.analytics = AnalyticsService(client=client)
+    app.state.predictions = PredictionService(client=client)
     yield
     await client.close()
 
@@ -338,3 +340,97 @@ async def discover_players(payload: DiscoverPlayersRequest, request: Request):
         order_by=payload.order_by,
         limit=payload.limit,
     )
+
+
+class PredictMatchRequest(BaseModel):
+    league_name: str = "EPL"
+    season: int = 2025
+    home: str
+    away: str
+    use_xg: bool = True
+
+
+class SimulateSeasonRequest(BaseModel):
+    league_name: str = "EPL"
+    season: int = 2025
+    n_sims: int = 2000
+    use_xg: bool = True
+
+
+class CalibrateRequest(BaseModel):
+    league_name: str = "EPL"
+    season: int = 2025
+    use_xg: bool = True
+    min_train: int = 30
+    step: int = 5
+
+
+@app.post(
+    "/api/v1/predict/match",
+    tags=["Predictions"],
+    responses={
+        422: {"model": ErrorResponse},
+        502: {"model": ErrorResponse},
+    },
+)
+async def predict_match(payload: PredictMatchRequest, request: Request):
+    try:
+        return await request.app.state.predictions.predict_match(
+            league_name=payload.league_name,
+            season=payload.season,
+            home=payload.home,
+            away=payload.away,
+            use_xg=payload.use_xg,
+        )
+    except ValueError as exc:
+        return JSONResponse(
+            status_code=422,
+            content={"error": "invalid_parameters", "detail": str(exc)},
+        )
+
+
+@app.post(
+    "/api/v1/predict/season",
+    tags=["Predictions"],
+    responses={
+        422: {"model": ErrorResponse},
+        502: {"model": ErrorResponse},
+    },
+)
+async def simulate_season(payload: SimulateSeasonRequest, request: Request):
+    try:
+        return await request.app.state.predictions.simulate_season(
+            league_name=payload.league_name,
+            season=payload.season,
+            n_sims=payload.n_sims,
+            use_xg=payload.use_xg,
+        )
+    except ValueError as exc:
+        return JSONResponse(
+            status_code=422,
+            content={"error": "invalid_parameters", "detail": str(exc)},
+        )
+
+
+@app.post(
+    "/api/v1/predict/calibration",
+    tags=["Predictions"],
+    responses={
+        422: {"model": ErrorResponse},
+        502: {"model": ErrorResponse},
+    },
+)
+async def calibrate(payload: CalibrateRequest, request: Request):
+    try:
+        return await request.app.state.predictions.calibrate(
+            league_name=payload.league_name,
+            season=payload.season,
+            use_xg=payload.use_xg,
+            min_train=payload.min_train,
+            step=payload.step,
+        )
+    except ValueError as exc:
+        return JSONResponse(
+            status_code=422,
+            content={"error": "invalid_parameters", "detail": str(exc)},
+        )
