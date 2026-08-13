@@ -219,6 +219,9 @@ table input[type=checkbox] { accent-color: var(--accent); }
 .compare-chip { background: var(--panel); border: 1px solid var(--border); border-radius: 999px;
   padding: 6px 12px; font-size: 13px; font-weight: 600; }
 .compare-chip .chip-team { color: var(--muted); font-weight: 400; margin-left: 6px; font-size: 12px; }
+.season-toggle { cursor: pointer; user-select: none; }
+.season-toggle.off { opacity: 0.35; }
+.chip-hint { color: var(--muted); font-size: 12px; align-self: center; }
 .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; }
 table.gbars td { vertical-align: middle; }
 .gbar { display: flex; align-items: center; gap: 8px; justify-content: flex-end; }

@@ -464,11 +464,14 @@ class AnalyticsService:
             *(self.client.get_team_history(team_name, s, league_name) for s in target_seasons),
             return_exceptions=True,
         )
+        histories_by_season: dict[int, list] = {}
         history = []
-        for batch in histories:
+        for season, batch in zip(target_seasons, histories):
             if isinstance(batch, BaseException):
                 continue
-            history.extend(as_list_matches(batch))
+            rows = as_list_matches(batch)
+            histories_by_season[season] = rows
+            history.extend(rows)
         history = _filter_rows_by_date(history, start_date, end_date)
 
         shots = None
@@ -492,8 +495,45 @@ class AnalyticsService:
         except Exception:
             league_histories = None
 
+        season_trends: dict[int, dict] = {}
+        if hasattr(self.client, "get_league_data"):
+            league_results = await asyncio.gather(
+                *(self.client.get_league_data(league_name, s) for s in target_seasons),
+                return_exceptions=True,
+            )
+            for season, league_data in zip(target_seasons, league_results):
+                if isinstance(league_data, BaseException):
+                    continue
+                per_season_histories = {
+                    name: as_list_matches(entry.get("history")) if isinstance(entry, dict) else []
+                    for name, entry in (league_data.get("teams") or {}).items()
+                    if isinstance(entry, dict)
+                }
+                if not per_season_histories:
+                    continue
+                trend = team_engine.position_trend(
+                    histories_by_season.get(season, []), per_season_histories
+                )
+                for matchday in trend["matchdays"]:
+                    matchday["season"] = season
+                season_trends[season] = trend
+
+        if season_trends:
+            concatenated = []
+            for season in target_seasons:
+                if season in season_trends:
+                    concatenated.extend(season_trends[season]["matchdays"])
+            position_trend = {
+                "matchdays": concatenated,
+                "n_teams": max((t["n_teams"] for t in season_trends.values()), default=1),
+            }
+        else:
+            position_trend = team_engine.position_trend(history, league_histories or {})
+
         report = team_engine.team_report(team_row, team_history=history, team_shots=shots,
                                         league_histories=league_histories)
+        report["position_trend"] = position_trend
+        report["season_trends"] = {str(s): t for s, t in sorted(season_trends.items())} if season_trends else None
         report["date_window"] = {"start_date": start_date, "end_date": end_date}
         report["seasons"] = target_seasons
         return report

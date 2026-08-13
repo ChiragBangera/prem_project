@@ -639,7 +639,8 @@ function renderTeam(node, d) {
       <div class="card"><h3>Style profile · ${s.team}${seasonsLabel} ${windowBadge(d)}</h3>${styleKv(s)}</div>
       <div class="card"><h3>${term("venue_factor")} splits</h3>${homeAwayKv(d.home_away_splits)}</div>
     </div>
-    <div class="card" style="margin-top:16px"><h3>${term("position_trend")} · points, xPTS & rank by matchday</h3><div id="posTrend"></div></div>
+    <div class="card" style="margin-top:16px"><h3>${term("position_trend")} · points, xPTS & rank by match week</h3><div id="posTrend"></div></div>
+    ${seasonComparisonSection(d)}
     <div class="card" style="margin-top:16px"><h3>Rolling trends (5-match)</h3>
       <div class="controls"><div class="field"><label>Metric</label>
         <select id="trendMetric">
@@ -665,6 +666,14 @@ function renderTeam(node, d) {
     <div class="caveat"><strong>Limitations.</strong><ul>${d.limitations.map((l) => `<li>${l}</li>`).join("")}</ul></div>
   `;
   drawPositionTrend("posTrend", d.position_trend);
+  drawSeasonComparisonCharts(d);
+  node.querySelectorAll(".season-toggle").forEach((chip) => chip.addEventListener("click", () => {
+    const season = chip.dataset.season;
+    if (state.hiddenSeasons.has(season)) state.hiddenSeasons.delete(season);
+    else state.hiddenSeasons.add(season);
+    chip.classList.toggle("off", state.hiddenSeasons.has(season));
+    drawSeasonComparisonCharts(d);
+  }));
   drawLuckChart("luckChart", d.luck_curve);
   const drawTrend = () => drawTrendChart("trendChart", d.metric_trends, $("trendMetric").value);
   $("trendMetric").addEventListener("change", drawTrend);
@@ -706,6 +715,79 @@ function situationTable(s) {
     <div class="hint">Set-piece xG share: ${Math.round((s.set_piece_xG_share || 0) * 100)}% · ${s.interpretation}</div>`;
 }
 
+function seasonComparisonSection(d) {
+  const trends = d.season_trends ? Object.entries(d.season_trends) : [];
+  if (trends.length < 2) return "";
+  const seasons = trends.map(([s]) => s);
+  state.hiddenSeasons = state.hiddenSeasons || new Set();
+  const chips = seasons.map((s, i) =>
+    `<span class="compare-chip season-toggle${state.hiddenSeasons.has(s) ? " off" : ""}" data-season="${s}">
+      <span class="dot" style="background:${RADAR_COLORS[i % RADAR_COLORS.length]}"></span>${s}</span>`).join("");
+  return `<div class="card" style="margin-top:16px"><h3>Season vs season · same match week comparison</h3>
+    <div class="compare-chips">${chips}<span class="chip-hint">click a season to show/hide</span></div>
+    <div id="seasonPoints"></div>
+    <div id="seasonRank" style="margin-top:14px"></div>
+  </div>`;
+}
+
+function drawSeasonLines(container, trends, metric, opts) {
+  const el = document.getElementById(container);
+  if (!el) return;
+  const entries = Object.entries(trends);
+  const w = 1100, h = 240, padL = 52, pad = 30, x0 = padL, x1 = w - pad, y0 = 16, y1 = h - 42;
+  const visible = entries.filter(([s]) => !state.hiddenSeasons.has(s));
+  const maxMatchdays = Math.max(...entries.map(([, t]) => t.matchdays.length), 1);
+  const x = (i) => x0 + (i * (x1 - x0)) / Math.max(maxMatchdays - 1, 1);
+  let lines = "", dots = "", ticks = "";
+  for (const [s, t] of visible) {
+    const color = RADAR_COLORS[entries.findIndex(([ss]) => ss === s) % RADAR_COLORS.length];
+    const vals = t.matchdays.map((m) => m[metric]);
+    if (opts.invert) {
+      const y = (v) => y1 - ((v - 1) / (opts.ymax - 1)) * (y1 - y0);
+      const path = vals.map((v, i) => `${i ? "L" : "M"}${x(i)},${y(v)}`).join(" ");
+      lines += `<path d="${path}" fill="none" stroke="${color}" stroke-width="2"/>`;
+      dots += t.matchdays.map((m, i) => hoverDot(x(i), y(m[metric]), `${s} · match week ${i + 1}\n${m.date}\nposition ${m.rank} · points ${m.points}\nxPTS ${m.xpts}`, color, 3.5)).join("");
+    } else {
+      const ymax = Math.max(...entries.flatMap(([, tt]) => tt.matchdays.map((m) => m[metric])), 1);
+      const y = (v) => y1 - (v / ymax) * (y1 - y0);
+      const path = vals.map((v, i) => `${i ? "L" : "M"}${x(i)},${y(v)}`).join(" ");
+      lines += `<path d="${path}" fill="none" stroke="${color}" stroke-width="2"/>`;
+      dots += t.matchdays.map((m, i) => hoverDot(x(i), y(m[metric]), `${s} · match week ${i + 1}\n${m.date}\npoints ${m.points} · xPTS ${m.xpts}\nposition ${m.rank}`, color, 3.5)).join("");
+    }
+  }
+  const weekTicks = [];
+  for (let wk = 1; wk <= maxMatchdays; wk += 5) {
+    weekTicks.push(`<text x="${x(wk - 1)}" y="${y1 + 16}" fill="#8a98a8" font-size="9" text-anchor="middle">${wk}</text>`);
+  }
+  const axisLabel = opts.invert ? "league position (1 = top) ↑" : "points ↑";
+  el.innerHTML = `<svg class="timeline-svg" viewBox="0 0 ${w} ${h}">
+    <line x1="${x0}" y1="${y1}" x2="${x1}" y2="${y1}" stroke="#243040"/>
+    <line x1="${x0}" y1="${y1}" x2="${x0}" y2="${y0}" stroke="#243040"/>
+    ${opts.invert ? rankTicks(x0, x1, y0, y1, opts.ymax) : ""}
+    ${lines}${dots}
+    ${weekTicks.join("")}
+    <text x="${x0 + (x1 - x0) / 2}" y="${h - 6}" fill="#8a98a8" font-size="10" text-anchor="middle">match week (team’s nth league match) →</text>
+    <text x="12" y="${y0 + (y1 - y0) / 2}" fill="#8a98a8" font-size="10" text-anchor="middle" transform="rotate(-90 12 ${y0 + (y1 - y0) / 2})">${axisLabel}</text>
+  </svg>`;
+}
+
+function rankTicks(x0, x1, y0, y1, nTeams) {
+  let out = "";
+  const ticks = [1, 5, 10, 15, 20].filter((t) => t <= nTeams);
+  for (const t of ticks) {
+    const y = y1 - ((t - 1) / (nTeams - 1)) * (y1 - y0);
+    out += `<line x1="${x0}" y1="${y}" x2="${x1}" y2="${y}" stroke="#1a2230" stroke-dasharray="2 4"/>`;
+    out += `<text x="${x0 - 4}" y="${y + 3}" fill="#8a98a8" font-size="9" text-anchor="end">${t}</text>`;
+  }
+  return out;
+}
+
+function drawSeasonComparisonCharts(d) {
+  if (!d.season_trends) return;
+  drawSeasonLines("seasonPoints", d.season_trends, "points", { invert: false });
+  drawSeasonLines("seasonRank", d.season_trends, "rank", { invert: true, ymax: Math.max(...Object.values(d.season_trends).map((t) => t.n_teams), 2) });
+}
+
 function drawPositionTrend(container, pt) {
   const el = document.getElementById(container);
   if (!el || !pt || !pt.matchdays || pt.matchdays.length < 2) { if (el) el.innerHTML = `<div class="empty">No trajectory data.</div>`; return; }
@@ -727,7 +809,7 @@ function drawPositionTrend(container, pt) {
     <path d="${path(pts, "#4ea1ff")}" fill="none" stroke="#4ea1ff" stroke-width="2"/>${dots}
     ${dateLabels}${rankLabels}
     <text x="${x0}" y="${y0}" fill="#8a98a8" font-size="10"><tspan fill="#4ea1ff">— points</tspan>  <tspan fill="#6b7c8f">- - xPTS</tspan>  · # = table rank · hover points for dates</text>
-    <text x="${x0 + (x1 - x0) / 2}" y="${h - 6}" fill="#8a98a8" font-size="10" text-anchor="middle">matchday / date →</text>
+    <text x="${x0 + (x1 - x0) / 2}" y="${h - 6}" fill="#8a98a8" font-size="10" text-anchor="middle">match week / date →</text>
     <text x="14" y="${y0 + (y1 - y0) / 2}" fill="#8a98a8" font-size="10" text-anchor="middle" transform="rotate(-90 14 ${y0 + (y1 - y0) / 2})">points ↑</text>
   </svg>`;
 }
@@ -752,7 +834,7 @@ function drawLuckChart(container, lc) {
     <path d="${path}" fill="none" stroke="${lc.final >= 0 ? "#41d6a3" : "#ef6a5a"}" stroke-width="2"/>${dots}
     ${labels}
     <text x="${x0}" y="${y0}" fill="#8a98a8" font-size="9">cumulative G − xG · hover for dates</text>
-    <text x="${x0 + (x1 - x0) / 2}" y="${h - 6}" fill="#8a98a8" font-size="9" text-anchor="middle">matchday →</text>
+    <text x="${x0 + (x1 - x0) / 2}" y="${h - 6}" fill="#8a98a8" font-size="9" text-anchor="middle">match week →</text>
     <text x="12" y="${y0 + (y1 - y0) / 2}" fill="#8a98a8" font-size="9" text-anchor="middle" transform="rotate(-90 12 ${y0 + (y1 - y0) / 2})">G − xG ↑</text>
   </svg>`;
 }
@@ -778,7 +860,7 @@ function drawTrendChart(container, mt, key) {
     <path d="${path}" fill="none" stroke="#4ea1ff" stroke-width="2"/>${dots}
     ${labels}
     <text x="${x0}" y="${y0}" fill="#8a98a8" font-size="10">rolling ${mt.window}-match ${entry.label || key} · hover for dates</text>
-    <text x="${x0 + (x1 - x0) / 2}" y="${h - 6}" fill="#8a98a8" font-size="10" text-anchor="middle">matchday / date →</text>
+    <text x="${x0 + (x1 - x0) / 2}" y="${h - 6}" fill="#8a98a8" font-size="10" text-anchor="middle">match week / date →</text>
     <text x="14" y="${y0 + (y1 - y0) / 2}" fill="#8a98a8" font-size="10" text-anchor="middle" transform="rotate(-90 14 ${y0 + (y1 - y0) / 2})">${entry.label || key} ↑</text>
   </svg>`;
 }
