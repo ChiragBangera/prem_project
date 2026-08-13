@@ -37,7 +37,8 @@
     <section class="view active" id="view-player">
       <div class="player-pick">
         <div class="field"><label>Player name</label><input id="playerName" placeholder="e.g. Erling Haaland" style="min-width:240px" /></div>
-        <div class="field"><label>Season(s)</label><input id="playerSeason" value="2025" style="min-width:110px" title="comma-separated for multi-season, e.g. 2024,2025" /></div>
+        <div class="field"><label>Season</label><select id="playerSeason" class="season-select"></select></div>
+        <div class="field"><label>and</label><select id="playerSeason2" class="season-select"><option value="">—</option></select></div>
         <div class="field"><label>From <span class="opt">(optional)</span></label><input id="playerFrom" type="date" /></div>
         <div class="field"><label>To <span class="opt">(optional)</span></label><input id="playerTo" type="date" /></div>
         <button class="primary" id="playerGo">Analyze</button>
@@ -52,7 +53,8 @@
     <section class="view" id="view-team">
       <div class="controls">
         <div class="field"><label>Team name</label><input id="teamName" placeholder="e.g. Arsenal" /></div>
-        <div class="field"><label>Season(s)</label><input id="teamSeason" value="2025" style="min-width:110px" title="comma-separated for multi-season, e.g. 2024,2025" /></div>
+        <div class="field"><label>Season</label><select id="teamSeason" class="season-select"></select></div>
+        <div class="field"><label>and</label><select id="teamSeason2" class="season-select"><option value="">—</option></select></div>
         <div class="field"><label>From <span class="opt">(optional)</span></label><input id="teamFrom" type="date" /></div>
         <div class="field"><label>To <span class="opt">(optional)</span></label><input id="teamTo" type="date" /></div>
         <button class="primary" id="teamGo">Analyze</button>
@@ -64,7 +66,7 @@
     <!-- LEAGUE -->
     <section class="view" id="view-league">
       <div class="controls">
-        <div class="field"><label>Season</label><input id="leagueSeason" type="number" value="2025" style="min-width:90px" /></div>
+        <div class="field"><label>Season</label><select id="leagueSeason" class="season-select"></select></div>
         <div class="field"><label>From <span class="opt">(optional)</span></label><input id="leagueFrom" type="date" /></div>
         <div class="field"><label>To <span class="opt">(optional)</span></label><input id="leagueTo" type="date" /></div>
         <button class="primary" id="leagueGo">Analyze</button>
@@ -75,7 +77,7 @@
     <!-- MATCH -->
     <section class="view" id="view-match">
       <div class="controls">
-        <div class="field"><label>Season</label><input id="matchSeason" value="2025" style="min-width:90px" /></div>
+        <div class="field"><label>Season</label><select id="matchSeason" class="season-select"></select></div>
         <div class="field"><label>Round</label><select id="roundSelect" style="min-width:90px"><option value="">—</option></select></div>
         <div class="field"><label>Match</label><select id="matchSelect" style="min-width:280px"><option value="">pick a round first</option></select></div>
         <button class="ghost" id="loadRounds">Load rounds</button>
@@ -91,7 +93,8 @@
     <!-- DISCOVER -->
     <section class="view" id="view-discover">
       <div class="controls">
-        <div class="field"><label>Season(s)</label><input id="discoverSeason" value="2025" style="min-width:110px" title="comma-separated for multi-season, e.g. 2024,2025" /></div>
+        <div class="field"><label>Season</label><select id="discoverSeason" class="season-select"></select></div>
+        <div class="field"><label>and</label><select id="discoverSeason2" class="season-select"><option value="">—</option></select></div>
         <div class="field"><label>Position group</label>
           <select id="discoverPosition"><option value="">All</option><option value="F">Forward</option><option value="M">Midfielder</option><option value="D">Defender</option><option value="GK">Goalkeeper</option></select>
         </div>
@@ -121,7 +124,7 @@
         </div>
         <div class="field"><label id="compareLabelA">Player 1</label><input id="compareA" placeholder="e.g. Mohamed Salah" /></div>
         <div class="field"><label id="compareLabelB">Player 2</label><input id="compareB" placeholder="e.g. Bukayo Saka" /></div>
-        <div class="field"><label>Season</label><input id="compareSeason" type="number" value="2025" style="min-width:90px" /></div>
+        <div class="field"><label>Season</label><select id="compareSeason" class="season-select"></select></div>
         <div class="field"><label>From <span class="opt">(optional)</span></label><input id="compareFrom" type="date" /></div>
         <div class="field"><label>To <span class="opt">(optional)</span></label><input id="compareTo" type="date" /></div>
         <button class="primary" id="compareGo">Compare</button>
@@ -151,7 +154,7 @@
             <div class="field"><label>Away team</label><input id="predAway" placeholder="e.g. Liverpool" /></div>
           </div>
           <div class="controls">
-            <div class="field"><label>Season</label><input id="predSeason" type="number" value="2025" style="min-width:90px" /></div>
+            <div class="field"><label>Season</label><select id="predSeason" class="season-select"></select></div>
             <label class="check"><input type="checkbox" id="predUseXg" checked /> fit on xG (denoised)</label>
             <button class="primary" id="predGo">Forecast</button>
           </div>
@@ -160,7 +163,7 @@
         <div class="card">
           <h3>Rest-of-season simulation</h3>
           <div class="controls">
-            <div class="field"><label>Season</label><input id="simSeason" type="number" value="2025" style="min-width:90px" /></div>
+            <div class="field"><label>Season</label><select id="simSeason" class="season-select"></select></div>
             <div class="field"><label>Simulations</label><input id="simCount" type="number" value="2000" style="min-width:90px" /></div>
             <button class="primary" id="simGo">Simulate</button>
           </div>
@@ -170,7 +173,7 @@
       <div class="card" style="margin-top:16px">
         <h3>Forecast calibration · walk-forward</h3>
         <div class="controls">
-          <div class="field"><label>Season</label><input id="calSeason" type="number" value="2025" style="min-width:90px" /></div>
+          <div class="field"><label>Season</label><select id="calSeason" class="season-select"></select></div>
           <button class="primary" id="calGo">Calibrate</button>
         </div>
         <div class="hint">Refits every few matches through the season and scores predictions out-of-sample vs Understat's own forecast and a naive baseline.</div>
@@ -189,6 +192,7 @@
   </main>
 
   <div id="tooltip" class="tooltip"></div>
+  <div id="chartTip" class="tooltip"></div>
 
   <footer>
     Unofficial project · data: <a href="https://understat.com" target="_blank" rel="noopener">Understat</a> ·
