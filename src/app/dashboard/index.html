@@ -27,6 +27,7 @@
     <button data-tab="match">Match</button>
     <button data-tab="discover">Discover</button>
     <button data-tab="compare">Compare</button>
+    <button data-tab="statsbomb">StatsBomb</button>
     <button data-tab="predict">Predict</button>
     <button data-tab="info">Info</button>
   </nav>
@@ -127,6 +128,17 @@
       </div>
       <div class="hint" style="color:var(--muted);font-size:12px;">Players share one percentile pool per season; teams compare style + this season's meetings. Date range optional.</div>
       <div id="compareContent"><div class="empty">Compare two players (overlaid radar, shared percentile pool) or two teams (style profile + head-to-head).<div class="examples">Try: <span class="example" data-id="compareA" data-value="Mohamed Salah" data-action="">Mohamed Salah</span> vs <span class="example" data-id="compareB" data-value="Bukayo Saka" data-action="runCompare">Bukayo Saka</span> · <span class="example" data-id="compareMode" data-value="teams" data-action="">teams</span></div></div></div>
+    </section>
+
+    <!-- STATSBOMB -->
+    <section class="view" id="view-statsbomb">
+      <div class="controls">
+        <div class="field"><label>Competition</label><select id="sbCompetition" style="min-width:240px"><option value="">loading…</option></select></div>
+        <div class="field"><label>Match</label><select id="sbMatch" style="min-width:320px"><option value="">pick a competition first</option></select></div>
+        <button class="primary" id="sbGo">Analyze</button>
+      </div>
+      <div class="caveat" style="margin-bottom:14px"><strong>Separate data source.</strong> StatsBomb open data provides event-level touches, pressures and carries — metrics Understat does not have — but only for select competitions (La Liga 2004–2021, Champions League 2004–2019, World Cups). No current Premier League. These numbers never mix with Understat data.</div>
+      <div id="sbContent"><div class="empty">Pick a competition and match for touch, pressure, carry and recovery profiles per team and player.</div></div>
     </section>
 
     <!-- PREDICT -->

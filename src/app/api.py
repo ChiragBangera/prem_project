@@ -19,6 +19,7 @@ from app.errors import UnderstatRequestError
 from app.prediction_service import PredictionService
 from app.question_answering import FootballQuestionAnswerer
 from app.stat_data import UnderstatData
+from app.statsbomb_service import StatsBombService
 
 
 PROJECT_SUMMARY = "Evidence-backed football analytics powered by Understat data."
@@ -103,6 +104,7 @@ async def lifespan(app: FastAPI):
     app.state.answerer = FootballQuestionAnswerer(client=client)
     app.state.analytics = AnalyticsService(client=client)
     app.state.predictions = PredictionService(client=client)
+    app.state.statsbomb = StatsBombService()
     yield
     await client.close()
 
@@ -491,6 +493,56 @@ async def match_rounds(payload: AnalyzeLeagueRequest, request: Request):
         league_name=payload.league_name,
         season=payload.season,
     )
+
+
+class StatsBombMatchesRequest(BaseModel):
+    competition_id: int
+    season_id: int
+
+
+@app.get(
+    "/api/v1/statsbomb/competitions",
+    tags=["StatsBomb"],
+    responses={502: {"model": ErrorResponse}},
+)
+async def statsbomb_competitions(request: Request):
+    return await request.app.state.statsbomb.competitions()
+
+
+@app.post(
+    "/api/v1/statsbomb/matches",
+    tags=["StatsBomb"],
+    responses={
+        422: {"model": ErrorResponse},
+        502: {"model": ErrorResponse},
+    },
+)
+async def statsbomb_matches(payload: StatsBombMatchesRequest, request: Request):
+    try:
+        return await request.app.state.statsbomb.matches(payload.competition_id, payload.season_id)
+    except ValueError as exc:
+        return JSONResponse(
+            status_code=422,
+            content={"error": "invalid_parameters", "detail": str(exc)},
+        )
+
+
+@app.post(
+    "/api/v1/statsbomb/match/{match_id}",
+    tags=["StatsBomb"],
+    responses={
+        422: {"model": ErrorResponse},
+        502: {"model": ErrorResponse},
+    },
+)
+async def statsbomb_match(match_id: int, request: Request):
+    try:
+        return await request.app.state.statsbomb.analyze_match(match_id)
+    except ValueError as exc:
+        return JSONResponse(
+            status_code=422,
+            content={"error": "invalid_parameters", "detail": str(exc)},
+        )
 
 
 @app.post(
