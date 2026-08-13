@@ -107,6 +107,21 @@ class AnalyticsService:
             shots = None
 
         report = player_engine.player_report(target, all_merged, teammates, shots=shots)
+
+        try:
+            birthdates = await self._birthdate_map([target.get("player_name")], [target])
+            report["player"]["age"] = _age(birthdates.get(target.get("player_name")))
+            report["player"]["date_of_birth"] = birthdates.get(target.get("player_name"))
+            similar_names = [m.get("player_name") for m in report.get("similar_players", {}).get("matches", [])]
+            if similar_names:
+                similar_birthdates = await self._birthdate_map(similar_names, [
+                    {"player_name": name} for name in similar_names
+                ])
+                for match in report["similar_players"]["matches"]:
+                    match["age"] = _age(similar_birthdates.get(match.get("player_name")))
+        except Exception:
+            pass
+
         report["date_window"] = {"start_date": start_date, "end_date": end_date}
         report["seasons"] = target_seasons
         return report
@@ -199,6 +214,15 @@ class AnalyticsService:
         second = await self._resolve_player(player_2, league_players, league_name, season)
         first_report = player_engine.player_report(first, league_players)
         second_report = player_engine.player_report(second, league_players)
+        try:
+            birthdates = await self._birthdate_map(
+                [first.get("player_name"), second.get("player_name")], [first, second]
+            )
+            for report, player in ((first_report, first), (second_report, second)):
+                report["player"]["age"] = _age(birthdates.get(player.get("player_name")))
+                report["player"]["date_of_birth"] = birthdates.get(player.get("player_name"))
+        except Exception:
+            pass
         return {
             "league_name": league_name,
             "season": season,
@@ -453,6 +477,8 @@ class AnalyticsService:
         start_date: str | None = None,
         end_date: str | None = None,
         seasons: list[int] | str | None = None,
+        min_age: int | None = None,
+        max_age: int | None = None,
     ) -> dict:
         start_date, end_date = _valid_date_range(start_date, end_date)
         target_seasons = parse_seasons(seasons) or [season]
@@ -476,7 +502,33 @@ class AnalyticsService:
         from .analytics.percentiles import position_group as to_group
         if position_group:
             filtered = [p for p in filtered if to_group(p.get("position")) == position_group.upper()]
-        filtered.sort(key=lambda p: _float(p, order_by), reverse=True)
+
+        min_age = min_age if min_age is not None else None
+        max_age = max_age if max_age is not None else None
+        if min_age is not None or max_age is not None:
+            names = [p.get("player_name") for p in filtered]
+            birthdates = await self._birthdate_map(names, filtered)
+            aged = []
+            for p in filtered:
+                age = _age(birthdates.get(p.get("player_name")))
+                if age is None:
+                    continue
+                if min_age is not None and age < min_age:
+                    continue
+                if max_age is not None and age > max_age:
+                    continue
+                aged.append(p)
+            filtered = aged
+
+        if order_by in ("age_asc", "age_desc"):
+            names = [p.get("player_name") for p in filtered]
+            birthdates = await self._birthdate_map(names, filtered)
+            keyed = {p.get("player_name"): _age(birthdates.get(p.get("player_name"))) for p in filtered}
+            filtered.sort(key=lambda p: (keyed.get(p.get("player_name")) is None, keyed.get(p.get("player_name")) or 999))
+            if order_by == "age_desc":
+                filtered.reverse()
+        else:
+            filtered.sort(key=lambda p: _float(p, order_by), reverse=True)
         top = filtered[:limit]
 
         ppda_by_team = await self._team_press_map(league_name, target_seasons[-1], start_date, end_date)

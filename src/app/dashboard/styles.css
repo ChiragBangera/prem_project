@@ -50,6 +50,28 @@ section.view.active { display: block; }
 .field label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
 .field label .opt { text-transform: none; color: #5c6a7a; }
 .field input[type=date] { min-width: 150px; color-scheme: dark; }
+
+/* season multi-select dropdown */
+.season-multi { position: relative; }
+.season-btn {
+  background: var(--panel); color: var(--text); border: 1px solid var(--border);
+  padding: 8px 12px; border-radius: 6px; font-size: 13px; cursor: pointer;
+  min-width: 150px; text-align: left; font-family: var(--sans);
+}
+.season-btn:hover { border-color: var(--accent); }
+.season-panel {
+  display: none; position: absolute; top: calc(100% + 4px); left: 0; z-index: 60;
+  background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px;
+  padding: 8px; min-width: 200px; max-height: 300px; overflow-y: auto;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+}
+.season-panel.open { display: block; }
+.season-hint { color: var(--muted); font-size: 11px; padding: 2px 4px 6px; }
+.season-option {
+  display: block; padding: 5px 8px; font-size: 13px; border-radius: 4px; cursor: pointer;
+}
+.season-option:hover { background: var(--panel); }
+.season-option input { margin-right: 8px; accent-color: var(--accent); }
 .field input, .field select, .field input[type=number] {
   background: var(--panel); color: var(--text); border: 1px solid var(--border);
   padding: 8px 10px; border-radius: 6px; font-size: 13px; min-width: 180px; font-family: var(--sans);

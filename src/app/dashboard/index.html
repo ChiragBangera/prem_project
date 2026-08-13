@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Premier League Analytics Lab</title>
-  <link rel="stylesheet" href="/dashboard/styles.css" />
+  <link rel="stylesheet" href="/dashboard/styles.css?v=7" />
 </head>
 <body>
   <header class="topbar">
@@ -37,8 +37,7 @@
     <section class="view active" id="view-player">
       <div class="player-pick">
         <div class="field"><label>Player name</label><input id="playerName" placeholder="e.g. Erling Haaland" style="min-width:240px" /></div>
-        <div class="field"><label>Season</label><select id="playerSeason" class="season-select"></select></div>
-        <div class="field"><label>and</label><select id="playerSeason2" class="season-select"><option value="">—</option></select></div>
+        <div class="field"><label>Season(s) · pick up to 5</label><div class="season-multi" id="playerSeasons" data-max="5"></div></div>
         <div class="field"><label>From <span class="opt">(optional)</span></label><input id="playerFrom" type="date" /></div>
         <div class="field"><label>To <span class="opt">(optional)</span></label><input id="playerTo" type="date" /></div>
         <button class="primary" id="playerGo">Analyze</button>
@@ -53,8 +52,7 @@
     <section class="view" id="view-team">
       <div class="controls">
         <div class="field"><label>Team name</label><input id="teamName" placeholder="e.g. Arsenal" /></div>
-        <div class="field"><label>Season</label><select id="teamSeason" class="season-select"></select></div>
-        <div class="field"><label>and</label><select id="teamSeason2" class="season-select"><option value="">—</option></select></div>
+        <div class="field"><label>Season(s) · pick up to 5</label><div class="season-multi" id="teamSeasons" data-max="5"></div></div>
         <div class="field"><label>From <span class="opt">(optional)</span></label><input id="teamFrom" type="date" /></div>
         <div class="field"><label>To <span class="opt">(optional)</span></label><input id="teamTo" type="date" /></div>
         <button class="primary" id="teamGo">Analyze</button>
@@ -93,8 +91,7 @@
     <!-- DISCOVER -->
     <section class="view" id="view-discover">
       <div class="controls">
-        <div class="field"><label>Season</label><select id="discoverSeason" class="season-select"></select></div>
-        <div class="field"><label>and</label><select id="discoverSeason2" class="season-select"><option value="">—</option></select></div>
+        <div class="field"><label>Season(s) · pick up to 5</label><div class="season-multi" id="discoverSeasons" data-max="5"></div></div>
         <div class="field"><label>Position group</label>
           <select id="discoverPosition"><option value="">All</option><option value="F">Forward</option><option value="M">Midfielder</option><option value="D">Defender</option><option value="GK">Goalkeeper</option></select>
         </div>
@@ -107,8 +104,12 @@
             <option value="xGBuildup">xGBuildup</option>
             <option value="goals">Goals</option>
             <option value="assists">Assists</option>
+            <option value="age_asc">Age · youngest first</option>
+            <option value="age_desc">Age · oldest first</option>
           </select>
         </div>
+        <div class="field"><label>Age from</label><input id="discoverMinAge" type="number" min="15" max="50" style="min-width:80px" /></div>
+        <div class="field"><label>to</label><input id="discoverMaxAge" type="number" min="15" max="50" style="min-width:80px" /></div>
         <div class="field"><label>From <span class="opt">(optional)</span></label><input id="discoverFrom" type="date" /></div>
         <div class="field"><label>To <span class="opt">(optional)</span></label><input id="discoverTo" type="date" /></div>
         <button class="primary" id="discoverGo">Discover</button>
@@ -140,8 +141,13 @@
         <div class="field"><label>Match</label><select id="sbMatch" style="min-width:320px"><option value="">pick a competition first</option></select></div>
         <button class="primary" id="sbGo">Analyze</button>
       </div>
-      <div class="caveat" style="margin-bottom:14px"><strong>Separate data source.</strong> StatsBomb open data provides event-level touches, pressures and carries — metrics Understat does not have — but only for select competitions (La Liga 2004–2021, Champions League 2004–2019, World Cups). No current Premier League. These numbers never mix with Understat data.</div>
-      <div id="sbContent"><div class="empty">Pick a competition and match for touch, pressure, carry and recovery profiles per team and player.</div></div>
+      <div class="caveat" style="margin-bottom:14px"><strong>What is this tab?</strong> Understat has no touches, pressures or carry data — only shots. This tab pulls <strong>StatsBomb open data</strong> (a separate, free event-level source) for the metrics Understat cannot provide: touches (incl. opposition-box), pressures (with the 5-second successful rule), carry distance, ball recoveries, passing and final-third entries. Coverage is limited to its free competitions (La Liga 2004–2021, Champions League 2004–2019, World Cups) — <strong>no current Premier League</strong> — so nothing here mixes with the Understat views.</div>
+      <div id="sbContent"><div class="empty">How to use:
+        <ol style="text-align:left;max-width:520px;margin:12px auto 0">
+          <li>Pick a <strong>competition / season</strong> (e.g. La Liga 2020/21).</li>
+          <li>Pick a <strong>match</strong> from that season.</li>
+          <li>Analyze → team touch/press/carry profiles + per-player leaderboards.</li>
+        </ol></div></div>
     </section>
 
     <!-- PREDICT -->
@@ -200,6 +206,6 @@
     metrics ship only what is honestly computable from this dataset
   </footer>
 
-  <script src="/dashboard/app.js"></script>
+  <script src="/dashboard/app.js?v=7"></script>
 </body>
 </html>

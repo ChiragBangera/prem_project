@@ -309,6 +309,8 @@ class DiscoverPlayersRequest(BaseModel):
     start_date: str | None = None
     end_date: str | None = None
     seasons: list[int] | str | None = None
+    min_age: int | None = None
+    max_age: int | None = None
 
 
 @app.post(
@@ -574,6 +576,8 @@ async def discover_players(payload: DiscoverPlayersRequest, request: Request):
             start_date=payload.start_date,
             end_date=payload.end_date,
             seasons=payload.seasons,
+            min_age=payload.min_age,
+            max_age=payload.max_age,
         )
     except ValueError as exc:
         return JSONResponse(

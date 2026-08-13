@@ -37,8 +37,8 @@ function windowBadge(d) {
 }
 
 // input persistence + example chips
-const PERSIST_IDS = ["playerName", "playerSeason", "teamName", "teamSeason", "leagueSeason",
-  "discoverSeason", "matchSeason", "matchId",
+const PERSIST_IDS = ["playerName", "teamName", "leagueSeason",
+  "matchSeason", "matchId",
   "predHome", "predAway", "predSeason", "simSeason", "calSeason",
   "compareA", "compareB", "compareSeason", "discoverMinutes", "discoverPosition", "discoverOrderBy"];
 PERSIST_IDS.forEach((id) => {
@@ -161,8 +161,97 @@ function dateOf(id) { const v = $(id).value; return v || null; }
 
 // ---------- season dropdowns ----------
 const SEASON_RANGE = { first: 2014, last: 2025 };
+
+function selectedSeasons(hostId) {
+  const host = document.getElementById(hostId);
+  if (!host) return [];
+  return JSON.parse(host.dataset.seasons || "[]");
+}
+
+function seasonOf(id) {
+  const el = document.getElementById(id);
+  if (el && el.classList.contains("season-multi")) {
+    const seasons = selectedSeasons(id);
+    return seasons[0] || 2025;
+  }
+  return parseInt(el.value, 10) || 2025;
+}
+function seasonsOf(id) {
+  const el = document.getElementById(id);
+  if (el && el.classList.contains("season-multi")) {
+    const seasons = selectedSeasons(id);
+    return seasons.length > 1 ? seasons : null;
+  }
+  return null;
+}
+
+function buildSeasonMulti(hostId, maxSeasons) {
+  const host = document.getElementById(hostId);
+  if (!host) return;
+  let seasons = [];
+  try {
+    const saved = JSON.parse(localStorage.getItem(`prem_${hostId}`) || "[]");
+    if (Array.isArray(saved) && saved.length) seasons = saved.filter((s) => s >= SEASON_RANGE.first && s <= SEASON_RANGE.last);
+  } catch (_) { /* ignore */ }
+  if (!seasons.length) seasons = [2025];
+  host.dataset.seasons = JSON.stringify(seasons);
+  host.classList.add("season-multi");
+
+  host.innerHTML = `
+    <button type="button" class="season-btn" data-season-btn>${labelFor(seasons)}</button>
+    <div class="season-panel" data-season-panel>
+      <div class="season-hint">Pick 1–${maxSeasons} seasons (multi-season merges stats)</div>
+      ${seasonOptions(seasons)}
+    </div>`;
+
+  const btn = host.querySelector("[data-season-btn]");
+  const panel = host.querySelector("[data-season-panel]");
+  btn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    panel.classList.toggle("open");
+  });
+  document.addEventListener("click", (e) => {
+    if (!host.contains(e.target)) panel.classList.remove("open");
+  });
+  host.querySelectorAll("input[type=checkbox]").forEach((checkbox) => {
+    checkbox.addEventListener("change", () => {
+      let current = selectedSeasons(hostId);
+      const year = parseInt(checkbox.value, 10);
+      if (checkbox.checked) {
+        if (current.length >= maxSeasons) {
+          checkbox.checked = false;
+          panel.querySelector(".season-hint").textContent = `Maximum ${maxSeasons} seasons — uncheck one first`;
+          return;
+        }
+        current = [...current, year].sort((a, b) => b - a);
+      } else {
+        current = current.filter((s) => s !== year);
+      }
+      if (!current.length) current = [2025];
+      host.dataset.seasons = JSON.stringify(current);
+      localStorage.setItem(`prem_${hostId}`, JSON.stringify(current));
+      btn.textContent = labelFor(current);
+      panel.querySelector(".season-hint").textContent = `Pick 1–${maxSeasons} seasons (multi-season merges stats)`;
+    });
+  });
+}
+
+function seasonOptions(selected) {
+  let html = "";
+  for (let s = SEASON_RANGE.last; s >= SEASON_RANGE.first; s--) {
+    html += `<label class="season-option"><input type="checkbox" value="${s}" ${selected.includes(s) ? "checked" : ""}/> ${s}</label>`;
+  }
+  return html;
+}
+
+function labelFor(seasons) {
+  if (!seasons.length) return "2025";
+  if (seasons.length === 1) return `${seasons[0]}`;
+  if (seasons.length <= 3) return seasons.join(", ");
+  return `${seasons.slice(0, 3).join(", ")} +${seasons.length - 3}`;
+}
+
 function populateSeasonSelects() {
-  const options = "";
   document.querySelectorAll("select.season-select").forEach((select) => {
     const keepValue = select.value || localStorage.getItem(`prem_${select.id}`);
     select.innerHTML = "";
@@ -172,18 +261,15 @@ function populateSeasonSelects() {
       option.textContent = `${s}`;
       select.appendChild(option);
     }
-    if (select.id.endsWith("2")) {
-      const blank = document.createElement("option");
-      blank.value = "";
-      blank.textContent = "—";
-      select.insertBefore(blank, select.firstChild);
-      select.value = "";
-    } else if (keepValue) {
-      select.value = keepValue;
-    } else {
-      select.value = "2025";
-    }
+    select.value = keepValue || "2025";
   });
+  buildSeasonMulti("playerSeasons", 5);
+  buildSeasonMulti("teamSeasons", 5);
+  buildSeasonMulti("discoverSeasons", 5);
+}
+
+function hoverDot(cx, cy, tip, color, r = 4) {
+  return `<circle cx="${cx}" cy="${cy}" r="12" fill="transparent" data-tip="${tip}"/><circle cx="${cx}" cy="${cy}" r="${r}" fill="${color}"/>`;
 }
 
 // ---------- chart hover tooltip ----------
@@ -235,12 +321,12 @@ async function runPlayer() {
   $("playerResolved").textContent = "";
   try {
     const d = await api("/api/v1/analyze/player", {
-      player_name: name, league_name: state.league, season: seasonOf("playerSeason"),
-      seasons: seasonsOf("playerSeason"),
+      player_name: name, league_name: state.league, season: seasonOf("playerSeasons"),
+      seasons: seasonsOf("playerSeasons"),
       start_date: dateOf("playerFrom"), end_date: dateOf("playerTo"),
     });
     const seasonLabel = d.seasons && d.seasons.length > 1 ? ` · ${d.seasons.join("–")}` : "";
-    $("playerResolved").textContent = `${d.player.name} · ${d.player.team_title || "—"} · ${d.player.position || "—"}${seasonLabel}`;
+    $("playerResolved").textContent = `${d.player.name}${d.player.age != null ? ` (${d.player.age})` : ""} · ${d.player.team_title || "—"} · ${d.player.position || "—"}${seasonLabel}`;
     renderPlayer(node, d);
   } catch (e) { errored(node, e.message); }
 }
@@ -252,7 +338,7 @@ async function runCareer() {
   $("playerResolved").textContent = "";
   try {
     const d = await api("/api/v1/analyze/player/career", {
-      player_name: name, league_name: state.league, season_end: seasonOf("playerSeason"),
+      player_name: name, league_name: state.league, season_end: seasonOf("playerSeasons"),
     });
     $("playerResolved").textContent = `${d.player_name} · ${d.n_seasons_present} seasons in ${LEAGUE_LABEL[d.league_name] || d.league_name}`;
     renderCareer(node, d);
@@ -346,7 +432,7 @@ function drawCareerChart(container, rows, metricKey) {
   const x = (i) => x0 + (i * (x1 - x0)) / Math.max(rows.length - 1, 1);
   const y = (v) => y1 - (v / allMax) * (y1 - y0);
   const path = vals.map((v, i) => `${i ? "L" : "M"}${x(i)},${y(v)}`).join(" ");
-  const dots = vals.map((v, i) => `<circle cx="${x(i)}" cy="${y(v)}" r="4" fill="#4ea1ff" data-tip="${rows[i].season}: ${fmt(v, 3)}\n${rows[i].team || ""}\n${fmt(rows[i].minutes, 0)} min">`).join("");
+  const dots = vals.map((v, i) => hoverDot(x(i), y(v), `${rows[i].season}: ${fmt(v, 3)}\n${rows[i].team || ""}\n${fmt(rows[i].minutes, 0)} min`, "#4ea1ff")).join("");
   const labels = rows.map((r, i) => `<text x="${x(i)}" y="${y1 + 16}" fill="#8a98a8" font-size="10" text-anchor="middle">${r.season}</text>`).join("");
   const entry = GLOSSARY[metricKey] || {};
   el.innerHTML = `<svg class="timeline-svg" viewBox="0 0 ${w} ${h}">
@@ -420,8 +506,8 @@ function shotSelection(s) {
 
 function similarPlayers(s) {
   if (!s.matches.length) return `<div class="empty">No similar players in pool after filters (pool: ${s.pool_after_filters}).</div>`;
-  return `<table><thead><tr><th>Player</th><th>Team</th><th class="num">Sim</th><th class="num">Min</th></tr></thead><tbody>
-    ${s.matches.map((m) => `<tr><td>${m.player_name}</td><td>${m.team_title || "—"}</td><td class="num">${fmt(m.similarity, 3)}</td><td class="num">${fmt(m.minutes, 0)}</td></tr>`).join("")}
+  return `<table><thead><tr><th>Player</th><th>Team</th><th class="num">${term("age")}</th><th class="num">Sim</th><th class="num">Min</th></tr></thead><tbody>
+    ${s.matches.map((m) => `<tr><td>${m.player_name}</td><td>${m.team_title || "—"}</td><td class="num">${m.age ?? "—"}</td><td class="num">${fmt(m.similarity, 3)}</td><td class="num">${fmt(m.minutes, 0)}</td></tr>`).join("")}
   </tbody></table>`;
 }
 
@@ -482,8 +568,8 @@ async function runTeam() {
   const node = $("teamContent"); loading(node);
   try {
     const d = await api("/api/v1/analyze/team", {
-      team_name: name, league_name: state.league, season: seasonOf("teamSeason"),
-      seasons: seasonsOf("teamSeason"),
+      team_name: name, league_name: state.league, season: seasonOf("teamSeasons"),
+      seasons: seasonsOf("teamSeasons"),
       start_date: dateOf("teamFrom"), end_date: dateOf("teamTo"),
     });
     renderTeam(node, d);
@@ -494,7 +580,7 @@ async function runTeamTimeline() {
   const node = $("teamContent"); loading(node);
   try {
     const d = await api("/api/v1/analyze/team/timeline", {
-      team_name: name, league_name: state.league, season_end: seasonOf("teamSeason"),
+      team_name: name, league_name: state.league, season_end: seasonOf("teamSeasons"),
     });
     renderTeamTimeline(node, d);
   } catch (e) { errored(node, e.message); }
@@ -553,7 +639,7 @@ function drawTimelineChart(container, months, metricKey) {
   const y = (v) => y1 - ((v - lo) / (hi - lo)) * (y1 - y0);
   const color = (m) => (m.season === months[months.length - 1].season ? "#4ea1ff" : "#6b7c8f");
   const path = months.map((m, i) => `${i ? "L" : "M"}${x(i)},${y(Number(m[metricKey]) || 0)}`).join(" ");
-  const dots = months.map((m, i) => `<circle cx="${x(i)}" cy="${y(Number(m[metricKey]) || 0)}" r="4" fill="${color(m)}" data-tip="${m.month} (${m.season})\n${fmt(m[metricKey], 2)}\n${m.matches} matches · ${m.wins}W ${m.draws}D ${m.loses}L\nxG ${fmt(m.xG)} / xGA ${fmt(m.xGA)}">`).join("");
+  const dots = months.map((m, i) => hoverDot(x(i), y(Number(m[metricKey]) || 0), `${m.month} (${m.season})\n${fmt(m[metricKey], 2)}\n${m.matches} matches · ${m.wins}W ${m.draws}D ${m.loses}L\nxG ${fmt(m.xG)} / xGA ${fmt(m.xGA)}`, color(m))).join("");
   const step = Math.max(1, Math.floor(months.length / 14));
   const labels = months.map((m, i) => (i % step === 0 ? `<text x="${x(i)}" y="${y1 + 14}" fill="#8a98a8" font-size="9" text-anchor="middle" transform="rotate(-30 ${x(i)} ${y1 + 14})">${m.month}</text>` : "")).join("");
   const zero = mid === 0 ? y(0) : null;
@@ -648,7 +734,7 @@ function drawPositionTrend(container, pt) {
   const x = (i) => x0 + (i * (x1 - x0)) / Math.max(pt.matchdays.length - 1, 1);
   const y = (v) => y1 - (v / maxP) * (y1 - y0);
   const path = (vals, color) => vals.map((v, i) => `${i ? "L" : "M"}${x(i)},${y(v)}`).join(" ");
-  const dots = pt.matchdays.map((m, i) => `<circle cx="${x(i)}" cy="${y(m.points)}" r="3.5" fill="#4ea1ff" data-tip="${m.date}\npoints ${m.points} · xPTS ${m.xpts}\ntable rank: ${m.rank} of ${pt.n_teams}">`).join("");
+  const dots = pt.matchdays.map((m, i) => hoverDot(x(i), y(m.points), `${m.date}\npoints ${m.points} · xPTS ${m.xpts}\ntable rank: ${m.rank} of ${pt.n_teams}`, "#4ea1ff", 3.5)).join("");
   const step = Math.max(1, Math.floor(pt.matchdays.length / 16));
   const dateLabels = pt.matchdays.map((m, i) => (i % step === 0 ? `<text x="${x(i)}" y="${y1 + 14}" fill="#8a98a8" font-size="9" text-anchor="middle" transform="rotate(-30 ${x(i)} ${y1 + 14})">${m.date.slice(5)}</text>` : "")).join("");
   const rankLabels = pt.matchdays.map((m, i) => (i % step === 0 ? `<text x="${x(i)}" y="${y0 + 30}" fill="#8a98a8" font-size="8.5" text-anchor="middle">#${m.rank}</text>` : "")).join("");
@@ -673,7 +759,7 @@ function drawLuckChart(container, lc) {
   const x = (i) => x0 + (i * (x1 - x0)) / Math.max(vals.length - 1, 1);
   const y = (v) => y1 - ((v - lo) / span) * (y1 - y0);
   const path = vals.map((v, i) => `${i ? "L" : "M"}${x(i)},${y(v)}`).join(" ");
-  const dots = lc.points.map((p, i) => `<circle cx="${x(i)}" cy="${y(p.cumulative_g_minus_xg)}" r="3.5" fill="${lc.final >= 0 ? "#41d6a3" : "#ef6a5a"}" data-tip="${p.date}\ncumulative G − xG: ${fmt(p.cumulative_g_minus_xg, 2)}">`).join("");
+  const dots = lc.points.map((p, i) => hoverDot(x(i), y(p.cumulative_g_minus_xg), `${p.date}\ncumulative G − xG: ${fmt(p.cumulative_g_minus_xg, 2)}`, lc.final >= 0 ? "#41d6a3" : "#ef6a5a", 3.5)).join("");
   const zero = y(0);
   const step = Math.max(1, Math.floor(vals.length / 12));
   const labels = lc.points.map((p, i) => (i % step === 0 ? `<text x="${x(i)}" y="${y1 + 14}" fill="#8a98a8" font-size="8.5" text-anchor="middle" transform="rotate(-30 ${x(i)} ${y1 + 14})">${p.date.slice(5)}</text>` : "")).join("");
@@ -698,7 +784,7 @@ function drawTrendChart(container, mt, key) {
   const x = (i) => x0 + (i * (x1 - x0)) / Math.max(vals.length - 1, 1);
   const y = (v) => y1 - ((v + allMax) / (2 * allMax)) * (y1 - y0);
   const path = vals.map((v, i) => `${i ? "L" : "M"}${x(i)},${y(v)}`).join(" ");
-  const dots = vals.map((v, i) => `<circle cx="${x(i)}" cy="${y(v)}" r="3.5" fill="#4ea1ff" data-tip="${mt.dates[i]}\n${key}: ${fmt(v, 2)}">`).join("");
+  const dots = vals.map((v, i) => hoverDot(x(i), y(v), `${mt.dates[i]}\n${key}: ${fmt(v, 2)}`, "#4ea1ff", 3.5)).join("");
   const zero = y(0);
   const step = Math.max(1, Math.floor(vals.length / 16));
   const labels = mt.dates.map((d, i) => (i % step === 0 ? `<text x="${x(i)}" y="${y1 + 14}" fill="#8a98a8" font-size="9" text-anchor="middle" transform="rotate(-30 ${x(i)} ${y1 + 14})">${d.slice(5)}</text>` : "")).join("");
@@ -897,7 +983,7 @@ function drawXgTimeline(container, tl) {
   const x = (m) => x0 + (m / minuteMax) * (x1 - x0);
   const y = (v) => y1 - (v / allMax) * (y1 - y0);
   const path = (pts, color) => pts.length ? `<path d="${pts.map((p, i) => `${i ? "L" : "M"}${x(p.minute)},${y(p.cumulative_xG)}`).join(" ")}" fill="none" stroke="${color}" stroke-width="2"/>` : "";
-  const dots = (pts, color) => pts.map((p) => `<circle cx="${x(p.minute)}" cy="${y(p.cumulative_xG)}" r="3.5" fill="${color}" data-tip="minute ${p.minute}\ncumulative xG: ${fmt(p.cumulative_xG, 3)}">`).join("");
+  const dots = (pts, color) => pts.map((p) => hoverDot(x(p.minute), y(p.cumulative_xG), `minute ${p.minute}\ncumulative xG: ${fmt(p.cumulative_xG, 3)}`, color, 3.5)).join("");
   el.innerHTML = `<svg class="timeline-svg" viewBox="0 0 ${w} ${h}">
     <line x1="${x0}" y1="${y1}" x2="${x1}" y2="${y1}" stroke="#243040"/>
     <line x1="${x0}" y1="${y1}" x2="${x0}" y2="${y0}" stroke="#243040"/>
@@ -916,12 +1002,14 @@ async function runDiscover() {
   try {
     const d = await api("/api/v1/discover/players", {
       league_name: state.league,
-      season: seasonOf("discoverSeason"),
-      seasons: seasonsOf("discoverSeason"),
+      season: seasonOf("discoverSeasons"),
+      seasons: seasonsOf("discoverSeasons"),
       position_group: $("discoverPosition").value || null,
       minimum_minutes: parseFloat($("discoverMinutes").value) || 900,
       order_by: $("discoverOrderBy").value,
       start_date: dateOf("discoverFrom"), end_date: dateOf("discoverTo"),
+      min_age: parseInt($("discoverMinAge").value, 10) || null,
+      max_age: parseInt($("discoverMaxAge").value, 10) || null,
     });
     renderDiscover(node, d);
   } catch (e) { errored(node, e.message); }
@@ -995,7 +1083,7 @@ function renderComparePlayers(node, d, nameA, nameB) {
 
 function comparePer90(pa, pb) {
   const rows = [["goals", "goals"], ["xG", "xG"], ["npxG", "npxG"], ["assists", "assists"], ["xA", "xA"], ["shots", "shots"], ["key_passes", "key_passes"]];
-  return `<table><thead><tr><th></th><th class="num">${pa.player.name}</th><th class="num">${pb.player.name}</th></tr></thead><tbody>
+  return `<table><thead><tr><th></th><th class="num">${pa.player.name}${pa.player.age != null ? ` (${pa.player.age})` : ""}</th><th class="num">${pb.player.name}${pb.player.age != null ? ` (${pb.player.age})` : ""}</th></tr></thead><tbody>
     ${rows.map(([k, gk]) => `<tr><td>${term(gk)}</td><td class="num">${fmt(pa.per90_breakdown.per90[k], 3)}</td><td class="num">${fmt(pb.per90_breakdown.per90[k], 3)}</td></tr>`).join("")}
   </tbody></table>
   <div class="hint">${pa.player.name}: ${fmt(pa.per90_breakdown.minutes, 0)} min · ${pb.player.name}: ${fmt(pb.per90_breakdown.minutes, 0)} min</div>`;
