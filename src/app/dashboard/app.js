@@ -1030,7 +1030,6 @@ loadBasket();
 // ---------- DISCOVER ----------
 $("discoverGo").addEventListener("click", runDiscover);
 $("discoverOrderBy").addEventListener("change", runDiscover);
-$("discoverPosition").addEventListener("change", runDiscover);
 $("discoverLimit").addEventListener("change", runDiscover);
 let discoverDebounce;
 $("discoverMinutes").addEventListener("input", () => { clearTimeout(discoverDebounce); discoverDebounce = setTimeout(runDiscover, 700); });
