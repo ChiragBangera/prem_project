@@ -639,7 +639,6 @@ function renderTeam(node, d) {
       <div class="card"><h3>Style profile · ${s.team}${seasonsLabel} ${windowBadge(d)}</h3>${styleKv(s)}</div>
       <div class="card"><h3>${term("venue_factor")} splits</h3>${homeAwayKv(d.home_away_splits)}</div>
     </div>
-    <div class="card" style="margin-top:16px"><h3>${term("position_trend")} · points, xPTS & rank by match week</h3><div id="posTrend"></div></div>
     ${seasonComparisonSection(d)}
     <div class="card" style="margin-top:16px"><h3>Rolling trends (5-match)</h3>
       <div class="controls"><div class="field"><label>Metric</label>
@@ -665,7 +664,6 @@ function renderTeam(node, d) {
     ${d.situational_xg_share ? `<div class="card" style="margin-top:16px"><h3>${term("situations")} xG share</h3>${situationTable(d.situational_xg_share)}</div>` : ""}
     <div class="caveat"><strong>Limitations.</strong><ul>${d.limitations.map((l) => `<li>${l}</li>`).join("")}</ul></div>
   `;
-  drawPositionTrend("posTrend", d.position_trend);
   drawSeasonComparisonCharts(d);
   node.querySelectorAll(".season-toggle").forEach((chip) => chip.addEventListener("click", () => {
     const season = chip.dataset.season;
@@ -717,14 +715,16 @@ function situationTable(s) {
 
 function seasonComparisonSection(d) {
   const trends = d.season_trends ? Object.entries(d.season_trends) : [];
-  if (trends.length < 2) return "";
+  if (trends.length < 1) return "";
   const seasons = trends.map(([s]) => s);
   state.hiddenSeasons = state.hiddenSeasons || new Set();
-  const chips = seasons.map((s, i) =>
-    `<span class="compare-chip season-toggle${state.hiddenSeasons.has(s) ? " off" : ""}" data-season="${s}">
-      <span class="dot" style="background:${RADAR_COLORS[i % RADAR_COLORS.length]}"></span>${s}</span>`).join("");
-  return `<div class="card" style="margin-top:16px"><h3>Season vs season · same match week comparison</h3>
-    <div class="compare-chips">${chips}<span class="chip-hint">click a season to show/hide</span></div>
+  const chips = seasons.length > 1
+    ? seasons.map((s, i) =>
+        `<span class="compare-chip season-toggle${state.hiddenSeasons.has(s) ? " off" : ""}" data-season="${s}">
+          <span class="dot" style="background:${RADAR_COLORS[i % RADAR_COLORS.length]}"></span>${s}</span>`).join("")
+    : "";
+  return `<div class="card" style="margin-top:16px"><h3>League position & points · by match week${seasons.length > 1 ? " · season vs season" : ""}</h3>
+    <div class="compare-chips">${chips}${chips ? `<span class="chip-hint">click a season to show/hide</span>` : ""}</div>
     <div id="seasonPoints"></div>
     <div id="seasonRank" style="margin-top:14px"></div>
   </div>`;
@@ -743,15 +743,17 @@ function drawSeasonLines(container, trends, metric, opts) {
     const color = RADAR_COLORS[entries.findIndex(([ss]) => ss === s) % RADAR_COLORS.length];
     const vals = t.matchdays.map((m) => m[metric]);
     if (opts.invert) {
-      const y = (v) => y1 - ((v - 1) / (opts.ymax - 1)) * (y1 - y0);
+      const y = (v) => y0 + ((v - 1) / (opts.ymax - 1)) * (y1 - y0);
       const path = vals.map((v, i) => `${i ? "L" : "M"}${x(i)},${y(v)}`).join(" ");
       lines += `<path d="${path}" fill="none" stroke="${color}" stroke-width="2"/>`;
       dots += t.matchdays.map((m, i) => hoverDot(x(i), y(m[metric]), `${s} · match week ${i + 1}\n${m.date}\nposition ${m.rank} · points ${m.points}\nxPTS ${m.xpts}`, color, 3.5)).join("");
     } else {
-      const ymax = Math.max(...entries.flatMap(([, tt]) => tt.matchdays.map((m) => m[metric])), 1);
+      const ymax = Math.max(...entries.flatMap(([, tt]) => tt.matchdays.flatMap((m) => [m[metric], m.xpts])), 1);
       const y = (v) => y1 - (v / ymax) * (y1 - y0);
       const path = vals.map((v, i) => `${i ? "L" : "M"}${x(i)},${y(v)}`).join(" ");
+      const xptsPath = t.matchdays.map((m, i) => `${i ? "L" : "M"}${x(i)},${y(m.xpts)}`).join(" ");
       lines += `<path d="${path}" fill="none" stroke="${color}" stroke-width="2"/>`;
+      lines += `<path d="${xptsPath}" fill="none" stroke="${color}" stroke-width="1.5" stroke-dasharray="4 3" opacity="0.7"/>`;
       dots += t.matchdays.map((m, i) => hoverDot(x(i), y(m[metric]), `${s} · match week ${i + 1}\n${m.date}\npoints ${m.points} · xPTS ${m.xpts}\nposition ${m.rank}`, color, 3.5)).join("");
     }
   }
@@ -759,12 +761,13 @@ function drawSeasonLines(container, trends, metric, opts) {
   for (let wk = 1; wk <= maxMatchdays; wk += 5) {
     weekTicks.push(`<text x="${x(wk - 1)}" y="${y1 + 16}" fill="#8a98a8" font-size="9" text-anchor="middle">${wk}</text>`);
   }
-  const axisLabel = opts.invert ? "league position (1 = top) ↑" : "points ↑";
+  const axisLabel = opts.invert ? "league position (1 = top)" : "points ↑";
   el.innerHTML = `<svg class="timeline-svg" viewBox="0 0 ${w} ${h}">
     <line x1="${x0}" y1="${y1}" x2="${x1}" y2="${y1}" stroke="#243040"/>
     <line x1="${x0}" y1="${y1}" x2="${x0}" y2="${y0}" stroke="#243040"/>
     ${opts.invert ? rankTicks(x0, x1, y0, y1, opts.ymax) : ""}
     ${lines}${dots}
+    ${opts.invert ? "" : `<text x="${x0}" y="${y0 - 2}" fill="#8a98a8" font-size="10">— points &nbsp; - - xPTS &nbsp; (solid vs dotted per season)</text>`}
     ${weekTicks.join("")}
     <text x="${x0 + (x1 - x0) / 2}" y="${h - 6}" fill="#8a98a8" font-size="10" text-anchor="middle">match week (team’s nth league match) →</text>
     <text x="12" y="${y0 + (y1 - y0) / 2}" fill="#8a98a8" font-size="10" text-anchor="middle" transform="rotate(-90 12 ${y0 + (y1 - y0) / 2})">${axisLabel}</text>
@@ -775,7 +778,7 @@ function rankTicks(x0, x1, y0, y1, nTeams) {
   let out = "";
   const ticks = [1, 5, 10, 15, 20].filter((t) => t <= nTeams);
   for (const t of ticks) {
-    const y = y1 - ((t - 1) / (nTeams - 1)) * (y1 - y0);
+    const y = y0 + ((t - 1) / (nTeams - 1)) * (y1 - y0);
     out += `<line x1="${x0}" y1="${y}" x2="${x1}" y2="${y}" stroke="#1a2230" stroke-dasharray="2 4"/>`;
     out += `<text x="${x0 - 4}" y="${y + 3}" fill="#8a98a8" font-size="9" text-anchor="end">${t}</text>`;
   }
@@ -786,62 +789,6 @@ function drawSeasonComparisonCharts(d) {
   if (!d.season_trends) return;
   drawSeasonLines("seasonPoints", d.season_trends, "points", { invert: false });
   drawSeasonLines("seasonRank", d.season_trends, "rank", { invert: true, ymax: Math.max(...Object.values(d.season_trends).map((t) => t.n_teams), 2) });
-}
-
-function drawPositionTrend(container, pt) {
-  const el = document.getElementById(container);
-  if (!el || !pt || !pt.matchdays || pt.matchdays.length < 2) { if (el) el.innerHTML = `<div class="empty">No trajectory data.</div>`; return; }
-  const w = 1100, h = 260, padL = 56, pad = 34, x0 = padL, x1 = w - pad, y0 = 18, y1 = h - 40;
-  const pts = pt.matchdays.map((m) => m.points);
-  const xpts = pt.matchdays.map((m) => m.xpts);
-  const maxP = Math.max(...pts, ...xpts, 1);
-  const x = (i) => x0 + (i * (x1 - x0)) / Math.max(pt.matchdays.length - 1, 1);
-  const y = (v) => y1 - (v / maxP) * (y1 - y0);
-  const path = (vals, color) => vals.map((v, i) => `${i ? "L" : "M"}${x(i)},${y(v)}`).join(" ");
-
-  // match-week numbering: count list entries, restarting each season block.
-  const weeks = [];
-  let week = 0;
-  let prevSeason = pt.matchdays[0].season;
-  const dividers = [], seasonTags = [];
-  pt.matchdays.forEach((m, i) => {
-    if (m.season !== undefined && m.season !== prevSeason) {
-      week = 1;
-      prevSeason = m.season;
-      dividers.push(`<line x1="${x(i)}" y1="${y0}" x2="${x(i)}" y2="${y1}" stroke="#243040" stroke-dasharray="3 4"/>`);
-      seasonTags.push(`<text x="${x(i) + 4}" y="${y0 + 10}" fill="#8a98a8" font-size="9">${m.season}</text>`);
-    } else {
-      week += 1;
-    }
-    weeks.push(week);
-  });
-
-  const labelEvery = 5;
-  const weekLabels = [];
-  const rankLabels = [];
-  pt.matchdays.forEach((m, i) => {
-    if (weeks[i] % labelEvery === 1 || i === 0 || i === pt.matchdays.length - 1) {
-      weekLabels.push(`<text x="${x(i)}" y="${y1 + 16}" fill="#8a98a8" font-size="9" text-anchor="middle">${weeks[i]}</text>`);
-      rankLabels.push(`<text x="${x(i)}" y="${y0 + 30}" fill="#8a98a8" font-size="8.5" text-anchor="middle">#${m.rank}</text>`);
-    }
-  });
-
-  const dots = pt.matchdays.map((m, i) => hoverDot(
-    x(i), y(m.points),
-    `${m.season !== undefined ? m.season + " · " : ""}match week ${weeks[i]}\n${m.date}\npoints ${m.points} · xPTS ${m.xpts}\ntable rank: ${m.rank} of ${pt.n_teams}`,
-    "#4ea1ff", 3.5
-  )).join("");
-
-  el.innerHTML = `<svg class="timeline-svg" viewBox="0 0 ${w} ${h}">
-    <line x1="${x0}" y1="${y1}" x2="${x1}" y2="${y1}" stroke="#243040"/>
-    <line x1="${x0}" y1="${y1}" x2="${x0}" y2="${y0}" stroke="#243040"/>
-    <path d="${path(xpts, "#6b7c8f")}" fill="none" stroke="#6b7c8f" stroke-width="1.5" stroke-dasharray="4 3"/>
-    <path d="${path(pts, "#4ea1ff")}" fill="none" stroke="#4ea1ff" stroke-width="2"/>${dots}
-    ${dividers.join("")}${seasonTags.join("")}${weekLabels.join("")}${rankLabels.join("")}
-    <text x="${x0}" y="${y0}" fill="#8a98a8" font-size="10"><tspan fill="#4ea1ff">— points</tspan>  <tspan fill="#6b7c8f">- - xPTS</tspan>  · # = table rank · dates on hover</text>
-    <text x="${x0 + (x1 - x0) / 2}" y="${h - 6}" fill="#8a98a8" font-size="10" text-anchor="middle">match week →</text>
-    <text x="14" y="${y0 + (y1 - y0) / 2}" fill="#8a98a8" font-size="10" text-anchor="middle" transform="rotate(-90 14 ${y0 + (y1 - y0) / 2})">points ↑</text>
-  </svg>`;
 }
 
 function drawLuckChart(container, lc) {
