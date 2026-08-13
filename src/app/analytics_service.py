@@ -146,6 +146,12 @@ class AnalyticsService:
         except Exception:
             pass
 
+        favorite = await self._favorite_position(player_id)
+        if favorite:
+            from .analytics.percentiles import group_from_favorite
+            report["player"]["favorite_position"] = favorite
+            report["player"]["position_group"] = group_from_favorite(favorite)
+
         report["date_window"] = {"start_date": start_date, "end_date": end_date}
         report["seasons"] = target_seasons
         return report
@@ -292,6 +298,16 @@ class AnalyticsService:
                 reports[name]["player"]["date_of_birth"] = birthdates.get(player.get("player_name"))
         except Exception:
             pass
+        from .analytics.percentiles import group_from_favorite
+        favorites = await asyncio.gather(
+            *(self._favorite_position(int(player.get("id", 0))) for _, player in pairs),
+            return_exceptions=True,
+        )
+        for (name, player), favorite in zip(pairs, favorites):
+            if isinstance(favorite, BaseException) or not favorite:
+                continue
+            reports[name]["player"]["favorite_position"] = favorite
+            reports[name]["player"]["position_group"] = group_from_favorite(favorite)
         return {
             "league_name": league_name,
             "season": season,
@@ -566,9 +582,20 @@ class AnalyticsService:
         league_players = list(merged_by_id.values())
 
         filtered = [p for p in league_players if _minutes(p) >= minimum_minutes]
-        from .analytics.percentiles import position_group as to_group
+        from .analytics.percentiles import group_from_favorite, position_group as to_group
+
+        favorites = await asyncio.gather(
+            *(self._favorite_position(int(p.get("id", 0))) for p in filtered),
+            return_exceptions=True,
+        )
+        player_groups = {}
+        for p, favorite in zip(filtered, favorites):
+            fav = favorite if isinstance(favorite, str) and favorite else None
+            player_groups[int(p.get("id", 0))] = group_from_favorite(fav) or to_group(p.get("position"))
+            p["_favorite_position"] = fav
+
         if position_group:
-            filtered = [p for p in filtered if to_group(p.get("position")) == position_group.upper()]
+            filtered = [p for p in filtered if player_groups[int(p.get("id", 0))] == position_group.upper()]
 
         min_age = min_age if min_age is not None else None
         max_age = max_age if max_age is not None else None
@@ -616,7 +643,8 @@ class AnalyticsService:
                     "name": p.get("player_name"),
                     "team": p.get("team_title"),
                     "position": p.get("position"),
-                    "position_group": to_group(p.get("position")),
+                    "position_group": player_groups[int(p.get("id", 0))],
+                    "favorite_position": p.get("_favorite_position"),
                     "age": _age(birthdates.get(p.get("player_name"))),
                     "date_of_birth": birthdates.get(p.get("player_name")),
                     "team_ppda": ppda_by_team.get(p.get("team_title")),
@@ -647,6 +675,19 @@ class AnalyticsService:
                 "Multi-season discovery merges counting stats and keeps the latest team; team PPDA is from the latest season only.",
             ],
         }
+
+    _favorite_cache: dict[int, str] = {}
+
+    async def _favorite_position(self, player_id: int) -> str | None:
+        if player_id in self._favorite_cache:
+            return self._favorite_cache[player_id]
+        try:
+            data = await self.client.get_player_data(player_id)
+            favorite = (data.get("player") or {}).get("favorite_position")
+        except Exception:
+            favorite = None
+        self._favorite_cache[player_id] = favorite
+        return favorite
 
     async def _team_press_map(self, league_name, season, start_date, end_date):
         try:

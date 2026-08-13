@@ -72,7 +72,11 @@ POSITION_GROUPS = {
 
 
 def position_group(position_code: str | None) -> str:
-    """Map an Understat position string ('F S', 'D', 'M') to a group key."""
+    """Map an Understat position string ('F S', 'D', 'M') to a group key.
+
+    Note: Understat's multi-role league strings ('D M S') are alphabetical,
+    NOT primary-first — prefer favorite_position (player_data) when available.
+    """
     if not position_code:
         return ""
     head = position_code.strip().split()[0].upper()
@@ -85,6 +89,22 @@ def position_group(position_code: str | None) -> str:
     if head in {"F", "FW", "FW S", "S"}:
         return "F"
     return head
+
+
+def group_from_favorite(favorite_position: str | None) -> str:
+    """Map Understat's favorite_position ('MC', 'FWR', 'AMC', 'DC'...) to a group."""
+    if not favorite_position:
+        return ""
+    head = favorite_position.strip().upper()
+    if head.startswith("G"):
+        return "GK"
+    if head.startswith("F"):
+        return "F"
+    if head.startswith("D"):
+        return "D"
+    if head.startswith(("M", "A")):
+        return "M"
+    return head[0]
 
 
 def percentile_rank(value: float, within: Iterable[float]) -> float:
