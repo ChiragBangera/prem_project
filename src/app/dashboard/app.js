@@ -558,7 +558,6 @@ function pressingBlock(p) {
 
 // ---------- TEAM ----------
 $("teamGo").addEventListener("click", runTeam);
-$("teamTimelineGo").addEventListener("click", runTeamTimeline);
 $("teamName").addEventListener("keydown", (e) => { if (e.key === "Enter") runTeam(); });
 $("compareA").addEventListener("keydown", (e) => { if (e.key === "Enter") runCompare(); });
 $("compareB").addEventListener("keydown", (e) => { if (e.key === "Enter") runCompare(); });
@@ -575,87 +574,6 @@ async function runTeam() {
     renderTeam(node, d);
   } catch (e) { errored(node, e.message); }
 }
-async function runTeamTimeline() {
-  const name = $("teamName").value.trim(); if (!name) return;
-  const node = $("teamContent"); loading(node);
-  try {
-    const d = await api("/api/v1/analyze/team/timeline", {
-      team_name: name, league_name: state.league, season_end: seasonOf("teamSeasons"),
-    });
-    renderTeamTimeline(node, d);
-  } catch (e) { errored(node, e.message); }
-}
-
-function renderTeamTimeline(node, d) {
-  const months = d.seasons.flatMap((s) => s.months.map((m) => ({ ...m, season: s.season })));
-  clear(node);
-  node.innerHTML = `
-    <div class="card"><h3>Monthly timeline · ${d.team_name} · ${d.seasons.map((s) => s.season).join(" & ")}</h3>
-      <div class="controls">
-        <div class="field"><label>Chart metric</label>
-          <select id="timelineMetric">
-            <option value="xG_per_game">${term("xG")} / game</option>
-            <option value="xGA_per_game">${term("xGA")} / game</option>
-            <option value="npxGD_per_game">${term("npxgd")} / game</option>
-            <option value="points_per_game">Points / game</option>
-            <option value="ppda">${term("ppda")}</option>
-            <option value="oppda">${term("oppda")}</option>
-            <option value="g_minus_xg">${term("g_minus_xg")} (month)</option>
-            <option value="deep">${term("deep")} (month)</option>
-          </select>
-        </div>
-      </div>
-      <div id="timelineChart"></div>
-      <div class="hint">Months are not equal (fixture counts differ) — per-game and aggregate metrics are marked as such.</div>
-    </div>
-    ${d.seasons.map((s) => `
-    <div class="card" style="margin-top:16px"><h3>${s.season} · monthly table (${s.n_matches} matches)</h3>
-      <table><thead><tr><th>Month</th><th class="num">M</th><th class="num">W/D/L</th><th class="num">Pts</th><th class="num">Pts/g</th><th class="num">${term("goals")}</th><th class="num">${term("xG")}</th><th class="num">${term("xGA")}</th><th class="num">${term("npxgd")}/g</th><th class="num">${term("g_minus_xg")}</th><th class="num">${term("xpts")}</th><th class="num">${term("ppda")}</th><th class="num">${term("deep")}</th></tr></thead><tbody>
-        ${s.months.map((m) => `<tr><td>${m.month}</td><td class="num">${m.matches}</td><td class="num">${m.wins}-${m.draws}-${m.loses}</td>
-          <td class="num">${m.points}</td><td class="num">${fmt(m.points_per_game)}</td>
-          <td class="num">${m.goals}-${m.goals_against}</td><td class="num">${fmt(m.xG)}</td><td class="num">${fmt(m.xGA)}</td>
-          <td class="num">${m.npxGD_per_game >= 0 ? "+" : ""}${fmt(m.npxGD_per_game)}</td>
-          <td class="num">${m.g_minus_xg >= 0 ? "+" : ""}${fmt(m.g_minus_xg)}</td>
-          <td class="num">${fmt(m.xpts)}</td><td class="num">${fmt(m.ppda)}</td><td class="num">${m.deep} / ${m.deep_allowed}</td></tr>`).join("")}
-      </tbody></table></div>`).join("")}
-    <div class="caveat"><strong>Interpretation.</strong> ${d.interpretation}<ul>${d.limitations.map((l) => `<li>${l}</li>`).join("")}</ul></div>
-  `;
-  const draw = () => drawTimelineChart("timelineChart", months, $("timelineMetric").value);
-  $("timelineMetric").addEventListener("change", draw);
-  draw();
-}
-
-function drawTimelineChart(container, months, metricKey) {
-  const el = document.getElementById(container);
-  if (!el) return;
-  if (months.length < 2) { el.innerHTML = `<div class="empty">Not enough monthly data.</div>`; return; }
-  const w = 1100, h = 260, padL = 56, pad = 40, x0 = padL, x1 = w - pad, y0 = 18, y1 = h - 46;
-  const vals = months.map((m) => Number(m[metricKey]) || 0);
-  const allMax = Math.max(...vals.map(Math.abs), 0.001);
-  const mid = metricKey.includes("g_minus") || metricKey.includes("npxGD") ? 0 : null;
-  const lo = mid === 0 ? -allMax : 0;
-  const hi = allMax;
-  const x = (i) => x0 + (i * (x1 - x0)) / Math.max(months.length - 1, 1);
-  const y = (v) => y1 - ((v - lo) / (hi - lo)) * (y1 - y0);
-  const color = (m) => (m.season === months[months.length - 1].season ? "#4ea1ff" : "#6b7c8f");
-  const path = months.map((m, i) => `${i ? "L" : "M"}${x(i)},${y(Number(m[metricKey]) || 0)}`).join(" ");
-  const dots = months.map((m, i) => hoverDot(x(i), y(Number(m[metricKey]) || 0), `${m.month} (${m.season})\n${fmt(m[metricKey], 2)}\n${m.matches} matches · ${m.wins}W ${m.draws}D ${m.loses}L\nxG ${fmt(m.xG)} / xGA ${fmt(m.xGA)}`, color(m))).join("");
-  const step = Math.max(1, Math.floor(months.length / 14));
-  const labels = months.map((m, i) => (i % step === 0 ? `<text x="${x(i)}" y="${y1 + 14}" fill="#8a98a8" font-size="9" text-anchor="middle" transform="rotate(-30 ${x(i)} ${y1 + 14})">${m.month}</text>` : "")).join("");
-  const zero = mid === 0 ? y(0) : null;
-  const entry = GLOSSARY[metricKey] || {};
-  el.innerHTML = `<svg class="timeline-svg" viewBox="0 0 ${w} ${h}">
-    <line x1="${x0}" y1="${y1}" x2="${x1}" y2="${y1}" stroke="#243040"/>
-    <line x1="${x0}" y1="${y1}" x2="${x0}" y2="${y0}" stroke="#243040"/>
-    ${zero !== null ? `<line x1="${x0}" y1="${zero}" x2="${x1}" y2="${zero}" stroke="#243040" stroke-dasharray="3 4"/>` : ""}
-    <path d="${path}" fill="none" stroke="#4ea1ff" stroke-width="2"/>${dots}
-    ${labels}
-    <text x="${x0}" y="${y0}" fill="#8a98a8" font-size="10">${entry.label || metricKey} · <tspan fill="#6b7c8f">grey = older season</tspan> · hover points for detail</text>
-    <text x="${x0 + (x1 - x0) / 2}" y="${h - 6}" fill="#8a98a8" font-size="10" text-anchor="middle">month →</text>
-    <text x="14" y="${y0 + (y1 - y0) / 2}" fill="#8a98a8" font-size="10" text-anchor="middle" transform="rotate(-90 14 ${y0 + (y1 - y0) / 2})">${entry.label || metricKey} ↑</text>
-  </svg>`;
-}
-
 function renderTeam(node, d) {
   const s = d.style, pp = d.ppda_home_away, f = d.form_momentum;
   const seasonsLabel = d.seasons && d.seasons.length > 1 ? ` · ${d.seasons.join("–")}` : "";
@@ -722,6 +640,14 @@ function sosBlock(sos) {
     <span class="k">vs stronger opponents</span><span class="v">${sos.vs_stronger_opponents.matches} m · ${fmt(sos.vs_stronger_opponents.points_per_game)} ppg · xGD ${fmt(sos.vs_stronger_opponents.xGD_per_game)}/g</span>
     <span class="k">vs weaker opponents</span><span class="v">${sos.vs_weaker_opponents.matches} m · ${fmt(sos.vs_weaker_opponents.points_per_game)} ppg · xGD ${fmt(sos.vs_weaker_opponents.xGD_per_game)}/g</span>
   </div><div class="hint">${sos.interpretation}</div>`;
+}
+
+function situationTable(s) {
+  if (!s || !s.by_situation) return `<div class="empty">No situational data.</div>`;
+  const rows = Object.entries(s.by_situation).map(([name, v]) =>
+    `<tr><td>${name}</td><td class="num">${fmt(v.xG)}</td><td class="num">${Math.round((v.share || 0) * 100)}%</td></tr>`).join("");
+  return `<table><thead><tr><th>${term("situations")}</th><th class="num">${term("xG")}</th><th class="num">share</th></tr></thead><tbody>${rows}</tbody></table>
+    <div class="hint">Set-piece xG share: ${Math.round((s.set_piece_xG_share || 0) * 100)}% · ${s.interpretation}</div>`;
 }
 
 function drawPositionTrend(container, pt) {
