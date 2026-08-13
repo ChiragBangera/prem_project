@@ -798,18 +798,48 @@ function drawPositionTrend(container, pt) {
   const x = (i) => x0 + (i * (x1 - x0)) / Math.max(pt.matchdays.length - 1, 1);
   const y = (v) => y1 - (v / maxP) * (y1 - y0);
   const path = (vals, color) => vals.map((v, i) => `${i ? "L" : "M"}${x(i)},${y(v)}`).join(" ");
-  const dots = pt.matchdays.map((m, i) => hoverDot(x(i), y(m.points), `${m.date}\npoints ${m.points} · xPTS ${m.xpts}\ntable rank: ${m.rank} of ${pt.n_teams}`, "#4ea1ff", 3.5)).join("");
-  const step = Math.max(1, Math.floor(pt.matchdays.length / 16));
-  const dateLabels = pt.matchdays.map((m, i) => (i % step === 0 ? `<text x="${x(i)}" y="${y1 + 14}" fill="#8a98a8" font-size="9" text-anchor="middle" transform="rotate(-30 ${x(i)} ${y1 + 14})">${m.date.slice(5)}</text>` : "")).join("");
-  const rankLabels = pt.matchdays.map((m, i) => (i % step === 0 ? `<text x="${x(i)}" y="${y0 + 30}" fill="#8a98a8" font-size="8.5" text-anchor="middle">#${m.rank}</text>` : "")).join("");
+
+  // match-week numbering: count list entries, restarting each season block.
+  const weeks = [];
+  let week = 0;
+  let prevSeason = pt.matchdays[0].season;
+  const dividers = [], seasonTags = [];
+  pt.matchdays.forEach((m, i) => {
+    if (m.season !== undefined && m.season !== prevSeason) {
+      week = 1;
+      prevSeason = m.season;
+      dividers.push(`<line x1="${x(i)}" y1="${y0}" x2="${x(i)}" y2="${y1}" stroke="#243040" stroke-dasharray="3 4"/>`);
+      seasonTags.push(`<text x="${x(i) + 4}" y="${y0 + 10}" fill="#8a98a8" font-size="9">${m.season}</text>`);
+    } else {
+      week += 1;
+    }
+    weeks.push(week);
+  });
+
+  const labelEvery = 5;
+  const weekLabels = [];
+  const rankLabels = [];
+  pt.matchdays.forEach((m, i) => {
+    if (weeks[i] % labelEvery === 1 || i === 0 || i === pt.matchdays.length - 1) {
+      weekLabels.push(`<text x="${x(i)}" y="${y1 + 16}" fill="#8a98a8" font-size="9" text-anchor="middle">${weeks[i]}</text>`);
+      rankLabels.push(`<text x="${x(i)}" y="${y0 + 30}" fill="#8a98a8" font-size="8.5" text-anchor="middle">#${m.rank}</text>`);
+    }
+  });
+
+  const dots = pt.matchdays.map((m, i) => hoverDot(
+    x(i), y(m.points),
+    `${m.season !== undefined ? m.season + " · " : ""}match week ${weeks[i]}\n${m.date}\npoints ${m.points} · xPTS ${m.xpts}\ntable rank: ${m.rank} of ${pt.n_teams}`,
+    "#4ea1ff", 3.5
+  )).join("");
+
   el.innerHTML = `<svg class="timeline-svg" viewBox="0 0 ${w} ${h}">
     <line x1="${x0}" y1="${y1}" x2="${x1}" y2="${y1}" stroke="#243040"/>
     <line x1="${x0}" y1="${y1}" x2="${x0}" y2="${y0}" stroke="#243040"/>
     <path d="${path(xpts, "#6b7c8f")}" fill="none" stroke="#6b7c8f" stroke-width="1.5" stroke-dasharray="4 3"/>
     <path d="${path(pts, "#4ea1ff")}" fill="none" stroke="#4ea1ff" stroke-width="2"/>${dots}
-    ${dateLabels}${rankLabels}
-    <text x="${x0}" y="${y0}" fill="#8a98a8" font-size="10"><tspan fill="#4ea1ff">— points</tspan>  <tspan fill="#6b7c8f">- - xPTS</tspan>  · # = table rank · hover points for dates</text>
-    <text x="${x0 + (x1 - x0) / 2}" y="${h - 6}" fill="#8a98a8" font-size="10" text-anchor="middle">match week / date →</text>
+    ${dividers.join("")}${seasonTags.join("")}${weekLabels.join("")}${rankLabels.join("")}
+    <text x="${x0}" y="${y0}" fill="#8a98a8" font-size="10"><tspan fill="#4ea1ff">— points</tspan>  <tspan fill="#6b7c8f">- - xPTS</tspan>  · # = table rank · dates on hover</text>
+    <text x="${x0 + (x1 - x0) / 2}" y="${h - 6}" fill="#8a98a8" font-size="10" text-anchor="middle">match week →</text>
     <text x="14" y="${y0 + (y1 - y0) / 2}" fill="#8a98a8" font-size="10" text-anchor="middle" transform="rotate(-90 14 ${y0 + (y1 - y0) / 2})">points ↑</text>
   </svg>`;
 }
