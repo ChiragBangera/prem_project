@@ -222,9 +222,17 @@ table input[type=checkbox] { accent-color: var(--accent); }
 .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; }
 table.gbars td { vertical-align: middle; }
 .gbar { display: flex; align-items: center; gap: 8px; justify-content: flex-end; }
-.gbar .bar-track { width: 110px; }
-.gbar .bar-val { font-family: var(--mono); font-size: 11px; min-width: 110px; text-align: right; }
+.gbar .bar-track { width: 150px; }
+.gbar .bar-val { font-family: var(--mono); font-size: 11px; min-width: 120px; text-align: right; }
 table.gbars th.num { white-space: nowrap; }
+table.gbars td.winner { background: rgba(65,214,163,0.10); }
+.gbar.winner .bar-fill { box-shadow: 0 0 8px rgba(65,214,163,0.6); }
+.gbar.dim .bar-fill { opacity: 0.35; }
+.gbar.dim .bar-val { color: var(--muted); }
+#compareContent.hl-off td.winner { background: none; }
+#compareContent.hl-off .gbar.winner .bar-fill { box-shadow: none; }
+#compareContent.hl-off .gbar.dim .bar-fill { opacity: 1; }
+#compareContent.hl-off .gbar.dim .bar-val { color: var(--text); }
 
 footer { color: var(--muted); font-size: 12px; text-align: center; padding: 20px; border-top: 1px solid var(--border); margin-top: 30px; }
 footer a { color: var(--muted); }

@@ -107,7 +107,7 @@ def group_from_favorite(favorite_position: str | None) -> str:
         return "GK"
     if head.startswith(("FW", "FWL", "FWR", "ST")):
         return "F"
-    if head.startswith(("DMC", "DML", "MC", "ML", "MR", "AM", "AMC", "AML", "AMR", "DM", "M")):
+    if head.startswith(("DMC", "DML", "DMR", "MC", "ML", "MR", "AM", "AMC", "AML", "AMR", "DM", "M")):
         return "M"
     if head.startswith(("DC", "DL", "DR", "SW", "WB", "D")):
         return "D"

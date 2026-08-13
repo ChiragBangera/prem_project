@@ -187,6 +187,7 @@ class CareerTestCase(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(group_from_favorite("DMC"), "M")
         self.assertEqual(group_from_favorite("DML"), "M")
+        self.assertEqual(group_from_favorite("DMR"), "M")
         self.assertEqual(group_from_favorite("MC"), "M")
         self.assertEqual(group_from_favorite("AMC"), "M")
         self.assertEqual(group_from_favorite("DC"), "D")

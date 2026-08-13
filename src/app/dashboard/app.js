@@ -191,9 +191,11 @@ function buildPositionMulti(hostId, maxSelections) {
   const options = [
     ["GK", "GK · goalkeeper"], ["DC", "DC · centre-back"], ["DL", "DL · left-back"],
     ["DR", "DR · right-back"], ["DMC", "DMC · defensive midfield"], ["DML", "DML · left defensive mid"],
+    ["DMR", "DMR · right defensive mid"],
     ["MC", "MC · centre midfield"], ["ML", "ML · left midfield"], ["MR", "MR · right midfield"],
     ["AMC", "AMC · attacking mid"], ["AML", "AML · left attacking mid"], ["AMR", "AMR · right attacking mid"],
     ["FWL", "FWL · left forward"], ["FWR", "FWR · right forward"], ["FW", "FW · forward"],
+    ["Non", "Non · utility / no fixed role"],
   ];
   let selected = [];
   try {
@@ -1130,6 +1132,14 @@ function compareHeaderChips(d, names) {
   }).join("")}</div>`;
 }
 
+const PROFILE_LABELS = {
+  OpenPlay: "Open play", FromCorner: "From corner", SetPiece: "Set piece",
+  DirectFreekick: "Direct free kick", CounterAttack: "Counter attack", Penalty: "Penalty",
+  shotPenaltyArea: "Penalty area", shotSixYardBox: "Six-yard box", shotOboxTotal: "Outside box",
+  LeftFoot: "Left foot", RightFoot: "Right foot", Head: "Header", OtherBodyPart: "Other body part",
+};
+function prettyProfileLabel(name) { return PROFILE_LABELS[name] || name; }
+
 function groupedBars(rows, names, colors) {
   return `<table class="gbars"><thead><tr><th></th>${names.map((n) =>
     `<th class="num"><span class="dot" style="background:${colors[n]}"></span>${n}</th>`).join("")}</tr></thead><tbody>
@@ -1138,7 +1148,7 @@ function groupedBars(rows, names, colors) {
       const max = Math.max(...values.map((v) => v.value), 0.0001);
       return `<tr><td>${row.label}</td>${values.map((v) => {
         const best = v.value === max && max > 0;
-        return `<td class="num"><div class="gbar">
+        return `<td class="num${best ? " winner" : ""}"><div class="gbar${best ? " winner" : " dim"}">
           <div class="bar-track"><div class="bar-fill" style="width:${Math.max(2, (v.value / max) * 100)}%;background:${colors[v.name]}"></div></div>
           <span class="bar-val${best ? " best-val" : ""}">${v.text}</span></div></td>`;
       }).join("")}</tr>`;
@@ -1155,7 +1165,7 @@ function profileSection(d, names, title, termKey, kind) {
   if (!withProfile.length) return "";
   const categories = [...new Set(withProfile.flatMap((n) => d.players[n].comparison_profile.shot_profile[kind].map((s) => s.name)))];
   const rows = categories.map((cat) => ({
-    label: cat,
+    label: prettyProfileLabel(cat),
     values: names.map((n) => {
       const cp = d.players[n].comparison_profile;
       const entry = cp && cp.shot_profile ? cp.shot_profile[kind].find((s) => s.name === cat) : null;
@@ -1417,11 +1427,12 @@ function drawMultiRadar(container, labels, entries) {
       const [x, y] = pt(i, r * pct / 100);
       pts += `${x},${y} `;
     }
-    return `<polygon points="${pts}" fill="none" stroke="${entry.color}" stroke-width="2"/>`;
+    return `<polygon points="${pts}" fill="${entry.color}" fill-opacity="0.10" stroke="${entry.color}" stroke-width="2"/>`;
   }).join("");
-  const legend = entries.map((e) => `<span style="color:${e.color}">● ${e.name}</span>`).join(" &nbsp; ");
+  const legend = `<div class="compare-chips" style="margin-top:8px">${entries.map((e) =>
+    `<span class="compare-chip"><span class="dot" style="background:${e.color}"></span>${e.name}</span>`).join("")}</div>`;
   el.innerHTML = `<svg class="radar-svg" viewBox="0 0 ${size} ${size}">${rings}${spokes}${polys}${labelsSvg}</svg>
-    <div class="hint">${legend} &nbsp; · ${term("percentile")} vs league pool</div>`;
+    ${legend}<div class="hint">${term("percentile")} vs league pool · filled areas are semi-transparent so overlaps stay readable</div>`;
 }
 
 function renderComparePlayers(node, d, nameA, nameB) {
@@ -1450,7 +1461,10 @@ function renderComparePlayers(node, d, nameA, nameB) {
     ${homeAwaySection(d, [nameA, nameB])}
     <div class="caveat"><strong>Limitations.</strong><ul>${d.limitations.map((l) => `<li>${l}</li>`).join("")}</ul></div>
   `;
-  drawCompareRadar("compareRadar", d.radar_labels, pa.radar.profile, pb.radar.profile, nameA, nameB);
+  drawMultiRadar("compareRadar", d.radar_labels, [
+    { name: nameA, color: RADAR_COLORS[0], report: pa },
+    { name: nameB, color: RADAR_COLORS[1], report: pb },
+  ]);
   applyHighlightState();
 }
 
