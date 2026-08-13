@@ -227,8 +227,21 @@ class AnalyticsService:
             if isinstance(player, BaseException):
                 raise ValueError(str(player))
             pairs.append((name, player))
+
+        shots_by_name: dict[str, list] = {}
+        if len(pairs) <= 6 and hasattr(self.client, "get_player_shots"):
+            shots_results = await asyncio.gather(
+                *(self.client.get_player_shots(int(player.get("id", 0))) for _, player in pairs),
+                return_exceptions=True,
+            )
+            for (name, player), result in zip(pairs, shots_results):
+                if isinstance(result, BaseException):
+                    continue
+                rows = list(result.values()) if isinstance(result, dict) else list(result or [])
+                shots_by_name[name] = [row for row in rows if str(row.get("season")) == str(season)]
+
         reports = {
-            name: player_engine.player_report(player, league_players)
+            name: player_engine.player_report(player, league_players, shots=shots_by_name.get(name))
             for name, player in pairs
         }
         try:

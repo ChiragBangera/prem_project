@@ -975,8 +975,17 @@ loadBasket();
 
 // ---------- DISCOVER ----------
 $("discoverGo").addEventListener("click", runDiscover);
+$("discoverOrderBy").addEventListener("change", runDiscover);
+$("discoverPosition").addEventListener("change", runDiscover);
+$("discoverLimit").addEventListener("change", runDiscover);
+let discoverDebounce;
+$("discoverMinutes").addEventListener("input", () => { clearTimeout(discoverDebounce); discoverDebounce = setTimeout(runDiscover, 700); });
+$("discoverMinAge").addEventListener("input", () => { clearTimeout(discoverDebounce); discoverDebounce = setTimeout(runDiscover, 700); });
+$("discoverMaxAge").addEventListener("input", () => { clearTimeout(discoverDebounce); discoverDebounce = setTimeout(runDiscover, 700); });
+document.getElementById("discoverSeasons").addEventListener("change", runDiscover);
 async function runDiscover() {
   const node = $("discoverContent"); loading(node);
+  const scrollY = window.scrollY;
   try {
     const d = await api("/api/v1/discover/players", {
       league_name: state.league,
@@ -991,6 +1000,7 @@ async function runDiscover() {
       max_age: parseInt($("discoverMaxAge").value, 10) || null,
     });
     renderDiscover(node, d);
+    if (scrollY > 0) window.scrollTo(0, scrollY);
   } catch (e) { errored(node, e.message); }
 }
 function renderDiscover(node, d) {
@@ -1094,6 +1104,11 @@ function renderComparePlayersMulti(node, d) {
     </div>
     <div class="card" style="margin-top:16px"><h3>${term("per90")} comparison · best value highlighted</h3>${multiPer90(d, names)}</div>
     <div class="card" style="margin-top:16px"><h3>Involvement & finishing</h3>${multiInvolvement(d, names)}</div>
+    <div class="grid cols-2" style="margin-top:16px">
+      <div class="card"><h3>${term("xG_per_shot")} & shot volume</h3>${multiShotSelection(d, names)}</div>
+      <div class="card"><h3>Creative dominance</h3>${multiCreative(d, names)}</div>
+    </div>
+    <div class="card" style="margin-top:16px"><h3>${term("regain_xg")}</h3>${multiPressing(d, names)}</div>
     <div class="caveat"><strong>Limitations.</strong><ul>${d.limitations.map((l) => `<li>${l}</li>`).join("")}</ul></div>
   `;
   drawMultiRadar("compareRadar", d.radar_labels, radarEntries);
@@ -1109,6 +1124,51 @@ function multiPer90(d, names) {
     return `<tr><td>${term(gk)}</td>${values.map((v) => `<td class="num${v === best ? " best-cell" : ""}">${fmt(v, 3)}</td>`).join("")}</tr>`;
   }).join("");
   return `<table><thead>${head}</thead><tbody>${body}</tbody></table>`;
+}
+
+function multiShotSelection(d, names) {
+  const rows = [["shots_per90", "shots"], ["xG_per_shot", "xG_per_shot"], ["npxG_per_shot", "npxG"]];
+  const head = `<tr><th></th>${names.map((n) => `<th class="num">${n}</th>`).join("")}</tr>`;
+  const body = rows.map(([key, gk]) => {
+    const values = names.map((n) => d.players[n].shot_selection[key]);
+    const best = Math.max(...values.filter((v) => typeof v === "number"));
+    return `<tr><td>${term(gk)}</td>${values.map((v) => `<td class="num${v === best ? " best-cell" : ""}">${v == null ? "N/A" : fmt(v, 3)}</td>`).join("")}</tr>`;
+  }).join("");
+  return `<table><thead>${head}</thead><tbody>${body}</tbody></table>
+    <div class="hint">${d.players[names[0]].shot_selection.interpretation}</div>`;
+}
+
+function multiCreative(d, names) {
+  const head = `<tr><th></th>${names.map((n) => `<th class="num">${n}</th>`).join("")}</tr>`;
+  const shares = names.map((n) => d.players[n].creative_dominance.xA_share);
+  const best = Math.max(...shares.filter((v) => typeof v === "number"));
+  const row = (label, getter, bestVal) => `<tr><td>${label}</td>${names.map((n, i) => {
+    const v = getter(d.players[n]);
+    return `<td class="num${v === bestVal ? " best-cell" : ""}">${v == null ? "N/A" : fmt(v, 3)}</td>`;
+  }).join("")}</tr>`;
+  return `<table><thead>${head}</thead><tbody>
+    ${row("xA share of team", (r) => r.creative_dominance.xA_share, best)}
+    ${row("team xA total", (r) => r.creative_dominance.team_xA, null)}
+  </tbody></table><div class="hint">Share of their team's total expected assists — how much the attack runs through them.</div>`;
+}
+
+function multiPressing(d, names) {
+  const head = `<tr><th></th>${names.map((n) => `<th class="num">${n}</th>`).join("")}</tr>`;
+  const withData = names.filter((n) => d.players[n].pressing_output);
+  if (!withData.length) return `<div class="empty">Pressing data needs shot-level lookups — unavailable for this comparison.</div>`;
+  const shares = withData.map((n) => d.players[n].pressing_output.regain_xG_share);
+  const best = Math.max(...shares);
+  const row = (label, getter, bestVal) => `<tr><td>${label}</td>${names.map((n) => {
+    const p = d.players[n].pressing_output;
+    if (!p) return `<td class="num">—</td>`;
+    const v = getter(p);
+    return `<td class="num${v === bestVal ? " best-cell" : ""}">${fmt(v, 3)}</td>`;
+  }).join("")}</tr>`;
+  return `<table><thead>${head}</thead><tbody>
+    ${row("regain xG share", (p) => p.regain_xG_share, best)}
+    ${row("shots after regain", (p) => p.regain_shots, null)}
+    ${row("goals after regain", (p) => p.regain_goals, null)}
+  </tbody></table><div class="hint">${term("regain_xg")} — share of own xG from chances after possession regains.</div>`;
 }
 
 function multiInvolvement(d, names) {
@@ -1177,6 +1237,11 @@ function renderComparePlayers(node, d, nameA, nameB) {
       <div class="card"><h3>Involvement</h3>${compareInvolvement(pa, pb)}</div>
       <div class="card"><h3>${term("g_minus_xg")}</h3>${compareFinishing(pa, pb)}</div>
     </div>
+    <div class="grid cols-2" style="margin-top:16px">
+      <div class="card"><h3>${term("xG_per_shot")} & shot volume</h3>${multiShotSelection(d, [nameA, nameB])}</div>
+      <div class="card"><h3>Creative dominance</h3>${multiCreative(d, [nameA, nameB])}</div>
+    </div>
+    <div class="card" style="margin-top:16px"><h3>${term("regain_xg")}</h3>${multiPressing(d, [nameA, nameB])}</div>
     <div class="caveat"><strong>Limitations.</strong><ul>${d.limitations.map((l) => `<li>${l}</li>`).join("")}</ul></div>
   `;
   drawCompareRadar("compareRadar", d.radar_labels, pa.radar.profile, pb.radar.profile, nameA, nameB);
