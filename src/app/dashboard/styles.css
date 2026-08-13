@@ -19,6 +19,17 @@
 html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); font-family: var(--sans); }
 body { font-size: 14px; line-height: 1.5; }
 
+/* clickable things always show a pointer cursor */
+button { cursor: pointer; }
+button:disabled { cursor: default; }
+nav.tabs button { cursor: pointer; }
+header.topbar .leagues button { cursor: pointer; }
+select, input[type=checkbox], input[type=date] { cursor: pointer; }
+input[type=text], input[type=number] { cursor: text; }
+td[data-name] { cursor: pointer; }
+.basket-x, .example, [data-back] { cursor: pointer; }
+svg circle[data-tip], svg circle[title], .pitch-svg circle { cursor: crosshair; }
+
 a { color: var(--accent); text-decoration: none; }
 a:hover { text-decoration: underline; }
 
