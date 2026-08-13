@@ -26,6 +26,7 @@
     <button data-tab="league">League</button>
     <button data-tab="match">Match</button>
     <button data-tab="discover">Discover</button>
+    <button data-tab="predict">Predict</button>
   </nav>
 
   <main>
@@ -89,6 +90,43 @@
         <button class="primary" id="discoverGo">Discover</button>
       </div>
       <div id="discoverContent"><div class="empty">Filter the league player table by position and minutes; rank by involvement metrics.</div></div>
+    </section>
+
+    <!-- PREDICT -->
+    <section class="view" id="view-predict">
+      <div class="grid cols-2">
+        <div class="card">
+          <h3>Match forecast · Dixon-Coles + Elo</h3>
+          <div class="controls">
+            <div class="field"><label>Home team</label><input id="predHome" placeholder="e.g. Arsenal" /></div>
+            <div class="field"><label>Away team</label><input id="predAway" placeholder="e.g. Liverpool" /></div>
+          </div>
+          <div class="controls">
+            <div class="field"><label>Season</label><input id="predSeason" type="number" value="2025" style="min-width:90px" /></div>
+            <label class="check"><input type="checkbox" id="predUseXg" checked /> fit on xG (denoised)</label>
+            <button class="primary" id="predGo">Forecast</button>
+          </div>
+          <div class="hint">Fits on all played matches of the selected season. 422 if the league/season has too few results.</div>
+        </div>
+        <div class="card">
+          <h3>Rest-of-season simulation</h3>
+          <div class="controls">
+            <div class="field"><label>Season</label><input id="simSeason" type="number" value="2025" style="min-width:90px" /></div>
+            <div class="field"><label>Simulations</label><input id="simCount" type="number" value="2000" style="min-width:90px" /></div>
+            <button class="primary" id="simGo">Simulate</button>
+          </div>
+          <div class="hint">Monte-Carlo over the remaining Understat fixtures, banking current table points. Needs an in-progress season with ≥20 played matches.</div>
+        </div>
+      </div>
+      <div class="card" style="margin-top:16px">
+        <h3>Forecast calibration · walk-forward</h3>
+        <div class="controls">
+          <div class="field"><label>Season</label><input id="calSeason" type="number" value="2025" style="min-width:90px" /></div>
+          <button class="primary" id="calGo">Calibrate</button>
+        </div>
+        <div class="hint">Refits every few matches through the season and scores predictions out-of-sample vs Understat's own forecast and a naive baseline.</div>
+      </div>
+      <div id="predictContent" style="margin-top:16px"><div class="empty">Forecast a match, simulate the run-in, or calibrate the models against the season.</div></div>
     </section>
   </main>
 

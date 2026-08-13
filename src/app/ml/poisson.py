@@ -67,6 +67,20 @@ def fit_dixon_coles(
     home = home_advantage_init
     rho = -0.05
 
+    # Precompute everything that does not change across iterations:
+    # one-hot team membership, low-score masks, and score factorial terms.
+    team_axis = np.arange(n)[:, None]
+    home_of = h_idx[None, :] == team_axis
+    away_of = a_idx[None, :] == team_axis
+    m00 = (hg == 0) & (ag == 0)
+    m10 = (hg == 1) & (ag == 0)
+    m01 = (hg == 0) & (ag == 1)
+    m11 = (hg == 1) & (ag == 1)
+    low_00_11 = m00 | m11
+    low_10_01 = m10 | m01
+    log_fact_h = _log_factorials(hg)
+    log_fact_a = _log_factorials(ag)
+
     ll_prev = -math.inf
     for iteration in range(max_iter):
         lam_h = np.clip(np.exp(attack[h_idx] - defense[a_idx] + home), 1e-9, None)
@@ -77,61 +91,36 @@ def fit_dixon_coles(
         # only enters the rho gradient (the lambda gradients are exactly those
         # of the plain bivariate Poisson).
         tau = np.ones(M)
-        m00 = (hg == 0) & (ag == 0)
-        m10 = (hg == 1) & (ag == 0)
-        m01 = (hg == 0) & (ag == 1)
-        m11 = (hg == 1) & (ag == 1)
-        tau[m00] = 1 - rho
-        tau[m10] = 1 + rho
-        tau[m01] = 1 + rho
-        tau[m11] = 1 - rho
+        tau[low_00_11] = 1 - rho
+        tau[low_10_01] = 1 + rho
 
-        log_pois_h = -lam_h + hg * np.log(lam_h) - _log_factorials(hg)
-        log_pois_a = -lam_a + ag * np.log(lam_a) - _log_factorials(ag)
+        log_pois_h = -lam_h + hg * np.log(lam_h) - log_fact_h
+        log_pois_a = -lam_a + ag * np.log(lam_a) - log_fact_a
         ll = float(np.sum(weights * (log_pois_h + log_pois_a + np.log(np.clip(tau, 1e-9, None)))))
 
         # d/d lambda (log poisson(k)) = (k/lambda - 1).
-        g_h = hg - lam_h
-        g_a = ag - lam_a
+        w_g_h = weights * (hg - lam_h)
+        w_g_a = weights * (ag - lam_a)
 
-        # Gradients (first-order conditions of the true log-likelihood).
-        grad_attack = np.zeros(n)
-        grad_defense = np.zeros(n)
+        # Gradients (first-order conditions of the true log-likelihood):
         # lam_h = exp(attack_h - defense_a + home) -> d ll/d attack_h = w*(hg - lam_h),
         #                                          -> d ll/d defense_a = w*(lam_h - hg).
-        for i in range(n):
-            grad_attack[i] = (
-                np.sum(weights[h_idx == i] * g_h[h_idx == i])
-                + np.sum(weights[a_idx == i] * g_a[a_idx == i])
-            )
-            grad_defense[i] = (
-                -np.sum(weights[a_idx == i] * g_h[a_idx == i])
-                - np.sum(weights[h_idx == i] * g_a[h_idx == i])
-            )
-
-        grad_home = float(np.sum(weights * g_h))
+        grad_attack = (home_of * w_g_h).sum(axis=1) + (away_of * w_g_a).sum(axis=1)
+        grad_defense = -(away_of * w_g_h).sum(axis=1) - (home_of * w_g_a).sum(axis=1)
+        grad_home = float(np.sum(w_g_h))
 
         # rho gradient: d/d rho log(tau) = -1/(1-rho) at 0-0 / 1-1, +1/(1+rho) at 1-0 / 0-1.
         dlogtau_drho = np.zeros(M)
-        dlogtau_drho[m00] = -1.0 / max(1 - rho, 1e-9)
-        dlogtau_drho[m10] = 1.0 / max(1 + rho, 1e-9)
-        dlogtau_drho[m01] = 1.0 / max(1 + rho, 1e-9)
-        dlogtau_drho[m11] = -1.0 / max(1 - rho, 1e-9)
+        dlogtau_drho[low_00_11] = -1.0 / max(1 - rho, 1e-9)
+        dlogtau_drho[low_10_01] = 1.0 / max(1 + rho, 1e-9)
         grad_rho = float(np.sum(weights * dlogtau_drho))
 
         # Diagonally-damped Fisher scoring (Poisson IRLS): step = grad / info,
         # where info for attack_i is the expected negative curvature sum of lambdas.
         # This keeps every step finite and monotone-ish even from a bad start,
         # unlike plain gradient ascent which diverges on this exponential family.
-        info_attack = np.zeros(n)
-        info_defense = np.zeros(n)
-        for i in range(n):
-            info_attack[i] = np.sum(weights[h_idx == i] * lam_h[h_idx == i]) + np.sum(
-                weights[a_idx == i] * lam_a[a_idx == i]
-            )
-            info_defense[i] = np.sum(weights[a_idx == i] * lam_h[a_idx == i]) + np.sum(
-                weights[h_idx == i] * lam_a[h_idx == i]
-            )
+        info_attack = (home_of * (weights * lam_h)).sum(axis=1) + (away_of * (weights * lam_a)).sum(axis=1)
+        info_defense = (away_of * (weights * lam_h)).sum(axis=1) + (home_of * (weights * lam_a)).sum(axis=1)
         info_home = float(np.sum(weights * lam_h))
         info_rho = float(np.sum(weights * dlogtau_drho ** 2))
 

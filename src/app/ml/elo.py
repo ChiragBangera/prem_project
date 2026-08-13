@@ -41,21 +41,41 @@ def fit_elo(
     """
     ordered = sorted(matches, key=lambda m: (m.get("date") or "", m.get("home") or ""))
     ratings: dict[str, float] = {}
-    results: list[tuple[str, str, float]] = []
+    home_seq: list[int] = []
+    away_seq: list[int] = []
+    score_seq: list[float] = []
+    team_list: list[str] = []
+    team_index: dict[str, int] = {}
     for m in ordered:
         home, away = m["home"], m["away"]
-        rh = ratings.setdefault(home, initial_rating)
-        ra = ratings.setdefault(away, initial_rating)
+        if home not in team_index:
+            team_index[home] = len(team_list)
+            team_list.append(home)
+        if away not in team_index:
+            team_index[away] = len(team_list)
+            team_list.append(away)
+        rh = ratings.get(home, initial_rating)
+        ra = ratings.get(away, initial_rating)
         hg, ag = int(m.get("home_goals", 0)), int(m.get("away_goals", 0))
         score = 1.0 if hg > ag else (0.5 if hg == ag else 0.0)
-        results.append((home, away, score))
+        home_seq.append(team_index[home])
+        away_seq.append(team_index[away])
+        score_seq.append(score)
         e = expected_share(rh, ra)
         delta = k * (score - e)
         ratings[home] = rh + delta
         ratings[away] = ra - delta
 
-    ha = home_advantage if home_advantage is not None else _fit_home_advantage(results, ratings)
-    ds = draw_share if draw_share is not None else _fit_draw_share(results, ratings, ha)
+    rating_vec = np.array([ratings.get(team, initial_rating) for team in team_list], dtype=float)
+    home_arr = np.array(home_seq, dtype=int)
+    away_arr = np.array(away_seq, dtype=int)
+    score_arr = np.array(score_seq, dtype=float)
+
+    def brier_for(ha: float, ds: float) -> float:
+        return _brier_arrays(home_arr, away_arr, score_arr, rating_vec, ha, ds)
+
+    ha = home_advantage if home_advantage is not None else _fit_home_advantage(brier_for)
+    ds = draw_share if draw_share is not None else _fit_draw_share(brier_for, ha)
 
     def predict(home: str, away: str) -> dict:
         if home not in ratings or away not in ratings:
@@ -73,7 +93,7 @@ def fit_elo(
             "p_away": round(p_away / total, 4),
         }
 
-    train_brier = _brier(results, ratings, ha, ds) if results else None
+    train_brier = brier_for(ha, ds) if len(ordered) else None
     return {
         "ratings": {team: round(rating, 2) for team, rating in sorted(ratings.items(), key=lambda kv: -kv[1])},
         "home_advantage": round(ha, 2),
@@ -85,43 +105,37 @@ def fit_elo(
     }
 
 
-def _outcome_probs(ratings: dict[str, float], home: str, away: str, ha: float, ds: float) -> tuple[float, float, float]:
-    s = expected_share(ratings[home] + ha, ratings[away])
-    p_draw = min(ds * 4.0 * s * (1.0 - s), 1.0)
-    p_home = max(0.0, s - p_draw / 2.0)
-    p_away = max(0.0, 1.0 - s - p_draw / 2.0)
-    total = p_home + p_draw + p_away
-    return p_home / total, p_draw / total, p_away / total
+def _brier_arrays(home_arr, away_arr, score_arr, rating_vec, ha: float, ds: float) -> float:
+    rh = rating_vec[home_arr] + ha
+    ra = rating_vec[away_arr]
+    s = 1.0 / (1.0 + 10.0 ** ((ra - rh) / 400.0))
+    pd = np.minimum(ds * 4.0 * s * (1.0 - s), 1.0)
+    ph = np.maximum(0.0, s - pd / 2.0)
+    pa = np.maximum(0.0, 1.0 - s - pd / 2.0)
+    total = ph + pd + pa
+    ph = ph / total
+    pd = pd / total
+    pa = pa / total
+    th = (score_arr == 1.0).astype(float)
+    td = (score_arr == 0.5).astype(float)
+    ta = (score_arr == 0.0).astype(float)
+    return float(np.mean((ph - th) ** 2 + (pd - td) ** 2 + (pa - ta) ** 2))
 
 
-def _brier(results: list[tuple[str, str, float]], ratings: dict[str, float], ha: float, ds: float) -> float:
-    total = 0.0
-    for home, away, score in results:
-        ph, pd, pa = _outcome_probs(ratings, home, away, ha, ds)
-        if score == 1.0:
-            target = (1.0, 0.0, 0.0)
-        elif score == 0.5:
-            target = (0.0, 1.0, 0.0)
-        else:
-            target = (0.0, 0.0, 1.0)
-        total += (ph - target[0]) ** 2 + (pd - target[1]) ** 2 + (pa - target[2]) ** 2
-    return total / len(results)
-
-
-def _fit_home_advantage(results: list[tuple[str, str, float]], ratings: dict[str, float]) -> float:
+def _fit_home_advantage(brier_for) -> float:
     ds = 0.5
     best, best_brier = 0.0, float("inf")
     for ha in np.linspace(*HOME_ADVANTAGE_GRID):
-        value = _brier(results, ratings, float(ha), ds)
+        value = brier_for(float(ha), ds)
         if value < best_brier:
             best, best_brier = float(ha), value
     return best
 
 
-def _fit_draw_share(results: list[tuple[str, str, float]], ratings: dict[str, float], ha: float) -> float:
+def _fit_draw_share(brier_for, ha: float) -> float:
     best, best_brier = 0.5, float("inf")
     for ds in np.linspace(*DRAW_SHARE_GRID):
-        value = _brier(results, ratings, ha, float(ds))
+        value = brier_for(ha, float(ds))
         if value < best_brier:
             best, best_brier = float(ds), value
     return best

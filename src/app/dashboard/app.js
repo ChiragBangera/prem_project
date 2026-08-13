@@ -264,6 +264,23 @@ function paceBlock(p) {
 
 // ---------- MATCH ----------
 $("matchGo").addEventListener("click", runMatch);
+$("pickMatch").addEventListener("click", async (e) => {
+  e.preventDefault();
+  const link = $("pickMatch");
+  link.textContent = "finding…";
+  try {
+    const res = await api("/api/v1/endpoints/league_results", { params: { league_name: state.league, season: seasonOf("leagueSeason") } });
+    const matches = (res.data || []).filter((m) => m.id && m.datetime);
+    if (!matches.length) throw new Error("No played matches in this league/season.");
+    matches.sort((a, b) => String(b.datetime).localeCompare(String(a.datetime)));
+    $("matchId").value = matches[0].id;
+    link.textContent = `${matches[0].h.title || "?"} vs ${matches[0].a.title || "?"}`;
+    runMatch();
+  } catch (err) {
+    link.textContent = "a recent result";
+    errored($("matchContent"), err.message);
+  }
+});
 async function runMatch() {
   const id = $("matchId").value.trim(); if (!id) return;
   const node = $("matchContent"); loading(node);
@@ -354,6 +371,165 @@ function renderDiscover(node, d) {
     runPlayer();
   }));
 }
+
+// ---------- PREDICT ----------
+$("predGo").addEventListener("click", runPredict);
+$("simGo").addEventListener("click", runSim);
+$("calGo").addEventListener("click", runCal);
+$("predHome").addEventListener("keydown", (e) => { if (e.key === "Enter") runPredict(); });
+$("predAway").addEventListener("keydown", (e) => { if (e.key === "Enter") runPredict(); });
+
+async function runPredict() {
+  const home = $("predHome").value.trim(), away = $("predAway").value.trim();
+  if (!home || !away) return;
+  const node = $("predictContent"); loading(node);
+  try {
+    const d = await api("/api/v1/predict/match", {
+      league_name: state.league, season: seasonOf("predSeason"),
+      home, away, use_xg: $("predUseXg").checked,
+    });
+    renderForecast(node, d);
+  } catch (e) { errored(node, e.message); }
+}
+
+function renderForecast(node, d) {
+  const dc = d.model.dixon_coles, el = d.model.elo;
+  clear(node);
+  node.innerHTML = `
+    <div class="card">
+      <h3>${d.match.home} vs ${d.match.away} · ${LEAGUE_LABEL[d.league_name] || d.league_name} ${d.season}</h3>
+      ${probBar(dc)}
+      <div class="prob-bar-labels"><span>home ${pct(dc.p_home)}</span><span>draw ${pct(dc.p_draw)}</span><span>away ${pct(dc.p_away)}</span></div>
+      <div class="kv">
+        <span class="k">Dixon-Coles expected goals</span><span class="v">${fmt(dc.lambda_home)} – ${fmt(dc.lambda_away)}</span>
+        <span class="k">Most likely scoreline</span><span class="v">${dc.most_likely_score[0]}–${dc.most_likely_score[1]} (${pct(dc.most_likely_score_prob)})</span>
+        <span class="k">Fit</span><span class="v">${dc.n_matches} matches · home adv ${fmt(dc.home_advantage)} · ρ ${fmt(dc.rho)}</span>
+      </div>
+    </div>
+    <div class="grid cols-2" style="margin-top:16px">
+      <div class="card"><h3>Scoreline probability matrix · home ↓ away →</h3>${scorelineMatrix(dc.scoreline_matrix)}</div>
+      <div class="card"><h3>Elo cross-check (results only)</h3>
+        ${probBar(el)}
+        <div class="prob-bar-labels"><span>home ${pct(el.p_home)}</span><span>draw ${pct(el.p_draw)}</span><span>away ${pct(el.p_away)}</span></div>
+        <div class="kv">
+          <span class="k">${d.match.home}</span><span class="v">${el.ratings[d.match.home] ?? "—"} Elo</span>
+          <span class="k">${d.match.away}</span><span class="v">${el.ratings[d.match.away] ?? "—"} Elo</span>
+        </div>
+        <div class="hint">Elo sees results only — a pure cross-check against the xG-fit model.</div>
+      </div>
+    </div>
+    <div class="caveat"><strong>Interpretation.</strong> ${d.interpretation}<ul>${d.limitations.map((l) => `<li>${l}</li>`).join("")}</ul></div>
+  `;
+}
+
+function probBar(p) {
+  const hp = Math.round(p.p_home * 1000) / 10, dp = Math.round(p.p_draw * 1000) / 10, ap = Math.round(p.p_away * 1000) / 10;
+  return `<div class="prob-bar">
+    <div class="seg home" style="width:${hp}%">${hp >= 9 ? hp + "%" : ""}</div>
+    <div class="seg draw" style="width:${dp}%">${dp >= 9 ? dp + "%" : ""}</div>
+    <div class="seg away" style="width:${ap}%">${ap >= 9 ? ap + "%" : ""}</div>
+  </div>`;
+}
+
+function scorelineMatrix(matrix) {
+  const flat = matrix.flat();
+  const max = flat.reduce((a, b) => Math.max(a, b), 0) || 1;
+  let cells = "";
+  for (let h = 0; h <= 8; h++) {
+    cells += `<tr><th class="lbl">${h}</th>`;
+    for (let a = 0; a <= 8; a++) {
+      const v = matrix[h][a];
+      const t = v / max;
+      const isMax = v === max && v > 0;
+      const bg = t > 0.01 ? `rgba(78,161,255,${(0.05 + 0.55 * t).toFixed(3)})` : "transparent";
+      cells += `<td class="num heat${isMax ? " max" : ""}" style="background:${bg}" title="${h}-${a}: ${pct(v)}">${v >= 0.02 ? Math.round(v * 100) : ""}</td>`;
+    }
+    cells += "</tr>";
+  }
+  return `<table class="heat"><tbody>${cells}</tbody></table><div class="hint">Rows = home goals, columns = away goals. Brightest cell = most likely scoreline.</div>`;
+}
+
+async function runSim() {
+  const node = $("predictContent"); loading(node);
+  try {
+    const d = await api("/api/v1/predict/season", {
+      league_name: state.league, season: seasonOf("simSeason"),
+      n_sims: parseInt($("simCount").value, 10) || 2000, use_xg: $("predUseXg").checked,
+    });
+    renderSim(node, d);
+  } catch (e) { errored(node, e.message); }
+}
+
+function renderSim(node, d) {
+  const teams = Object.keys(d.expected_points);
+  const nTeams = teams.length;
+  const posColor = (i) => (i < 4 ? "var(--accent-2)" : i < 6 ? "var(--accent)" : i >= nTeams - 3 ? "var(--danger)" : "#3a4a5c");
+  clear(node);
+  node.innerHTML = `
+    <div class="card">
+      <h3>Rest-of-season simulation · ${LEAGUE_LABEL[d.league_name] || d.league_name} ${d.season}</h3>
+      <div class="kv">
+        <span class="k">State</span><span class="v">${d.n_played} played · ${d.n_remaining} remaining fixtures · ${d.n_sims} Monte-Carlo sims</span>
+        <span class="k">Model</span><span class="v">Dixon-Coles on ${d.model.fit_on} · home adv ${fmt(d.model.home_advantage)} · ρ ${fmt(d.model.rho)}</span>
+      </div>
+      <table style="margin-top:10px">
+        <thead><tr><th>Team</th><th class="num">PTS</th><th class="num">xPTS</th><th class="num">Δ</th><th class="num">Top 4</th><th class="num">Releg.</th><th>Final position distribution</th></tr></thead>
+        <tbody>
+          ${teams.map((t) => {
+            const cur = d.current_points[t] ?? 0;
+            const exp = d.expected_points[t];
+            const delta = exp - cur;
+            const p4 = d.p_top_4[t] ?? 0, pr = d.p_relegation[t] ?? 0;
+            const dist = d.final_position_distribution[t] || [];
+            return `<tr><td>${t}</td><td class="num">${cur}</td><td class="num">${fmt(exp, 1)}</td>
+              <td class="num">${delta >= 0 ? "+" : ""}${fmt(delta, 1)}</td>
+              <td class="num">${pct(p4)}</td><td class="num">${pct(pr)}</td>
+              <td><div class="pos-row" title="position distribution">${dist.map((c, i) => `<span class="pos-seg" style="flex:${Math.max(c, 0.01)};background:${posColor(i)}" title="P${i + 1}: ${pct(c / d.n_sims)}"></span>`).join("")}</div></td></tr>`;
+          }).join("")}
+        </tbody>
+      </table>
+      <div class="hint">Bar = simulated final-position distribution (green = top 4, red = bottom 3). Δ = expected minus current points.</div>
+      <div class="caveat"><ul>${d.limitations.map((l) => `<li>${l}</li>`).join("")}</ul></div>
+    </div>
+  `;
+}
+
+async function runCal() {
+  const node = $("predictContent"); loading(node);
+  try {
+    const d = await api("/api/v1/predict/calibration", {
+      league_name: state.league, season: seasonOf("calSeason"),
+      use_xg: $("predUseXg").checked,
+    });
+    renderCal(node, d);
+  } catch (e) { errored(node, e.message); }
+}
+
+function renderCal(node, d) {
+  const names = { dixon_coles: "Dixon-Coles (xG)", elo: "Elo (results)", understat: "Understat forecast", baseline: "Naive baseline" };
+  const rows = Object.entries(d.models).map(([key, m]) => ({ key, name: names[key] || key, ...m }));
+  const best = d.best_brier_model;
+  clear(node);
+  node.innerHTML = `
+    <div class="card">
+      <h3>Walk-forward calibration · ${LEAGUE_LABEL[d.league_name] || d.league_name} ${d.season}</h3>
+      <div class="kv"><span class="k">Protocol</span><span class="v">${d.method} · fit on ${d.fit_on} · refit every ${d.step} matches · ${d.n_played} played matches</span></div>
+      <table style="margin-top:10px">
+        <thead><tr><th>Model</th><th class="num">Predictions</th><th class="num">Brier</th><th class="num">Log loss</th><th class="num">Accuracy</th></tr></thead>
+        <tbody>
+          ${rows.map((r) => `<tr class="${r.key === best ? "model-best" : ""}">
+            <td>${r.name}${r.key === best ? ' <span class="badge good">best</span>' : ""}</td>
+            <td class="num">${r.n}</td><td class="num">${fmt(r.brier, 4)}</td>
+            <td class="num">${fmt(r.log_loss, 4)}</td><td class="num">${pct(r.accuracy)}</td></tr>`).join("")}
+        </tbody>
+      </table>
+      <div class="hint">Lower Brier / log loss and higher accuracy are better. ${d.interpretation}</div>
+      <div class="caveat"><ul>${d.limitations.map((l) => `<li>${l}</li>`).join("")}</ul></div>
+    </div>
+  `;
+}
+
+function pct(v) { return `${(Math.round((v || 0) * 1000) / 10).toFixed(1)}%`; }
 
 // ---------- helpers ----------
 function fmt(v, d = 2) {

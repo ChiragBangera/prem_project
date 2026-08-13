@@ -95,6 +95,28 @@ table tr:hover td { background: var(--panel-2); }
 
 .player-pick { display: flex; gap: 8px; align-items: end; margin-bottom: 12px; }
 
+/* ---------- predictions ---------- */
+label.check { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); padding-bottom: 9px; cursor: pointer; }
+label.check input { accent-color: var(--accent); }
+
+.prob-bar { display: flex; height: 38px; border-radius: 8px; overflow: hidden; border: 1px solid var(--border); margin: 10px 0 6px; }
+.prob-bar .seg { display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; font-family: var(--mono); color: #06101c; min-width: 0; overflow: hidden; white-space: nowrap; transition: width 0.4s ease; }
+.prob-bar .seg.home { background: var(--accent); }
+.prob-bar .seg.draw { background: #8a98a8; }
+.prob-bar .seg.away { background: var(--accent-2); }
+.prob-bar-labels { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); font-family: var(--mono); margin-bottom: 12px; }
+
+table.heat { width: auto; max-width: 100%; }
+table.heat td { border: 1px solid var(--border); padding: 5px 7px; font-size: 10px; min-width: 30px; }
+table.heat th.lbl { padding: 5px 7px; font-size: 10px; color: var(--muted); border: none; }
+table.heat td.max { outline: 2px solid var(--accent-2); outline-offset: -2px; }
+
+.pos-row { display: flex; gap: 1px; min-width: 180px; }
+.pos-seg { height: 14px; border-radius: 1px; min-width: 2px; }
+
+tr.model-best td { background: rgba(65, 214, 163, 0.07); }
+tr.model-best td:first-child { box-shadow: inset 2px 0 0 var(--accent-2); }
+
 .empty { color: var(--muted); text-align: center; padding: 40px; font-size: 13px; }
 .loading { color: var(--muted); padding: 20px; font-size: 13px; }
 .loading::after { content: ""; display: inline-block; width: 10px; height: 10px; border: 2px solid var(--muted); border-top-color: transparent; border-radius: 50%; animation: spin 0.8s linear infinite; margin-left: 8px; vertical-align: middle; }
