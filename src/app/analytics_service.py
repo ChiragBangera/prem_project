@@ -44,6 +44,21 @@ def parse_seasons(value) -> list[int] | None:
     return [int(value)]
 
 
+def _normalize_name(name) -> str:
+    """Case- and accent-insensitive name key ('João Pedro' == 'joao pedro')."""
+    import unicodedata
+    value = unicodedata.normalize("NFD", (name or "").lower())
+    return "".join(char for char in value if unicodedata.category(char) != "Mn").strip()
+
+
+def _find_player_in_league(name: str, players: list[dict]):
+    target = _normalize_name(name)
+    for player in players:
+        if _normalize_name(player.get("player_name")) == target:
+            return player
+    return None
+
+
 class AnalyticsService:
     """Fetches the right Understat data and runs the pure analytics engines over it."""
 
@@ -65,11 +80,6 @@ class AnalyticsService:
 
         start_date, end_date = _valid_date_range(start_date, end_date)
         target_seasons = parse_seasons(seasons) or [season]
-        if player_id is None:
-            matches = await self.client.search_players(player_name)
-            if not matches:
-                raise ValueError(f"Player '{player_name}' was not found via Understat search.")
-            player_id = int(matches[0]["id"])
 
         import asyncio
 
@@ -87,6 +97,19 @@ class AnalyticsService:
             raise ValueError(f"No league player stats could be loaded for {league_name} {target_seasons}.")
 
         merged_by_id = _merge_league_players(valid)
+        if player_id is None:
+            # League-first resolution with accent folding: find the name in the
+            # season tables before falling back to the global search (the
+            # search can return a namesake in another league, e.g. João Pedro).
+            by_name = _find_player_in_league(player_name, list(merged_by_id.values()))
+            if by_name is not None:
+                player_id = int(by_name["id"])
+            else:
+                matches = await self.client.search_players(player_name)
+                if not matches:
+                    raise ValueError(f"Player '{player_name}' was not found via Understat search.")
+                player_id = int(matches[0]["id"])
+
         target = merged_by_id.get(player_id)
         if target is None:
             window = _window_label(start_date, end_date)
@@ -138,16 +161,6 @@ class AnalyticsService:
         if player_id is None and player_name is None:
             raise ValueError("Either player_id or player_name is required.")
 
-        if player_id is None:
-            matches = await self.client.search_players(player_name)
-            if not matches:
-                raise ValueError(f"Player '{player_name}' was not found via Understat search.")
-            resolved = matches[0]
-            player_id = int(resolved["id"])
-            player_name = resolved.get("player") or resolved.get("player_name") or player_name
-        else:
-            player_name = player_name or f"player {player_id}"
-
         if seasons:
             target_seasons = sorted(int(s) for s in seasons)
         else:
@@ -162,6 +175,32 @@ class AnalyticsService:
                 "season": season,
                 "player": next((p for p in players if int(p.get("id", 0)) == player_id), None),
             }
+
+        if player_id is None:
+            # league-first resolution (accent-folded) across the career window
+            season_rows_all = await asyncio.gather(
+                *(self.client.get_league_player_stats(league_name, s) for s in target_seasons),
+                return_exceptions=True,
+            )
+            by_name = None
+            for rows in reversed(season_rows_all):
+                if not isinstance(rows, list):
+                    continue
+                by_name = _find_player_in_league(player_name, rows)
+                if by_name is not None:
+                    break
+            if by_name is not None:
+                player_id = int(by_name["id"])
+                player_name = by_name.get("player_name") or player_name
+            else:
+                matches = await self.client.search_players(player_name)
+                if not matches:
+                    raise ValueError(f"Player '{player_name}' was not found via Understat search.")
+                resolved = matches[0]
+                player_id = int(resolved["id"])
+                player_name = resolved.get("player") or resolved.get("player_name") or player_name
+        else:
+            player_name = player_name or f"player {player_id}"
 
         season_rows = await asyncio.gather(*(fetch_season(s) for s in target_seasons))
         groups = None
@@ -303,9 +342,9 @@ class AnalyticsService:
         }
 
     async def _resolve_player(self, name: str, league_players: list[dict], league_name: str, season: int) -> dict:
-        matches = [p for p in league_players if (p.get("player_name") or "").lower() == name.lower()]
-        if matches:
-            return matches[0]
+        by_name = _find_player_in_league(name, league_players)
+        if by_name is not None:
+            return by_name
         found = await self.client.search_players(name)
         if not found:
             raise ValueError(f"Player '{name}' was not found via Understat search.")
