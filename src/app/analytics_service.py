@@ -557,6 +557,36 @@ class AnalyticsService:
         report["season_trends"] = {str(s): t for s, t in sorted(season_trends.items())} if season_trends else None
         report["date_window"] = {"start_date": start_date, "end_date": end_date}
         report["seasons"] = target_seasons
+
+        try:
+            raw_squad = await self.client.get_team_player_stats(
+                team_name, str(target_seasons[-1]), start_date=start_date, end_date=end_date
+            )
+            report["squad"] = [
+                {
+                    "player_name": p.get("player_name"),
+                    "games": int(float(p.get("games", 0))),
+                    "minutes": int(float(p.get("time", 0))),
+                    "goals": int(float(p.get("goals", 0))),
+                    "xG": round_value(float(p.get("xG", 0))),
+                    "npxG": round_value(float(p.get("npxG", 0))),
+                    "assists": int(float(p.get("assists", 0))),
+                    "xA": round_value(float(p.get("xA", 0))),
+                    "shots": int(float(p.get("shots", 0))),
+                    "key_passes": int(float(p.get("key_passes", 0))),
+                    "yellow_cards": int(float(p.get("yellow_cards", 0))),
+                    "red_cards": int(float(p.get("red_cards", 0))),
+                    "position": p.get("position"),
+                    "team_title": p.get("team_title"),
+                    "npg": int(float(p.get("npg", 0))),
+                    "xGChain": round_value(float(p.get("xGChain", 0))),
+                    "xGBuildup": round_value(float(p.get("xGBuildup", 0))),
+                }
+                for p in raw_squad if isinstance(p, dict)
+            ]
+        except Exception:
+            report["squad"] = []
+
         return report
 
     async def analyze_league(

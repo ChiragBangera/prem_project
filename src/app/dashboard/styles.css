@@ -826,6 +826,129 @@ table tr:hover td {
 .badge.good { color: var(--fg-good); background: var(--accent-emerald-dim); }
 .badge.bad { color: var(--fg-bad); background: var(--accent-rose-dim); }
 
+/* ─── Table Enhancements & Responsive Container ───────────── */
+.table-responsive {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border-radius: var(--radius-md);
+  margin-top: 6px;
+}
+.table-responsive::-webkit-scrollbar {
+  height: 6px;
+}
+.table-responsive::-webkit-scrollbar-track {
+  background: var(--bg);
+}
+.table-responsive::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: var(--radius-full);
+}
+.table-responsive::-webkit-scrollbar-thumb:hover {
+  background: var(--muted);
+}
+
+table.dense-table th, table.dense-table td {
+  padding: 8px 10px;
+  font-size: 12.5px;
+  white-space: nowrap;
+}
+table th.sortable {
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.15s ease;
+}
+table th.sortable:hover {
+  color: var(--accent);
+  background: rgba(56, 189, 248, 0.08);
+}
+table th.sort-active {
+  color: var(--accent);
+  background: rgba(56, 189, 248, 0.12);
+}
+table th.sort-active::after {
+  content: " " attr(data-sort-dir);
+  font-size: 10px;
+  font-weight: 800;
+  color: var(--accent);
+}
+
+.table-sticky-rank {
+  position: sticky;
+  left: 0;
+  z-index: 3;
+  background: var(--panel-2);
+}
+table tbody td.table-sticky-rank {
+  background: var(--panel);
+}
+.table-sticky-team {
+  position: sticky;
+  left: 42px;
+  z-index: 3;
+  background: var(--panel-2);
+  border-right: 1px solid var(--border);
+}
+table tbody td.table-sticky-team {
+  background: var(--panel);
+  border-right: 1px solid var(--border);
+}
+table tr:hover td.table-sticky-rank,
+table tr:hover td.table-sticky-team {
+  background: #111b2b;
+}
+
+.view-pills-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.view-pill-btn {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 5px 12px;
+  border-radius: var(--radius-full);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.view-pill-btn:hover {
+  color: var(--text);
+  border-color: rgba(56, 189, 248, 0.4);
+}
+.view-pill-btn.active {
+  background: var(--accent-dim);
+  color: var(--accent);
+  border-color: var(--accent);
+  font-weight: 700;
+}
+
+.metric-legend-card {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+  padding: 14px;
+  background: var(--panel-2);
+  border-radius: var(--radius-md);
+  margin-top: 14px;
+  border: 1px solid var(--border);
+}
+.metric-legend-item {
+  font-size: 12px;
+  line-height: 1.4;
+}
+.metric-legend-item strong {
+  color: var(--accent);
+  font-weight: 700;
+}
+.metric-legend-item span {
+  color: var(--muted);
+}
+
 /* Percentile Bar (Inside Table) */
 .pct-bar-cell {
   display: flex;

@@ -1366,7 +1366,78 @@ function renderTeam(node, d) {
       </div>
     </div>
 
-    <div class="caveat"><strong>Limitations.</strong><ul>${d.limitations.map((l) => `<li>${l}</li>`).join("")}</ul></div>
+    <!-- Row 5: Squad Roster & Creation Contributions -->
+    ${d.squad && d.squad.length ? `
+      <div class="card" style="margin-top:20px">
+        <div class="card-header">
+          <div>
+            <span class="card-title">Squad Performance & Creation Contributions</span>
+            <div style="font-size:11.5px;color:var(--muted);margin-top:2px">
+              Individual player underlying threat, creation, and progression metrics · Click any player to open full deep-dive profile
+            </div>
+          </div>
+          <span class="mono" style="font-size:11.5px;color:var(--muted)">${d.squad.length} Players</span>
+        </div>
+        <div class="table-responsive">
+          <table class="dense-table" id="teamSquadTable">
+            <thead>
+              <tr>
+                <th>Player</th>
+                <th>Pos</th>
+                <th class="num">Games</th>
+                <th class="num">Min</th>
+                <th class="num">G</th>
+                <th class="num">${term("xG")}</th>
+                <th class="num">${term("g_minus_xg", "G−xG")}</th>
+                <th class="num">${term("npxG")}</th>
+                <th class="num">A</th>
+                <th class="num">${term("xA")}</th>
+                <th class="num">${term("xG_chain", "xGChain")}</th>
+                <th class="num">${term("xG_buildup", "xGBuildup")}</th>
+                <th class="num">${term("npxG", "NPxG/90")}</th>
+                <th class="num">${term("xA", "xA/90")}</th>
+                <th class="num">${term("xG_chain", "Chain/90")}</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${[...d.squad].sort((a, b) => (b.xG || 0) - (a.xG || 0)).map(p => {
+                const min = p.minutes || 0;
+                const npxg90 = min > 0 ? ((p.npxG || 0) / min) * 90 : 0;
+                const xa90 = min > 0 ? ((p.xA || 0) / min) * 90 : 0;
+                const chain90 = min > 0 ? ((p.xGChain || 0) / min) * 90 : 0;
+                const gDiff = (p.goals || 0) - (p.xG || 0);
+
+                return `
+                  <tr>
+                    <td>
+                      <strong style="cursor:pointer;color:var(--text-bright)" onclick="$('playerName').value='${p.player_name}';activateTab('player');runPlayer()" title="Open ${p.player_name} Analytics">
+                        ${p.player_name}
+                      </strong>
+                    </td>
+                    <td><span class="badge">${p.position || '—'}</span></td>
+                    <td class="num">${p.games || 0}</td>
+                    <td class="num">${p.minutes || 0}</td>
+                    <td class="num"><strong>${p.goals || 0}</strong></td>
+                    <td class="num" style="color:var(--accent);font-weight:600">${fmt(p.xG, 2)}</td>
+                    <td class="num" style="color:${gDiff >= 0 ? 'var(--fg-good)' : 'var(--fg-bad)'}">${gDiff >= 0 ? '+' : ''}${fmt(gDiff, 2)}</td>
+                    <td class="num">${fmt(p.npxG, 2)}</td>
+                    <td class="num"><strong>${p.assists || 0}</strong></td>
+                    <td class="num">${fmt(p.xA, 2)}</td>
+                    <td class="num" style="color:var(--accent);font-weight:600">${fmt(p.xGChain, 2)}</td>
+                    <td class="num">${fmt(p.xGBuildup, 2)}</td>
+                    <td class="num" style="font-weight:700">${fmt(npxg90, 2)}</td>
+                    <td class="num">${fmt(xa90, 2)}</td>
+                    <td class="num">${fmt(chain90, 2)}</td>
+                  </tr>
+                `;
+              }).join("")}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    ` : ""}
+
+    <div class="caveat" style="margin-top:20px"><strong>Limitations.</strong><ul>${d.limitations.map((l) => `<li>${l}</li>`).join("")}</ul></div>
   `;
 
   (async () => {
@@ -1611,12 +1682,16 @@ async function runLeague() {
   }
 }
 
+let leagueDataCache = null;
+let leagueTableState = { sortKey: "rank", sortDir: "asc", viewMode: "all" };
+
 function renderLeague(node, d, notice = "") {
   clear(node);
-  const rows = (d.is_lying && d.is_lying.rows) || [];
+  leagueDataCache = d;
+  const rawRows = d.table || (d.is_lying && d.is_lying.table_order_rows) || (d.is_lying && d.is_lying.rows) || [];
   const curSeason = seasonOf("leagueSeason");
 
-  if (!rows.length) {
+  if (!rawRows.length) {
     node.innerHTML = `
       <div class="empty" style="padding:48px 16px">
         <div class="empty-title">${LEAGUE_LABEL[state.league] || state.league} ${curSeason} Has No Completed Matches</div>
@@ -1631,59 +1706,292 @@ function renderLeague(node, d, notice = "") {
     return;
   }
 
+  // Calculate high-water marks for KPI cards
+  const sortedByPts = [...rawRows].sort((a, b) => b.points - a.points);
+  const sortedByXPts = [...rawRows].sort((a, b) => (b.xPTS || 0) - (a.xPTS || 0));
+  const sortedByNPxGD = [...rawRows].sort((a, b) => (b.npxGD || 0) - (a.npxGD || 0));
+  const sortedByPPDA = [...rawRows].filter(r => (r.PPDA || 0) > 0).sort((a, b) => a.PPDA - b.PPDA);
+  const sortedByDC = [...rawRows].sort((a, b) => (b.deep_completions || 0) - (a.deep_completions || 0));
+  const overperformer = d.is_lying && d.is_lying.biggest_overperformer;
+  const underperformer = d.is_lying && d.is_lying.biggest_underperformer;
+
+  const leader = sortedByPts[0] || {};
+  const xptsLeader = sortedByXPts[0] || {};
+  const npxgdLeader = sortedByNPxGD[0] || {};
+  const pressLeader = sortedByPPDA[0] || {};
+  const dcLeader = sortedByDC[0] || {};
+
   node.innerHTML = `
     ${notice ? `<div style="margin-bottom:16px"><span class="hero-pill accent">${notice}</span></div>` : ""}
 
-    <!-- Full Width xPTS Is-Lying Table -->
+    <!-- League KPI Overview Strip -->
+    <div class="kpi-row" style="margin-bottom:20px">
+      <div class="kpi-card" style="cursor:pointer" onclick="$('teamName').value='${leader.team || ''}';activateTab('team');runTeam()">
+        <span class="kpi-label">🏆 Table Leader</span>
+        <span class="kpi-value" style="font-size:18px">${leader.team || '—'}</span>
+        <span class="kpi-sub">${leader.points || 0} pts · ${leader.matches || 0} matches</span>
+      </div>
+      <div class="kpi-card" style="cursor:pointer" onclick="$('teamName').value='${xptsLeader.team || ''}';activateTab('team');runTeam()">
+        <span class="kpi-label">⚡ ${term("xpts", "xPTS")} Leader</span>
+        <span class="kpi-value" style="font-size:18px">${xptsLeader.team || '—'}</span>
+        <span class="kpi-sub">${fmt(xptsLeader.xPTS, 1)} expected pts</span>
+      </div>
+      <div class="kpi-card" style="cursor:pointer" onclick="$('teamName').value='${npxgdLeader.team || ''}';activateTab('team');runTeam()">
+        <span class="kpi-label">🛡️ Best ${term("npxgd", "NPxGD")} Process</span>
+        <span class="kpi-value" style="font-size:18px">${npxgdLeader.team || '—'}</span>
+        <span class="kpi-sub">${fmt(npxgdLeader.npxGD, 1)} open-play diff</span>
+      </div>
+      <div class="kpi-card" style="cursor:pointer" onclick="$('teamName').value='${pressLeader.team || ''}';activateTab('team');runTeam()">
+        <span class="kpi-label">🔥 Most Intense ${term("ppda", "PPDA")}</span>
+        <span class="kpi-value" style="font-size:18px">${pressLeader.team || '—'}</span>
+        <span class="kpi-sub">${fmt(pressLeader.PPDA, 1)} passes allowed / action</span>
+      </div>
+      <div class="kpi-card" style="cursor:pointer" onclick="$('teamName').value='${dcLeader.team || ''}';activateTab('team');runTeam()">
+        <span class="kpi-label">🎯 Box Penetration (${term("dc", "DC")})</span>
+        <span class="kpi-value" style="font-size:18px">${dcLeader.team || '—'}</span>
+        <span class="kpi-sub">${dcLeader.deep_completions || 0} deep box passes</span>
+      </div>
+      ${overperformer ? `
+      <div class="kpi-card" style="cursor:pointer" onclick="$('teamName').value='${overperformer.team || ''}';activateTab('team');runTeam()">
+        <span class="kpi-label">🎲 Luck / Flattery Gap</span>
+        <span class="kpi-value" style="font-size:18px;color:${overperformer.xPTS_gap > 0 ? 'var(--fg-good)' : 'var(--fg-bad)'}">
+          ${overperformer.team} (+${fmt(overperformer.xPTS_gap, 1)})
+        </span>
+        <span class="kpi-sub">PTS outrunning xG process</span>
+      </div>
+      ` : ""}
+    </div>
+
+    <!-- Complete 19-Metric Team League Table -->
     <div class="card">
-      <div class="card-header">
-        <span class="card-title">Expected Points (xPTS) Diagnostic & "Is-Lying" Table</span>
+      <div class="card-header" style="flex-wrap:wrap;gap:12px;align-items:center">
+        <div>
+          <span class="card-title">Comprehensive League Intelligence & Process Table</span>
+          <div style="font-size:11.5px;color:var(--muted);margin-top:2px">
+            All 19 official Understat match & process metrics · Click any column header to sort · Hover headers for metric definitions
+          </div>
+        </div>
         <span class="mono" style="font-size:11.5px;color:var(--muted)">${LEAGUE_LABEL[state.league] || state.league} · ${curSeason}</span>
       </div>
-      <table>
-        <thead>
-          <tr>
-            <th>Rank</th>
-            <th>Team</th>
-            <th class="num">Points</th>
-            <th class="num">${term("xpts")}</th>
-            <th class="num">Pts Gap</th>
-            <th class="num">${term("g_minus_xg")}</th>
-            <th class="num">xGA − GA</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${rows.map((r, i) => {
-            const gapCls = r.xPTS_gap > 0 ? "good" : r.xPTS_gap < 0 ? "bad" : "";
-            const isTop4 = i < 4;
-            return `
-              <tr>
-                <td><span class="rank-badge ${isTop4 ? 'top4' : ''}">${i + 1}</span></td>
-                <td><strong style="cursor:pointer;color:var(--text-bright)" onclick="$('teamName').value='${r.team}';activateTab('team');runTeam()">${r.team}</strong></td>
-                <td class="num"><strong>${r.points}</strong></td>
-                <td class="num" style="color:var(--accent);font-weight:700">${fmt(r.xPTS, 1)}</td>
-                <td class="num"><span class="badge ${gapCls}">${r.xPTS_gap >= 0 ? "+" : ""}${fmt(r.xPTS_gap, 1)}</span></td>
-                <td class="num" style="color:${r.g_minus_xg >= 0 ? 'var(--fg-good)' : 'var(--fg-bad)'}">${r.g_minus_xg >= 0 ? '+' : ''}${fmt(r.g_minus_xg)}</td>
-                <td class="num">${fmt(r.xga_minus_ga)}</td>
-              </tr>
-            `;
-          }).join("")}
-        </tbody>
-      </table>
+
+      <!-- View Preset Switchers -->
+      <div class="view-pills-row">
+        <span style="font-size:11.5px;color:var(--muted);font-weight:700;margin-right:4px">Table View:</span>
+        <button class="view-pill-btn ${leagueTableState.viewMode === 'all' ? 'active' : ''}" onclick="setLeagueViewMode('all')">Full 19-Metric Board</button>
+        <button class="view-pill-btn ${leagueTableState.viewMode === 'standard' ? 'active' : ''}" onclick="setLeagueViewMode('standard')">Standings & Results (M, W, D, L, G, GA, PTS)</button>
+        <button class="view-pill-btn ${leagueTableState.viewMode === 'expected' ? 'active' : ''}" onclick="setLeagueViewMode('expected')">Expected Goals Process (xG, NPxG, xGA, NPxGA, NPxGD, xPTS)</button>
+        <button class="view-pill-btn ${leagueTableState.viewMode === 'pressing' ? 'active' : ''}" onclick="setLeagueViewMode('pressing')">Pressing & Penetration (PPDA, OPPDA, DC, ODC)</button>
+      </div>
+
+      <div class="table-responsive" id="leagueTableContainer">
+        ${renderLeagueTableHTML(rawRows, leagueTableState.viewMode, leagueTableState.sortKey, leagueTableState.sortDir)}
+      </div>
+
+      <!-- Metric Glossary & Quick Cheat-Sheet -->
+      <div class="metric-legend-card">
+        <div class="metric-legend-item">
+          <strong>№ / M / W / D / L:</strong> <span>Rank, Matches Played, Wins (3pts), Draws (1pt), Losses (0pts).</span>
+        </div>
+        <div class="metric-legend-item">
+          <strong>G / GA / GD / PTS:</strong> <span>Goals Scored, Goals Against, Goal Diff, Actual Championship Points.</span>
+        </div>
+        <div class="metric-legend-item">
+          <strong>xG / NPxG:</strong> <span>Expected Goals from all shots; NPxG excludes penalties (0.76 xG each) for open-play truth.</span>
+        </div>
+        <div class="metric-legend-item">
+          <strong>xGA / NPxGA:</strong> <span>Expected Goals Against conceded; NPxGA measures non-penalty defensive quality.</span>
+        </div>
+        <div class="metric-legend-item">
+          <strong>NPxGD:</strong> <span>Non-Penalty Expected Goal Diff (NPxG − NPxGA) — single best underlying strength metric.</span>
+        </div>
+        <div class="metric-legend-item">
+          <strong>PPDA / OPPDA:</strong> <span>Passes Allowed per Defensive Action in attacking 60%. Lower = intense press; OPPDA = press resistance.</span>
+        </div>
+        <div class="metric-legend-item">
+          <strong>DC / ODC:</strong> <span>Deep Completions (non-cross passes within 20yd of goal) and ODC (deep completions conceded).</span>
+        </div>
+        <div class="metric-legend-item">
+          <strong>xPTS / Gap:</strong> <span>Expected Points simulated from chance distributions; Gap = PTS − xPTS (table flattery vs harshness).</span>
+        </div>
+      </div>
+
       <div class="hint" style="margin-top:12px">${d.is_lying.interpretation}</div>
     </div>
 
-    <!-- Row 2: PPDA Pressing Rankings -->
-    ${d.ppda_ranking && d.ppda_ranking.ranking && d.ppda_ranking.ranking.length ? `
-      <div class="card" style="margin-top:20px">
-        <div class="card-header"><span class="card-title">PPDA Pressing Intensity Rankings</span></div>
-        <table><thead><tr><th>Rank</th><th>Team</th><th class="num">PPDA (Att)</th><th class="num">OPPDA (Def)</th><th class="num">Deep Completions</th></tr></thead><tbody>
-          ${d.ppda_ranking.ranking.slice(0, 12).map((p, i) => `<tr><td>#${i+1}</td><td>${p.team}</td><td class="num"><strong>${fmt(p.PPDA)}</strong></td><td class="num">${fmt(p.OPPDA)}</td><td class="num">${p.deep_completions}</td></tr>`).join("")}
-        </tbody></table>
+    <!-- Row 2: Finishing & Defensive Variance Breakdown -->
+    ${d.variance ? `
+      <div class="grid cols-2" style="margin-top:20px">
+        <div class="card">
+          <div class="card-header"><span class="card-title">Finishing Variance & Luck Analysis</span></div>
+          <div class="kpi-row" style="margin-bottom:12px">
+            <div class="kpi-card">
+              <span class="kpi-label">Mean ${term("g_minus_xg", "G − xG")}</span>
+              <span class="kpi-value">${fmt(d.variance.finishing_variance.mean_g_minus_xg)}</span>
+              <span class="kpi-sub">League finishing baseline</span>
+            </div>
+            <div class="kpi-card">
+              <span class="kpi-label">Finishing Spread (StDev)</span>
+              <span class="kpi-value">${fmt(d.variance.finishing_variance.stdev_g_minus_xg)}</span>
+              <span class="kpi-sub">Dispersion of finishing luck</span>
+            </div>
+          </div>
+          <div class="hint">${d.variance.interpretation}</div>
+        </div>
+
+        <div class="card">
+          <div class="card-header"><span class="card-title">League Process Pace</span></div>
+          <div class="kpi-row" style="margin-bottom:12px">
+            <div class="kpi-card">
+              <span class="kpi-label">Average xG / Game</span>
+              <span class="kpi-value">${fmt(d.pace ? d.pace.xG_per_game : 0)}</span>
+              <span class="kpi-sub">Total chance volume pace</span>
+            </div>
+            <div class="kpi-card">
+              <span class="kpi-label">Matches Completed</span>
+              <span class="kpi-value">${d.pace ? d.pace.matches : 0}</span>
+              <span class="kpi-sub">Sample size</span>
+            </div>
+          </div>
+          <div class="hint">${d.pace ? d.pace.interpretation : ''}</div>
+        </div>
       </div>
     ` : ""}
 
-    <div class="caveat"><strong>Limitations.</strong><ul>${d.limitations.map((l) => `<li>${l}</li>`).join("")}</ul></div>
+    <!-- Limitations -->
+    <div class="caveat" style="margin-top:20px"><strong>Limitations & Analytical Honesty.</strong><ul>${d.limitations.map((l) => `<li>${l}</li>`).join("")}</ul></div>
+  `;
+}
+
+function setLeagueViewMode(mode) {
+  leagueTableState.viewMode = mode;
+  const rawRows = (leagueDataCache && leagueDataCache.table) ||
+                  (leagueDataCache && leagueDataCache.is_lying && leagueDataCache.is_lying.table_order_rows) ||
+                  (leagueDataCache && leagueDataCache.is_lying && leagueDataCache.is_lying.rows) || [];
+  const container = $("leagueTableContainer");
+  if (container) {
+    container.innerHTML = renderLeagueTableHTML(rawRows, leagueTableState.viewMode, leagueTableState.sortKey, leagueTableState.sortDir);
+  }
+  document.querySelectorAll(".view-pill-btn").forEach(btn => {
+    btn.classList.toggle("active", btn.getAttribute("onclick").includes(`'${mode}'`));
+  });
+}
+
+function sortLeagueTable(key) {
+  if (leagueTableState.sortKey === key) {
+    leagueTableState.sortDir = leagueTableState.sortDir === "asc" ? "desc" : "asc";
+  } else {
+    leagueTableState.sortKey = key;
+    // Default descending for points/goals/metrics, ascending for rank/PPDA
+    leagueTableState.sortDir = (key === "rank" || key === "PPDA" || key === "OPPDA" || key === "losses" || key === "goals_against" || key === "xGA" || key === "npxGA" || key === "deep_completions_allowed") ? "asc" : "desc";
+  }
+  const rawRows = (leagueDataCache && leagueDataCache.table) ||
+                  (leagueDataCache && leagueDataCache.is_lying && leagueDataCache.is_lying.table_order_rows) ||
+                  (leagueDataCache && leagueDataCache.is_lying && leagueDataCache.is_lying.rows) || [];
+  const container = $("leagueTableContainer");
+  if (container) {
+    container.innerHTML = renderLeagueTableHTML(rawRows, leagueTableState.viewMode, leagueTableState.sortKey, leagueTableState.sortDir);
+  }
+}
+
+function renderLeagueTableHTML(rows, viewMode, sortKey, sortDir) {
+  const sorted = [...rows].sort((a, b) => {
+    let valA = a[sortKey] !== undefined ? a[sortKey] : 0;
+    let valB = b[sortKey] !== undefined ? b[sortKey] : 0;
+    if (typeof valA === "string") valA = valA.toLowerCase();
+    if (typeof valB === "string") valB = valB.toLowerCase();
+    if (valA < valB) return sortDir === "asc" ? -1 : 1;
+    if (valA > valB) return sortDir === "asc" ? 1 : -1;
+    // Tiebreaker: Points desc, then GD desc, then Goals desc
+    if (b.points !== a.points) return b.points - a.points;
+    if ((b.gd || 0) !== (a.gd || 0)) return (b.gd || 0) - (a.gd || 0);
+    return (b.goals || 0) - (a.goals || 0);
+  });
+
+  const dirArrow = sortDir === "asc" ? "▲" : "▼";
+  const th = (key, label, dataTerm, isNum = true, isSticky = "") => {
+    const active = sortKey === key;
+    return `
+      <th class="${isNum ? 'num' : ''} sortable ${active ? 'sort-active' : ''} ${isSticky}"
+          onclick="sortLeagueTable('${key}')"
+          title="Click to sort by ${label}">
+        ${term(dataTerm, label)}
+        ${active ? `<span style="font-size:10px;margin-left:2px">${dirArrow}</span>` : ''}
+      </th>
+    `;
+  };
+
+  return `
+    <table class="dense-table">
+      <thead>
+        <tr>
+          ${th("rank", "№", "rank", false, "table-sticky-rank")}
+          ${th("team", "Team", "team", false, "table-sticky-team")}
+          ${(viewMode === 'all' || viewMode === 'standard' || viewMode === 'expected' || viewMode === 'pressing') ? th("matches", "M", "matches") : ''}
+          ${(viewMode === 'all' || viewMode === 'standard') ? th("wins", "W", "wins") : ''}
+          ${(viewMode === 'all' || viewMode === 'standard') ? th("draws", "D", "draws") : ''}
+          ${(viewMode === 'all' || viewMode === 'standard') ? th("losses", "L", "losses") : ''}
+          ${(viewMode === 'all' || viewMode === 'standard') ? th("goals", "G", "goals") : ''}
+          ${(viewMode === 'all' || viewMode === 'standard') ? th("goals_against", "GA", "ga") : ''}
+          ${(viewMode === 'all' || viewMode === 'standard') ? th("gd", "GD", "gd") : ''}
+          ${(viewMode === 'all' || viewMode === 'standard' || viewMode === 'expected') ? th("points", "PTS", "pts") : ''}
+          ${(viewMode === 'all' || viewMode === 'expected' || viewMode === 'pressing') ? th("xG", "xG", "xG") : ''}
+          ${(viewMode === 'all' || viewMode === 'expected') ? th("npxG", "NPxG", "npxG") : ''}
+          ${(viewMode === 'all' || viewMode === 'expected' || viewMode === 'pressing') ? th("xGA", "xGA", "xGA") : ''}
+          ${(viewMode === 'all' || viewMode === 'expected') ? th("npxGA", "NPxGA", "npxga") : ''}
+          ${(viewMode === 'all' || viewMode === 'expected' || viewMode === 'pressing') ? th("npxGD", "NPxGD", "npxgd") : ''}
+          ${(viewMode === 'all' || viewMode === 'pressing') ? th("PPDA", "PPDA", "ppda") : ''}
+          ${(viewMode === 'all' || viewMode === 'pressing') ? th("OPPDA", "OPPDA", "oppda") : ''}
+          ${(viewMode === 'all' || viewMode === 'pressing') ? th("deep_completions", "DC", "dc") : ''}
+          ${(viewMode === 'all' || viewMode === 'pressing') ? th("deep_completions_allowed", "ODC", "odc") : ''}
+          ${(viewMode === 'all' || viewMode === 'expected') ? th("xPTS", "xPTS", "xpts") : ''}
+          ${(viewMode === 'all' || viewMode === 'expected') ? th("xPTS_gap", "Pts Gap", "xpts_gap") : ''}
+          ${(viewMode === 'expected') ? th("g_minus_xg", "G − xG", "g_minus_xg") : ''}
+          ${(viewMode === 'expected') ? th("xga_minus_ga", "xGA − GA", "xga_minus_ga") : ''}
+        </tr>
+      </thead>
+      <tbody>
+        ${sorted.map((r, i) => {
+          const isTop4 = r.rank <= 4;
+          const isRelegation = r.rank >= (sorted.length - 2);
+          const gapCls = (r.xPTS_gap || 0) > 0 ? "good" : (r.xPTS_gap || 0) < 0 ? "bad" : "";
+          const gd = r.gd !== undefined ? r.gd : (r.goals - r.goals_against);
+
+          return `
+            <tr>
+              <td class="table-sticky-rank">
+                <span class="rank-badge ${isTop4 ? 'top4' : isRelegation ? 'relegation' : ''}">${r.rank}</span>
+              </td>
+              <td class="table-sticky-team">
+                <strong style="cursor:pointer;color:var(--text-bright)" onclick="$('teamName').value='${r.team}';activateTab('team');runTeam()" title="View ${r.team} Team Analytics">
+                  ${r.team}
+                </strong>
+              </td>
+              ${(viewMode === 'all' || viewMode === 'standard' || viewMode === 'expected' || viewMode === 'pressing') ? `<td class="num">${r.matches}</td>` : ''}
+              ${(viewMode === 'all' || viewMode === 'standard') ? `<td class="num">${r.wins}</td>` : ''}
+              ${(viewMode === 'all' || viewMode === 'standard') ? `<td class="num">${r.draws}</td>` : ''}
+              ${(viewMode === 'all' || viewMode === 'standard') ? `<td class="num">${r.losses}</td>` : ''}
+              ${(viewMode === 'all' || viewMode === 'standard') ? `<td class="num">${r.goals}</td>` : ''}
+              ${(viewMode === 'all' || viewMode === 'standard') ? `<td class="num">${r.goals_against}</td>` : ''}
+              ${(viewMode === 'all' || viewMode === 'standard') ? `<td class="num" style="color:${gd >= 0 ? 'var(--text)' : 'var(--fg-bad)'};font-weight:600">${gd > 0 ? '+' : ''}${gd}</td>` : ''}
+              ${(viewMode === 'all' || viewMode === 'standard' || viewMode === 'expected') ? `<td class="num"><strong>${r.points}</strong></td>` : ''}
+              ${(viewMode === 'all' || viewMode === 'expected' || viewMode === 'pressing') ? `<td class="num" style="color:var(--accent);font-weight:600">${fmt(r.xG, 2)}</td>` : ''}
+              ${(viewMode === 'all' || viewMode === 'expected') ? `<td class="num">${fmt(r.npxG, 2)}</td>` : ''}
+              ${(viewMode === 'all' || viewMode === 'expected' || viewMode === 'pressing') ? `<td class="num">${fmt(r.xGA, 2)}</td>` : ''}
+              ${(viewMode === 'all' || viewMode === 'expected') ? `<td class="num">${fmt(r.npxGA, 2)}</td>` : ''}
+              ${(viewMode === 'all' || viewMode === 'expected' || viewMode === 'pressing') ? `<td class="num" style="color:${(r.npxGD || 0) >= 0 ? 'var(--fg-good)' : 'var(--fg-bad)'};font-weight:700">${(r.npxGD || 0) >= 0 ? '+' : ''}${fmt(r.npxGD, 2)}</td>` : ''}
+              ${(viewMode === 'all' || viewMode === 'pressing') ? `<td class="num"><strong>${fmt(r.PPDA, 2)}</strong></td>` : ''}
+              ${(viewMode === 'all' || viewMode === 'pressing') ? `<td class="num">${fmt(r.OPPDA, 2)}</td>` : ''}
+              ${(viewMode === 'all' || viewMode === 'pressing') ? `<td class="num">${r.deep_completions || 0}</td>` : ''}
+              ${(viewMode === 'all' || viewMode === 'pressing') ? `<td class="num">${r.deep_completions_allowed || 0}</td>` : ''}
+              ${(viewMode === 'all' || viewMode === 'expected') ? `<td class="num" style="color:var(--accent);font-weight:700">${fmt(r.xPTS, 2)}</td>` : ''}
+              ${(viewMode === 'all' || viewMode === 'expected') ? `<td class="num"><span class="badge ${gapCls}">${(r.xPTS_gap || 0) >= 0 ? '+' : ''}${fmt(r.xPTS_gap, 2)}</span></td>` : ''}
+              ${(viewMode === 'expected') ? `<td class="num" style="color:${(r.g_minus_xg || 0) >= 0 ? 'var(--fg-good)' : 'var(--fg-bad)'}">${(r.g_minus_xg || 0) >= 0 ? '+' : ''}${fmt(r.g_minus_xg, 2)}</td>` : ''}
+              ${(viewMode === 'expected') ? `<td class="num">${fmt(r.xga_minus_ga, 2)}</td>` : ''}
+            </tr>
+          `;
+        }).join("")}
+      </tbody>
+    </table>
   `;
 }
 
@@ -1725,44 +2033,64 @@ function renderDiscover(node, d) {
   node.innerHTML = `
     <div class="card">
       <div class="card-header"><span class="card-title">Ranked Discovery Pool (${d.players.length} players found)</span></div>
-      <table>
-        <thead>
-          <tr>
-            <th>Player</th>
-            <th>Team</th>
-            <th>Role</th>
-            <th class="num">Age</th>
-            <th class="num">Min</th>
-            <th class="num">${term("goals")}</th>
-            <th class="num">${term("npxg")}</th>
-            <th class="num">${term("assists")}</th>
-            <th class="num">${term("xa")}</th>
-            <th class="num">${term("xG_chain")}</th>
-            <th class="num">${term("xG_buildup")}</th>
-            <th>Scout</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${d.players.map((p) => `
+      <div class="table-responsive">
+        <table class="dense-table">
+          <thead>
             <tr>
-              <td><strong style="cursor:pointer;color:var(--text-bright)" onclick="$('playerName').value='${p.player_name}';activateTab('player');runPlayer()">${p.player_name}</strong></td>
-              <td>${p.team_title || "—"}</td>
-              <td><span class="badge">${p.position || "—"}</span></td>
-              <td class="num">${p.age ?? "—"}</td>
-              <td class="num">${fmt(p.time, 0)}</td>
-              <td class="num"><strong>${fmt(p.goals, 0)}</strong></td>
-              <td class="num">${fmt(p.npxG)}</td>
-              <td class="num">${fmt(p.assists, 0)}</td>
-              <td class="num">${fmt(p.xA)}</td>
-              <td class="num" style="color:var(--accent);font-weight:700">${fmt(p.xGChain)}</td>
-              <td class="num">${fmt(p.xGBuildup)}</td>
-              <td>
-                <button class="ghost" style="padding:3px 10px;font-size:11.5px" onclick="$('playerName').value='${p.player_name}';activateTab('player');runPlayer()">Profile →</button>
-              </td>
+              <th>Player</th>
+              <th>Team</th>
+              <th>Role</th>
+              <th class="num">Age</th>
+              <th class="num">Min</th>
+              <th class="num">${term("goals")}</th>
+              <th class="num">${term("xG")}</th>
+              <th class="num">${term("npxg")}</th>
+              <th class="num">${term("npxg", "NPxG/90")}</th>
+              <th class="num">${term("assists")}</th>
+              <th class="num">${term("xa")}</th>
+              <th class="num">${term("xa", "xA/90")}</th>
+              <th class="num">${term("xG_chain")}</th>
+              <th class="num">${term("xG_chain", "Chain/90")}</th>
+              <th class="num">${term("xG_buildup")}</th>
+              <th class="num">${term("xG_buildup", "Buildup/90")}</th>
+              <th>Scout</th>
             </tr>
-          `).join("")}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            ${d.players.map((p) => {
+              const min = p.time || 0;
+              const npxg90 = min > 0 ? ((p.npxG || 0) / min) * 90 : 0;
+              const xa90 = min > 0 ? ((p.xA || 0) / min) * 90 : 0;
+              const chain90 = min > 0 ? ((p.xGChain || 0) / min) * 90 : 0;
+              const build90 = min > 0 ? ((p.xGBuildup || 0) / min) * 90 : 0;
+
+              return `
+                <tr>
+                  <td><strong style="cursor:pointer;color:var(--text-bright)" onclick="$('playerName').value='${p.player_name}';activateTab('player');runPlayer()">${p.player_name}</strong></td>
+                  <td>${p.team_title || "—"}</td>
+                  <td><span class="badge">${p.position || "—"}</span></td>
+                  <td class="num">${p.age ?? "—"}</td>
+                  <td class="num">${fmt(p.time, 0)}</td>
+                  <td class="num"><strong>${fmt(p.goals, 0)}</strong></td>
+                  <td class="num" style="color:var(--accent);font-weight:600">${fmt(p.xG, 2)}</td>
+                  <td class="num">${fmt(p.npxG, 2)}</td>
+                  <td class="num" style="font-weight:700">${fmt(npxg90, 2)}</td>
+                  <td class="num"><strong>${fmt(p.assists, 0)}</strong></td>
+                  <td class="num">${fmt(p.xA, 2)}</td>
+                  <td class="num" style="font-weight:700">${fmt(xa90, 2)}</td>
+                  <td class="num" style="color:var(--accent);font-weight:600">${fmt(p.xGChain, 2)}</td>
+                  <td class="num">${fmt(chain90, 2)}</td>
+                  <td class="num">${fmt(p.xGBuildup, 2)}</td>
+                  <td class="num">${fmt(build90, 2)}</td>
+                  <td>
+                    <button class="ghost" style="padding:3px 10px;font-size:11.5px" onclick="$('playerName').value='${p.player_name}';activateTab('player');runPlayer()">Profile →</button>
+                  </td>
+                </tr>
+              `;
+            }).join("")}
+          </tbody>
+        </table>
+      </div>
     </div>
   `;
 }
@@ -1803,18 +2131,26 @@ function renderComparePlayers(node, d) {
         <div id="compareRadar"></div>
       </div>
       <div class="card">
-        <div class="card-header"><span class="card-title">Head-to-Head Statistics</span></div>
-        <table>
-          <thead><tr><th>Metric</th><th class="num">${names[0]}</th><th class="num">${names[1]}</th></tr></thead>
-          <tbody>
-            <tr><td>Goals</td><td class="num"><strong>${fmt(p1.raw.goals, 0)}</strong></td><td class="num"><strong>${fmt(p2.raw.goals, 0)}</strong></td></tr>
-            <tr><td>NP xG</td><td class="num">${fmt(p1.raw.npxG)}</td><td class="num">${fmt(p2.raw.npxG)}</td></tr>
-            <tr><td>Assists / xA</td><td class="num">${fmt(p1.raw.assists, 0)} (${fmt(p1.raw.xA)})</td><td class="num">${fmt(p2.raw.assists, 0)} (${fmt(p2.raw.xA)})</td></tr>
-            <tr><td>xGChain /90</td><td class="num">${fmt(p1.per90.xGChain, 2)}</td><td class="num">${fmt(p2.per90.xGChain, 2)}</td></tr>
-            <tr><td>xGBuildup /90</td><td class="num">${fmt(p1.per90.xGBuildup, 2)}</td><td class="num">${fmt(p2.per90.xGBuildup, 2)}</td></tr>
-            <tr><td>Minutes</td><td class="num">${fmt(p1.minutes, 0)}</td><td class="num">${fmt(p2.minutes, 0)}</td></tr>
-          </tbody>
-        </table>
+        <div class="card-header"><span class="card-title">Head-to-Head Comprehensive Metrics</span></div>
+        <div class="table-responsive">
+          <table class="dense-table">
+            <thead><tr><th>Metric</th><th class="num">${names[0]}</th><th class="num">${names[1]}</th></tr></thead>
+            <tbody>
+              <tr><td>${term("goals", "Goals")}</td><td class="num"><strong>${fmt(p1.raw.goals, 0)}</strong></td><td class="num"><strong>${fmt(p2.raw.goals, 0)}</strong></td></tr>
+              <tr><td>${term("xG", "Expected Goals (xG)")}</td><td class="num" style="color:var(--accent);font-weight:600">${fmt(p1.raw.xG, 2)}</td><td class="num" style="color:var(--accent-emerald);font-weight:600">${fmt(p2.raw.xG, 2)}</td></tr>
+              <tr><td>${term("npxG", "Non-Penalty xG (NPxG)")}</td><td class="num">${fmt(p1.raw.npxG, 2)}</td><td class="num">${fmt(p2.raw.npxG, 2)}</td></tr>
+              <tr><td>${term("npxG", "NPxG / 90")}</td><td class="num" style="font-weight:700">${fmt(p1.per90.npxG, 2)}</td><td class="num" style="font-weight:700">${fmt(p2.per90.npxG, 2)}</td></tr>
+              <tr><td>${term("assists", "Assists")}</td><td class="num"><strong>${fmt(p1.raw.assists, 0)}</strong></td><td class="num"><strong>${fmt(p2.raw.assists, 0)}</strong></td></tr>
+              <tr><td>${term("xA", "Expected Assists (xA)")}</td><td class="num">${fmt(p1.raw.xA, 2)}</td><td class="num">${fmt(p2.raw.xA, 2)}</td></tr>
+              <tr><td>${term("xA", "xA / 90")}</td><td class="num" style="font-weight:700">${fmt(p1.per90.xA, 2)}</td><td class="num" style="font-weight:700">${fmt(p2.per90.xA, 2)}</td></tr>
+              <tr><td>${term("shots", "Shots")}</td><td class="num">${fmt(p1.raw.shots, 0)}</td><td class="num">${fmt(p2.raw.shots, 0)}</td></tr>
+              <tr><td>${term("key_passes", "Key Passes")}</td><td class="num">${fmt(p1.raw.key_passes, 0)}</td><td class="num">${fmt(p2.raw.key_passes, 0)}</td></tr>
+              <tr><td>${term("xG_chain", "xGChain / 90")}</td><td class="num" style="color:var(--accent);font-weight:600">${fmt(p1.per90.xGChain, 2)}</td><td class="num" style="color:var(--accent-emerald);font-weight:600">${fmt(p2.per90.xGChain, 2)}</td></tr>
+              <tr><td>${term("xG_buildup", "xGBuildup / 90")}</td><td class="num">${fmt(p1.per90.xGBuildup, 2)}</td><td class="num">${fmt(p2.per90.xGBuildup, 2)}</td></tr>
+              <tr><td>${term("minutes", "Minutes Played")}</td><td class="num">${fmt(p1.minutes, 0)}</td><td class="num">${fmt(p2.minutes, 0)}</td></tr>
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   `;
@@ -1857,19 +2193,34 @@ function drawCompareRadar(container, r1, r2, name1, name2) {
 function renderCompareTeams(node, d) {
   clear(node);
   const t1 = d.team_1, t2 = d.team_2;
+  const s1 = t1.style || {}, s2 = t2.style || {};
+
   node.innerHTML = `
     <div class="card">
-      <div class="card-header"><span class="card-title">${t1.team} vs ${t2.team} Tactical Comparison</span></div>
-      <table>
-        <thead><tr><th>Metric</th><th class="num">${t1.team}</th><th class="num">${t2.team}</th></tr></thead>
-        <tbody>
-          <tr><td>xG / game</td><td class="num">${fmt(t1.style.xG_per_game)}</td><td class="num">${fmt(t2.style.xG_per_game)}</td></tr>
-          <tr><td>xGA / game</td><td class="num">${fmt(t1.style.xGA_per_game)}</td><td class="num">${fmt(t2.style.xGA_per_game)}</td></tr>
-          <tr><td>xGD / game</td><td class="num">${fmt(t1.style.xG_diff_per_game)}</td><td class="num">${fmt(t2.style.xG_diff_per_game)}</td></tr>
-          <tr><td>PPDA Pressing</td><td class="num">${fmt(t1.style.PPDA)}</td><td class="num">${fmt(t2.style.PPDA)}</td></tr>
-          <tr><td>Deep Completions</td><td class="num">${fmt(t1.style.deep_completions, 0)}</td><td class="num">${fmt(t2.style.deep_completions, 0)}</td></tr>
-        </tbody>
-      </table>
+      <div class="card-header"><span class="card-title">${t1.team} vs ${t2.team} Tactical & Process Comparison</span></div>
+      <div class="table-responsive">
+        <table class="dense-table">
+          <thead><tr><th>Metric</th><th class="num">${t1.team}</th><th class="num">${t2.team}</th></tr></thead>
+          <tbody>
+            <tr><td>${term("pts", "Points (PTS)")}</td><td class="num"><strong>${s1.points ?? '—'}</strong></td><td class="num"><strong>${s2.points ?? '—'}</strong></td></tr>
+            <tr><td>${term("xpts", "Expected Points (xPTS)")}</td><td class="num" style="color:var(--accent);font-weight:700">${fmt(s1.xPTS, 1)}</td><td class="num" style="color:var(--accent-emerald);font-weight:700">${fmt(s2.xPTS, 1)}</td></tr>
+            <tr><td>${term("xpts_gap", "PTS − xPTS Gap")}</td><td class="num">${(s1.xPTS_gap || 0) >= 0 ? '+' : ''}${fmt(s1.xPTS_gap, 1)}</td><td class="num">${(s2.xPTS_gap || 0) >= 0 ? '+' : ''}${fmt(s2.xPTS_gap, 1)}</td></tr>
+            <tr><td>${term("goals", "Goals Scored (G)")}</td><td class="num">${s1.goals ?? '—'}</td><td class="num">${s2.goals ?? '—'}</td></tr>
+            <tr><td>${term("xG", "Expected Goals (xG)")}</td><td class="num">${fmt(s1.xG, 2)}</td><td class="num">${fmt(s2.xG, 2)}</td></tr>
+            <tr><td>${term("npxG", "Non-Penalty xG (NPxG)")}</td><td class="num">${fmt(s1.npxG, 2)}</td><td class="num">${fmt(s2.npxG, 2)}</td></tr>
+            <tr><td>${term("xG", "xG / Game")}</td><td class="num" style="font-weight:600">${fmt(s1.xG_per_game, 2)}</td><td class="num" style="font-weight:600">${fmt(s2.xG_per_game, 2)}</td></tr>
+            <tr><td>${term("ga", "Goals Against (GA)")}</td><td class="num">${s1.goals_against ?? '—'}</td><td class="num">${s2.goals_against ?? '—'}</td></tr>
+            <tr><td>${term("xGA", "Expected Goals Against (xGA)")}</td><td class="num">${fmt(s1.xGA, 2)}</td><td class="num">${fmt(s2.xGA, 2)}</td></tr>
+            <tr><td>${term("npxga", "Non-Penalty xGA (NPxGA)")}</td><td class="num">${fmt(s1.npxGA, 2)}</td><td class="num">${fmt(s2.npxGA, 2)}</td></tr>
+            <tr><td>${term("xGA", "xGA / Game")}</td><td class="num" style="font-weight:600">${fmt(s1.xGA_per_game, 2)}</td><td class="num" style="font-weight:600">${fmt(s2.xGA_per_game, 2)}</td></tr>
+            <tr><td>${term("npxgd", "Non-Penalty xGD (NPxGD)")}</td><td class="num" style="font-weight:700;color:${(s1.npxGD || 0) >= 0 ? 'var(--fg-good)' : 'var(--fg-bad)'}">${(s1.npxGD || 0) >= 0 ? '+' : ''}${fmt(s1.npxGD, 2)}</td><td class="num" style="font-weight:700;color:${(s2.npxGD || 0) >= 0 ? 'var(--fg-good)' : 'var(--fg-bad)'}">${(s2.npxGD || 0) >= 0 ? '+' : ''}${fmt(s2.npxGD, 2)}</td></tr>
+            <tr><td>${term("ppda", "PPDA Pressing Intensity")}</td><td class="num"><strong>${fmt(s1.PPDA, 2)}</strong></td><td class="num"><strong>${fmt(s2.PPDA, 2)}</strong></td></tr>
+            <tr><td>${term("oppda", "OPPDA Press Resistance")}</td><td class="num">${fmt(s1.OPPDA, 2)}</td><td class="num">${fmt(s2.OPPDA, 2)}</td></tr>
+            <tr><td>${term("dc", "Deep Completions (DC)")}</td><td class="num">${s1.deep_completions ?? 0}</td><td class="num">${s2.deep_completions ?? 0}</td></tr>
+            <tr><td>${term("odc", "Opponent Deep Completions (ODC)")}</td><td class="num">${s1.deep_completions_allowed ?? 0}</td><td class="num">${s2.deep_completions_allowed ?? 0}</td></tr>
+          </tbody>
+        </table>
+      </div>
     </div>
   `;
 }
