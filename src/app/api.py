@@ -340,6 +340,32 @@ async def analyze_player(payload: AnalyzePlayerRequest, request: Request):
 
 
 @app.post(
+    "/api/v1/analyze/player/shots",
+    tags=["Analytics"],
+    responses={
+        422: {"model": ErrorResponse},
+        502: {"model": ErrorResponse},
+    },
+)
+async def player_shots(payload: AnalyzePlayerRequest, request: Request):
+    try:
+        return await request.app.state.analytics.player_shot_map(
+            player_id=payload.player_id,
+            player_name=payload.player_name,
+            league_name=payload.league_name,
+            season=payload.season,
+            start_date=payload.start_date,
+            end_date=payload.end_date,
+            seasons=payload.seasons,
+        )
+    except ValueError as exc:
+        return JSONResponse(
+            status_code=422,
+            content={"error": "invalid_parameters", "detail": str(exc)},
+        )
+
+
+@app.post(
     "/api/v1/analyze/player/career",
     tags=["Analytics"],
     responses={
@@ -452,6 +478,31 @@ async def analyze_team(payload: AnalyzeTeamRequest, request: Request):
             league_name=payload.league_name,
             season=payload.season,
             with_shots=payload.with_shots,
+            start_date=payload.start_date,
+            end_date=payload.end_date,
+            seasons=payload.seasons,
+        )
+    except ValueError as exc:
+        return JSONResponse(
+            status_code=422,
+            content={"error": "invalid_parameters", "detail": str(exc)},
+        )
+
+
+@app.post(
+    "/api/v1/analyze/team/shots",
+    tags=["Analytics"],
+    responses={
+        422: {"model": ErrorResponse},
+        502: {"model": ErrorResponse},
+    },
+)
+async def team_shots(payload: AnalyzeTeamRequest, request: Request):
+    try:
+        return await request.app.state.analytics.team_shot_map(
+            team_name=payload.team_name,
+            league_name=payload.league_name,
+            season=payload.season,
             start_date=payload.start_date,
             end_date=payload.end_date,
             seasons=payload.seasons,
