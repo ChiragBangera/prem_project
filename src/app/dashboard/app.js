@@ -177,6 +177,7 @@ document.getElementById("leaguePicker").addEventListener("click", (e) => {
   localStorage.setItem("prem_league", state.league);
   document.querySelectorAll("#leaguePicker button").forEach((b) => b.classList.toggle("active", b === btn));
   if (state.tab === "match") loadRounds();
+  if (state.tab === "league") runLeague();
 });
 
 function activateTab(tab, push = true) {
@@ -191,6 +192,7 @@ function activateTab(tab, push = true) {
   if (push && window.location.hash !== `#${tab}`) window.history.pushState(null, "", `#${tab}`);
   if (tab === "info") renderInfo();
   if (tab === "match") loadRounds();
+  if (tab === "league") runLeague();
 }
 
 window.addEventListener("popstate", () => {
@@ -200,13 +202,6 @@ window.addEventListener("popstate", () => {
 document.addEventListener("click", (e) => {
   if (e.target.closest("[data-back]")) { e.preventDefault(); window.history.back(); }
 });
-
-const initialHash = (window.location.hash || "#player").slice(1);
-if (initialHash && document.querySelector(`.sidebar-nav .nav-item[data-tab="${initialHash}"]`)) {
-  activateTab(initialHash, false);
-} else {
-  activateTab("player", false);
-}
 
 // Season Helpers
 function selectedSeasons(hostId) {
@@ -358,7 +353,6 @@ function populateSeasonSelects() {
       option.textContent = `${s}`;
       select.appendChild(option);
     }
-    // Default to LATEST_SEASON if not set or invalid
     if (keepValue && parseInt(keepValue, 10) >= SEASON_RANGE.first && parseInt(keepValue, 10) <= SEASON_RANGE.last) {
       select.value = keepValue;
     } else {
@@ -372,8 +366,9 @@ function populateSeasonSelects() {
 }
 populateSeasonSelects();
 
-// Match Season Change triggers reloading rounds
+// Season dropdown change listeners for immediate reactivity
 $("matchSeason").addEventListener("change", () => loadRounds());
+$("leagueSeason").addEventListener("change", () => runLeague());
 
 // Chart Tooltip
 const chartTipEl = document.getElementById("chartTip");
@@ -434,7 +429,6 @@ function renderPitchHeatmap(containerId, shots, options = {}) {
   const canvas = document.getElementById(`${containerId}_canvas`);
   const ctx = canvas.getContext("2d");
 
-  // Mode Switcher Buttons
   container.querySelectorAll(".pitch-mode-btn").forEach((btn) => {
     btn.addEventListener("click", () => {
       state.pitchModes[containerId] = btn.dataset.mode;
@@ -442,7 +436,6 @@ function renderPitchHeatmap(containerId, shots, options = {}) {
     });
   });
 
-  // Draw Pitch Outline
   drawPitchBackground(ctx, width, height, isHalfPitch);
 
   if (currentMode === "heatmap") {
@@ -452,7 +445,6 @@ function renderPitchHeatmap(containerId, shots, options = {}) {
     drawShotCircles(ctx, shots, width, height, options);
   }
 
-  // Interactive Hover on Canvas
   canvas.addEventListener("mousemove", (e) => {
     if (currentMode !== "shots") {
       if (chartTipEl) chartTipEl.classList.remove("show");
@@ -507,10 +499,9 @@ function drawPitchBackground(ctx, w, h, isHalf) {
 function drawPitchLines(ctx, w, h, isHalf) {
   ctx.strokeStyle = "rgba(255, 255, 255, 0.35)";
   ctx.lineWidth = 1.5;
-
   ctx.strokeRect(12, 12, w - 24, h - 24);
 
-  // Halfway line & Center Circle
+  // Center Line & Circle
   ctx.beginPath();
   ctx.moveTo(w / 2, 12);
   ctx.lineTo(w / 2, h - 12);
@@ -525,21 +516,21 @@ function drawPitchLines(ctx, w, h, isHalf) {
   ctx.arc(w / 2, h / 2, 2.5, 0, Math.PI * 2);
   ctx.fill();
 
-  // Left Penalty Box
+  // Left Box
   ctx.strokeRect(12, h / 2 - 76, 96, 152);
   ctx.strokeRect(12, h / 2 - 34, 32, 68);
   ctx.beginPath();
   ctx.arc(12 + 64, h / 2, 2, 0, Math.PI * 2);
   ctx.fill();
 
-  // Right Penalty Box
+  // Right Box
   ctx.strokeRect(w - 108, h / 2 - 76, 96, 152);
   ctx.strokeRect(w - 44, h / 2 - 34, 32, 68);
   ctx.beginPath();
   ctx.arc(w - 12 - 64, h / 2, 2, 0, Math.PI * 2);
   ctx.fill();
 
-  // Goal Arcs
+  // Arcs
   ctx.beginPath();
   ctx.arc(12 + 64, h / 2, 38, -0.9, 0.9);
   ctx.stroke();
@@ -686,11 +677,9 @@ async function loadRounds() {
 
     renderRecentFixtures(d);
 
-    // Populate Rounds Dropdown
     const rounds = d.rounds || [];
     if (rounds.length) {
       $("roundSelect").innerHTML = rounds.map((r) => `<option value="${r.round}">Round ${r.round}</option>`).join("");
-      // Select the latest round by default
       const latestRound = rounds[rounds.length - 1];
       $("roundSelect").value = String(latestRound.round);
       populateMatchesForRound();
@@ -1380,7 +1369,6 @@ function renderTeam(node, d) {
     <div class="caveat"><strong>Limitations.</strong><ul>${d.limitations.map((l) => `<li>${l}</li>`).join("")}</ul></div>
   `;
 
-  // Asynchronously fetch team attacking & defensive shots
   (async () => {
     try {
       const shotsData = await api("/api/v1/analyze/team/shots", {
@@ -1587,17 +1575,43 @@ function drawRadar(container, profile) {
 $("leagueGo").addEventListener("click", runLeague);
 
 async function runLeague() {
-  const node = $("leagueContent"); loading(node);
+  const node = $("leagueContent");
+  if (!node) return;
+  loading(node);
+  let season = seasonOf("leagueSeason");
+
   try {
-    const d = await api("/api/v1/analyze/league", {
-      league_name: state.league, season: seasonOf("leagueSeason"),
-      start_date: dateOf("leagueFrom"), end_date: dateOf("leagueTo"),
+    let d = await api("/api/v1/analyze/league", {
+      league_name: state.league,
+      season: season,
+      start_date: dateOf("leagueFrom"),
+      end_date: dateOf("leagueTo"),
     });
-    renderLeague(node, d);
-  } catch (e) { errored(node, e.message); }
+
+    let rows = (d.is_lying && d.is_lying.rows) || [];
+    let notice = "";
+
+    // If active season has 0 matches played for this league, automatically fall back to previous season
+    if (!rows.length && season === LATEST_SEASON) {
+      season = LATEST_SEASON - 1;
+      if ($("leagueSeason")) $("leagueSeason").value = String(season);
+      d = await api("/api/v1/analyze/league", {
+        league_name: state.league,
+        season: season,
+        start_date: dateOf("leagueFrom"),
+        end_date: dateOf("leagueTo"),
+      });
+      rows = (d.is_lying && d.is_lying.rows) || [];
+      notice = `${LEAGUE_LABEL[state.league] || state.league} ${LATEST_SEASON} season has not started matches yet. Displaying ${season} season.`;
+    }
+
+    renderLeague(node, d, notice);
+  } catch (e) {
+    errored(node, e.message);
+  }
 }
 
-function renderLeague(node, d) {
+function renderLeague(node, d, notice = "") {
   clear(node);
   const rows = (d.is_lying && d.is_lying.rows) || [];
   const curSeason = seasonOf("leagueSeason");
@@ -1618,6 +1632,8 @@ function renderLeague(node, d) {
   }
 
   node.innerHTML = `
+    ${notice ? `<div style="margin-bottom:16px"><span class="hero-pill accent">${notice}</span></div>` : ""}
+
     <!-- Full Width xPTS Is-Lying Table -->
     <div class="card">
       <div class="card-header">
@@ -1993,3 +2009,10 @@ function renderInfo() {
 }
 document.getElementById("infoSearch").addEventListener("input", renderInfo);
 
+// Initial View Activation Trigger
+const initialHashTab = (window.location.hash || "#player").slice(1);
+if (initialHashTab && document.querySelector(`.sidebar-nav .nav-item[data-tab="${initialHashTab}"]`)) {
+  activateTab(initialHashTab, false);
+} else {
+  activateTab("player", false);
+}
