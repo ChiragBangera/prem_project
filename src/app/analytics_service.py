@@ -11,10 +11,12 @@ from .analytics import match as match_engine
 from .analytics._shared import as_list_matches
 from .ml.engine import build_match_rows
 from .stat_data import UnderstatData
+from .utils.utils import get_current_season
 
 
 LEAGUES = ("EPL", "La_liga", "Serie_A", "Bundesliga", "Ligue_1")
 DEFAULT_CAREER_SEASONS = 6
+DEFAULT_SEASON = get_current_season()
 
 
 def _valid_date_range(start_date: str | None, end_date: str | None) -> tuple[str | None, str | None]:
@@ -70,7 +72,7 @@ class AnalyticsService:
         player_id: int | None = None,
         player_name: str | None = None,
         league_name: str = "EPL",
-        season: int = 2025,
+        season: int = DEFAULT_SEASON,
         start_date: str | None = None,
         end_date: str | None = None,
         seasons: list[int] | str | None = None,
@@ -189,7 +191,7 @@ class AnalyticsService:
         if seasons:
             target_seasons = sorted(int(s) for s in seasons)
         else:
-            end = season_end or 2025
+            end = season_end or DEFAULT_SEASON
             target_seasons = list(range(end - DEFAULT_CAREER_SEASONS + 1, end + 1))
 
         import asyncio
@@ -248,7 +250,7 @@ class AnalyticsService:
         if seasons:
             target_seasons = sorted(int(s) for s in seasons)
         else:
-            end = season_end or 2025
+            end = season_end or DEFAULT_SEASON
             target_seasons = [end - 1, end]
 
         import asyncio
@@ -268,7 +270,7 @@ class AnalyticsService:
         player_2: str | None = None,
         players: list[str] | None = None,
         league_name: str = "EPL",
-        season: int = 2025,
+        season: int = DEFAULT_SEASON,
         start_date: str | None = None,
         end_date: str | None = None,
     ) -> dict:
@@ -362,7 +364,7 @@ class AnalyticsService:
         team_1: str,
         team_2: str,
         league_name: str = "EPL",
-        season: int = 2025,
+        season: int = DEFAULT_SEASON,
         start_date: str | None = None,
         end_date: str | None = None,
     ) -> dict:
@@ -450,7 +452,7 @@ class AnalyticsService:
         self,
         team_name: str,
         league_name: str = "EPL",
-        season: int = 2025,
+        season: int = DEFAULT_SEASON,
         with_shots: bool = False,
         start_date: str | None = None,
         end_date: str | None = None,
@@ -560,7 +562,7 @@ class AnalyticsService:
     async def analyze_league(
         self,
         league_name: str = "EPL",
-        season: int = 2025,
+        season: int = DEFAULT_SEASON,
         start_date: str | None = None,
         end_date: str | None = None,
     ) -> dict:
@@ -572,7 +574,7 @@ class AnalyticsService:
         report["date_window"] = {"start_date": start_date, "end_date": end_date}
         return report
 
-    async def match_rounds(self, league_name: str = "EPL", season: int = 2025) -> dict:
+    async def match_rounds(self, league_name: str = "EPL", season: int = DEFAULT_SEASON) -> dict:
         """League matches grouped by derived round (home team's nth league match).
 
         Understat does not label gameweeks, so a match's round is the count of
@@ -651,7 +653,7 @@ class AnalyticsService:
     async def discover_players(
         self,
         league_name: str = "EPL",
-        season: int = 2025,
+        season: int = DEFAULT_SEASON,
         position_group: str | None = None,
         minimum_minutes: float = 900,
         order_by: str = "npxG",
@@ -789,7 +791,7 @@ class AnalyticsService:
         player_id: int | None = None,
         player_name: str | None = None,
         league_name: str = "EPL",
-        season: int = 2025,
+        season: int = DEFAULT_SEASON,
         start_date: str | None = None,
         end_date: str | None = None,
         seasons: list[int] | str | None = None,
@@ -849,7 +851,7 @@ class AnalyticsService:
         self,
         team_name: str,
         league_name: str = "EPL",
-        season: int = 2025,
+        season: int = DEFAULT_SEASON,
         start_date: str | None = None,
         end_date: str | None = None,
         seasons: list[int] | str | None = None,

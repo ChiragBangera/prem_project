@@ -1,9 +1,15 @@
 "use strict";
 
+const CURRENT_YEAR = new Date().getFullYear();
+const CURRENT_MONTH = new Date().getMonth() + 1; // 1-12
+// European football seasons start in July/August
+const LATEST_SEASON = CURRENT_MONTH >= 7 ? CURRENT_YEAR : CURRENT_YEAR - 1;
+const SEASON_RANGE = { first: 2014, last: LATEST_SEASON };
+
 const state = {
   league: "EPL",
-  tab: "match", // Default to match deepdive or player
-  season: 2025,
+  tab: "match",
+  season: LATEST_SEASON,
   hiddenSeasons: new Set(),
   pitchModes: {}, // containerId -> 'shots' | 'heatmap'
   roundsData: null,
@@ -21,6 +27,14 @@ const TAB_TITLES = {
   league: { title: "League Overview & xPTS Diagnostics", desc: "Examine expected points (xPTS), lying tables, finishing variance, and division pace." },
   predict: { title: "Predictive Modeling & Simulations", desc: "Bivariate Dixon-Coles and Elo match forecasting, Monte Carlo season simulations, and calibration." },
   info: { title: "Football Analytics Metric Glossary", desc: "Mathematical formulas, metric definitions, and honest limitations of the Understat dataset." },
+};
+
+const LEAGUE_LABEL = {
+  EPL: "Premier League",
+  La_liga: "La Liga",
+  Serie_A: "Serie A",
+  Bundesliga: "Bundesliga",
+  Ligue_1: "Ligue 1"
 };
 
 async function api(path, body, method = "POST") {
@@ -148,14 +162,6 @@ document.addEventListener("click", (e) => {
   if (action && typeof window[action] === "function") window[action]();
 });
 
-const LEAGUE_LABEL = {
-  EPL: "Premier League",
-  La_liga: "La Liga",
-  Serie_A: "Serie A",
-  Bundesliga: "Bundesliga",
-  Ligue_1: "Ligue 1"
-};
-
 // Sidebar Nav Switching
 document.getElementById("sidebarNav").addEventListener("click", (e) => {
   const btn = e.target.closest(".nav-item[data-tab]");
@@ -203,8 +209,6 @@ if (initialHash && document.querySelector(`.sidebar-nav .nav-item[data-tab="${in
 }
 
 // Season Helpers
-const SEASON_RANGE = { first: 2014, last: 2025 };
-
 function selectedSeasons(hostId) {
   const host = document.getElementById(hostId);
   if (!host) return [];
@@ -215,9 +219,9 @@ function seasonOf(id) {
   const el = document.getElementById(id);
   if (el && el.classList.contains("season-multi")) {
     const seasons = selectedSeasons(id);
-    return seasons[0] || 2025;
+    return seasons[0] || LATEST_SEASON;
   }
-  return parseInt(el ? el.value : "2025", 10) || 2025;
+  return parseInt(el ? el.value : String(LATEST_SEASON), 10) || LATEST_SEASON;
 }
 
 function seasonsOf(id) {
@@ -239,7 +243,7 @@ function buildSeasonMulti(hostId, maxSeasons) {
     const saved = JSON.parse(localStorage.getItem(`prem_${hostId}`) || "[]");
     if (Array.isArray(saved) && saved.length) seasons = saved.filter((s) => s >= SEASON_RANGE.first && s <= SEASON_RANGE.last);
   } catch (_) { /* ignore */ }
-  if (!seasons.length) seasons = [2025];
+  if (!seasons.length) seasons = [LATEST_SEASON];
   host.dataset.seasons = JSON.stringify(seasons);
   host.classList.add("season-multi");
 
@@ -269,7 +273,7 @@ function buildSeasonMulti(hostId, maxSeasons) {
       } else {
         current = current.filter((s) => s !== year);
       }
-      if (!current.length) current = [2025];
+      if (!current.length) current = [LATEST_SEASON];
       host.dataset.seasons = JSON.stringify(current);
       localStorage.setItem(`prem_${hostId}`, JSON.stringify(current));
       btn.textContent = labelFor(current);
@@ -286,7 +290,7 @@ function seasonOptions(selected) {
 }
 
 function labelFor(seasons) {
-  if (!seasons.length) return "2025";
+  if (!seasons.length) return String(LATEST_SEASON);
   if (seasons.length === 1) return `${seasons[0]}`;
   if (seasons.length <= 3) return seasons.join(", ");
   return `${seasons.slice(0, 3).join(", ")} +${seasons.length - 3}`;
@@ -354,7 +358,12 @@ function populateSeasonSelects() {
       option.textContent = `${s}`;
       select.appendChild(option);
     }
-    select.value = keepValue || "2025";
+    // Default to LATEST_SEASON if not set or invalid
+    if (keepValue && parseInt(keepValue, 10) >= SEASON_RANGE.first && parseInt(keepValue, 10) <= SEASON_RANGE.last) {
+      select.value = keepValue;
+    } else {
+      select.value = String(LATEST_SEASON);
+    }
   });
   buildSeasonMulti("playerSeasons", 5);
   buildSeasonMulti("teamSeasons", 5);
@@ -699,8 +708,20 @@ function renderRecentFixtures(d) {
   const feed = $("matchRecentFeed");
   if (!feed) return;
   const recent = d.latest_matches || [];
+  const currentSeason = seasonOf("matchSeason");
+
   if (!recent.length) {
-    feed.innerHTML = `<div class="empty">No completed fixtures found for this season.</div>`;
+    feed.innerHTML = `
+      <div class="empty" style="padding:28px 16px;grid-column:1/-1">
+        <div class="empty-title">${LEAGUE_LABEL[state.league] || state.league} ${currentSeason} Fixtures Not Started Yet</div>
+        <div class="empty-sub">No completed matches have been recorded yet for the ${currentSeason} season on Understat.</div>
+        <div style="margin-top:14px">
+          <button class="primary" onclick="$('matchSeason').value='${currentSeason - 1}';$('matchSeason').dispatchEvent(new Event('change'))">
+            View Previous Season (${currentSeason - 1}) Matches →
+          </button>
+        </div>
+      </div>
+    `;
     return;
   }
 
@@ -754,7 +775,6 @@ window.loadMatchById = async function (matchId) {
   $("matchId").value = matchId;
   if ($("matchSelect")) $("matchSelect").value = matchId;
 
-  // Highlight selected card if visible
   document.querySelectorAll(".fixture-card").forEach((c) => {
     c.classList.toggle("active", c.dataset.matchId === String(matchId));
   });
@@ -1164,7 +1184,6 @@ async function runCareer() {
 function renderCareer(node, d) {
   clear(node);
   const present = d.seasons.filter((s) => s.present);
-  const latest = present[present.length - 1];
   node.innerHTML = `
     <div class="card">
       <div class="card-header"><span class="card-title">Career Trajectory · ${d.player_name}</span></div>
@@ -1580,75 +1599,73 @@ async function runLeague() {
 
 function renderLeague(node, d) {
   clear(node);
-  const lt = d.lying_table;
+  const rows = (d.is_lying && d.is_lying.rows) || [];
+  const curSeason = seasonOf("leagueSeason");
+
+  if (!rows.length) {
+    node.innerHTML = `
+      <div class="empty" style="padding:48px 16px">
+        <div class="empty-title">${LEAGUE_LABEL[state.league] || state.league} ${curSeason} Has No Completed Matches</div>
+        <div class="empty-sub">No league match statistics are available yet for this season.</div>
+        <div style="margin-top:16px">
+          <button class="primary" onclick="$('leagueSeason').value='${curSeason - 1}';runLeague()">
+            View ${curSeason - 1} League Table →
+          </button>
+        </div>
+      </div>
+    `;
+    return;
+  }
+
   node.innerHTML = `
     <!-- Full Width xPTS Is-Lying Table -->
     <div class="card">
       <div class="card-header">
         <span class="card-title">Expected Points (xPTS) Diagnostic & "Is-Lying" Table</span>
-        <span class="mono" style="font-size:11.5px;color:var(--muted)">${LEAGUE_LABEL[state.league] || state.league} · ${d.season}</span>
+        <span class="mono" style="font-size:11.5px;color:var(--muted)">${LEAGUE_LABEL[state.league] || state.league} · ${curSeason}</span>
       </div>
       <table>
         <thead>
           <tr>
             <th>Rank</th>
             <th>Team</th>
-            <th class="num">Played</th>
-            <th class="num">Pts</th>
+            <th class="num">Points</th>
             <th class="num">${term("xpts")}</th>
             <th class="num">Pts Gap</th>
-            <th class="num">xRank</th>
-            <th class="num">Rank Δ</th>
-            <th class="num">${term("xG")}</th>
-            <th class="num">${term("xGA")}</th>
-            <th class="num">${term("npxgd")}</th>
-            <th class="num">${term("ppda")}</th>
+            <th class="num">${term("g_minus_xg")}</th>
+            <th class="num">xGA − GA</th>
           </tr>
         </thead>
         <tbody>
-          ${lt.table.map((r, i) => {
-            const gapCls = r.gap > 0 ? "good" : r.gap < 0 ? "bad" : "";
+          ${rows.map((r, i) => {
+            const gapCls = r.xPTS_gap > 0 ? "good" : r.xPTS_gap < 0 ? "bad" : "";
             const isTop4 = i < 4;
             return `
               <tr>
                 <td><span class="rank-badge ${isTop4 ? 'top4' : ''}">${i + 1}</span></td>
                 <td><strong style="cursor:pointer;color:var(--text-bright)" onclick="$('teamName').value='${r.team}';activateTab('team');runTeam()">${r.team}</strong></td>
-                <td class="num">${r.played}</td>
-                <td class="num"><strong>${r.pts}</strong></td>
-                <td class="num" style="color:var(--accent);font-weight:700">${fmt(r.xpts, 1)}</td>
-                <td class="num"><span class="badge ${gapCls}">${r.gap >= 0 ? "+" : ""}${fmt(r.gap, 1)}</span></td>
-                <td class="num">#${r.expected_rank}</td>
-                <td class="num" style="color:${r.rank_gap > 0 ? 'var(--fg-good)' : r.rank_gap < 0 ? 'var(--fg-bad)' : 'var(--muted)'}">
-                  ${r.rank_gap > 0 ? `+${r.rank_gap}` : r.rank_gap || "0"}
-                </td>
-                <td class="num">${fmt(r.xG, 1)}</td>
-                <td class="num">${fmt(r.xGA, 1)}</td>
-                <td class="num">${fmt(r.npxGD, 1)}</td>
-                <td class="num">${fmt(r.ppda, 1)}</td>
+                <td class="num"><strong>${r.points}</strong></td>
+                <td class="num" style="color:var(--accent);font-weight:700">${fmt(r.xPTS, 1)}</td>
+                <td class="num"><span class="badge ${gapCls}">${r.xPTS_gap >= 0 ? "+" : ""}${fmt(r.xPTS_gap, 1)}</span></td>
+                <td class="num" style="color:${r.g_minus_xg >= 0 ? 'var(--fg-good)' : 'var(--fg-bad)'}">${r.g_minus_xg >= 0 ? '+' : ''}${fmt(r.g_minus_xg)}</td>
+                <td class="num">${fmt(r.xga_minus_ga)}</td>
               </tr>
             `;
           }).join("")}
         </tbody>
       </table>
-      <div class="hint" style="margin-top:12px">Positive points gap (+) denotes overperformance / positive variance vs expected chance creation.</div>
+      <div class="hint" style="margin-top:12px">${d.is_lying.interpretation}</div>
     </div>
 
-    <!-- Row 2: Finishing Variance vs PPDA Pressing Rankings -->
-    <div class="grid cols-2" style="margin-top:20px">
-      <div class="card">
-        <div class="card-header"><span class="card-title">Finishing & Defensive Overperformance</span></div>
-        <table><thead><tr><th>Team</th><th class="num">G − xG</th><th class="num">GA − xGA</th></tr></thead><tbody>
-          ${d.variance.map((v) => `<tr><td>${v.team}</td><td class="num" style="color:${v.attack_variance>=0?'var(--fg-good)':'var(--fg-bad)'}">${v.attack_variance>=0?'+':''}${fmt(v.attack_variance)}</td><td class="num">${fmt(v.defense_variance)}</td></tr>`).join("")}
-        </tbody></table>
-      </div>
-
-      <div class="card">
+    <!-- Row 2: PPDA Pressing Rankings -->
+    ${d.ppda_ranking && d.ppda_ranking.ranking && d.ppda_ranking.ranking.length ? `
+      <div class="card" style="margin-top:20px">
         <div class="card-header"><span class="card-title">PPDA Pressing Intensity Rankings</span></div>
-        <table><thead><tr><th>Rank</th><th>Team</th><th class="num">PPDA (Att)</th><th class="num">OPPDA (Def)</th></tr></thead><tbody>
-          ${d.ppda_ranking.slice(0, 10).map((p, i) => `<tr><td>#${i+1}</td><td>${p.team}</td><td class="num"><strong>${fmt(p.ppda)}</strong></td><td class="num">${fmt(p.oppda)}</td></tr>`).join("")}
+        <table><thead><tr><th>Rank</th><th>Team</th><th class="num">PPDA (Att)</th><th class="num">OPPDA (Def)</th><th class="num">Deep Completions</th></tr></thead><tbody>
+          ${d.ppda_ranking.ranking.slice(0, 12).map((p, i) => `<tr><td>#${i+1}</td><td>${p.team}</td><td class="num"><strong>${fmt(p.PPDA)}</strong></td><td class="num">${fmt(p.OPPDA)}</td><td class="num">${p.deep_completions}</td></tr>`).join("")}
         </tbody></table>
       </div>
-    </div>
+    ` : ""}
 
     <div class="caveat"><strong>Limitations.</strong><ul>${d.limitations.map((l) => `<li>${l}</li>`).join("")}</ul></div>
   `;
@@ -1679,6 +1696,16 @@ async function runDiscover() {
 
 function renderDiscover(node, d) {
   clear(node);
+  if (!d.players || !d.players.length) {
+    node.innerHTML = `
+      <div class="empty" style="padding:48px 16px">
+        <div class="empty-title">No Players Match Current Filters</div>
+        <div class="empty-sub">If this season has just started or has low minutes, try reducing the Min Minutes filter or switching to the previous season.</div>
+      </div>
+    `;
+    return;
+  }
+
   node.innerHTML = `
     <div class="card">
       <div class="card-header"><span class="card-title">Ranked Discovery Pool (${d.players.length} players found)</span></div>
