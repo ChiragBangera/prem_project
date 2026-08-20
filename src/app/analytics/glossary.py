@@ -198,14 +198,6 @@ GLOSSARY_GROUPS: list[dict] = [
     {
         "group": "Shot profile",
         "entries": [
-            ("sb_touch", "Touch (StatsBomb)", "Any event a player makes is a touch of the ball; touches in the opposition box are the dangerous subset.",
-             "The possession-volume metric Understat cannot provide — available only for StatsBomb-covered competitions."),
-            ("sb_pressure", "Pressure (StatsBomb)", "A Pressure event: closing down the player on the ball; successful = the pressing team regains the ball within 5 seconds.",
-             "The canonical pressing metric from event data (coverage limited to StatsBomb's free competitions)."),
-            ("sb_carry", "Carry (StatsBomb)", "Moving the ball at feet (5+ metres); distance is the metres covered with the ball.",
-             "Ball-progression by running — 'runs with the ball' in the honest, event-data sense."),
-            ("sb_recovery", "Ball recovery (StatsBomb)", "Winning back a loose ball.",
-             "The pressing reward: recoveries after pressure are credited as successful pressures."),
             ("situations", "Situations", "How a player's shots split across OpenPlay, SetPiece, FromCorner, CounterAttack, Penalty, DirectFreekick.",
              "Penalty-heavy xG inflates totals; the split shows what's reproducible from open play."),
             ("shot_zones", "Shot zones", "Shots from the six-yard box, penalty area, and outside the box.",

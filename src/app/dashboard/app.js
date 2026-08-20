@@ -355,7 +355,6 @@ function activateTab(tab, push = true) {
   if (push && window.location.hash !== `#${tab}`) window.history.pushState(null, "", `#${tab}`);
   if (tab === "info") renderInfo();
   if (tab === "match" && !state.roundsLoaded) loadRounds();
-  if (tab === "statsbomb" && !state.sbLoaded) { state.sbLoaded = true; loadSbCompetitions(); }
 }
 window.addEventListener("popstate", () => {
   const tab = (window.location.hash || "#player").slice(1);
@@ -1605,71 +1604,6 @@ function renderCompareTeams(node, d) {
       ${meetingsRows ? `<table><thead><tr><th>Date</th><th>Home</th><th class="num">Result</th><th>Away</th><th class="num">xG</th></tr></thead><tbody>${meetingsRows}</tbody></table>` : `<div class="empty">No meetings this season (or none in the selected date window).</div>`}
     </div>
     <div class="caveat"><strong>Limitations.</strong><ul>${t1.report.limitations.map((l) => `<li>${l}</li>`).join("")}</ul></div>
-  `;
-}
-
-// ---------- STATSBOMB ----------
-$("sbGo").addEventListener("click", runSb);
-$("sbCompetition").addEventListener("change", async () => {
-  const [competitionId, seasonId] = $("sbCompetition").value.split("/");
-  $("sbMatch").innerHTML = `<option value="">loading matches…</option>`;
-  try {
-    const d = await api("/api/v1/statsbomb/matches", { competition_id: parseInt(competitionId, 10), season_id: parseInt(seasonId, 10) });
-    $("sbMatch").innerHTML = d.matches.map((m) => `<option value="${m.match_id}">${m.date} · ${m.home} ${m.home_score}–${m.away_score} ${m.away}</option>`).join("");
-  } catch (e) {
-    $("sbMatch").innerHTML = `<option value="">${e.message}</option>`;
-  }
-});
-
-async function loadSbCompetitions() {
-  try {
-    const d = await api("/api/v1/statsbomb/competitions", null, "GET");
-    state.sbNote = d.note;
-    const groups = {};
-    d.competitions.forEach((c) => {
-      groups[c.competition_name] = groups[c.competition_name] || [];
-      groups[c.competition_name].push(c);
-    });
-    $("sbCompetition").innerHTML = `<option value="">competition / season…</option>` +
-      Object.entries(groups).map(([name, seasons]) =>
-        `<optgroup label="${name}">${seasons.map((s) => `<option value="${s.competition_id}/${s.season_id}">${s.season_name}${s.country ? ` · ${s.country}` : ""}</option>`).join("")}</optgroup>`).join("");
-  } catch (e) {
-    $("sbCompetition").innerHTML = `<option value="">unavailable: ${e.message}</option>`;
-  }
-}
-
-async function runSb() {
-  const id = $("sbMatch").value;
-  if (!id) return;
-  const node = $("sbContent"); loading(node);
-  try {
-    const d = await api(`/api/v1/statsbomb/match/${encodeURIComponent(id)}`);
-    renderSb(node, d);
-  } catch (e) { errored(node, e.message); }
-}
-
-function renderSb(node, d) {
-  clear(node);
-  const teamCards = Object.entries(d.teams).map(([team, s]) => `
-    <div class="card"><h3>${team}</h3><div class="kv">
-      <span class="k">${term("sb_touch")}</span><span class="v">${s.touches} · in opp box ${s.touches_opp_box} · opp half ${s.touches_opp_half}</span>
-      <span class="k">${term("sb_pressure")}</span><span class="v">${s.pressures} · successful ${s.successful_pressures}</span>
-      <span class="k">${term("sb_carry")}</span><span class="v">${s.carries} · ${fmt(s.carry_distance, 0)} m</span>
-      <span class="k">${term("sb_recovery")}</span><span class="v">${s.ball_recoveries}</span>
-      <span class="k">Passes completed</span><span class="v">${s.passes_completed} / ${s.passes} · final-third entries ${s.final_third_entries}</span>
-      <span class="k">Shots / goals</span><span class="v">${s.shots} / ${s.goals}</span>
-    </div></div>`).join("");
-  const leaderboards = Object.entries(d.player_leaderboards).map(([team, players]) => `
-    <div class="card"><h3>${team} · player leaderboards</h3>
-      <table><thead><tr><th>Player</th><th class="num">${term("sb_touch")}</th><th class="num">opp box</th><th class="num">${term("sb_pressure")}</th><th class="num">${term("sb_carry")}</th><th class="num">dist m</th><th class="num">${term("sb_recovery")}</th><th class="num">passes ✓</th><th class="num">shots</th></tr></thead><tbody>
-        ${players.slice(0, 12).map((p) => `<tr><td>${p.player}</td><td class="num">${p.touches}</td><td class="num">${p.touches_opp_box}</td><td class="num">${p.pressures}</td><td class="num">${p.carries}</td><td class="num">${fmt(p.carry_distance, 0)}</td><td class="num">${p.ball_recoveries}</td><td class="num">${p.passes_completed}</td><td class="num">${p.shots}</td></tr>`).join("")}
-      </tbody></table></div>`).join("");
-  const defs = Object.entries(d.definitions).map(([k, v]) => `<li><strong>${k}:</strong> ${v}</li>`).join("");
-  node.innerHTML = `
-    <div class="grid cols-2">${teamCards}</div>
-    <div class="grid cols-2" style="margin-top:16px">${leaderboards}</div>
-    <div class="caveat"><strong>Definitions.</strong><ul>${defs}</ul></div>
-    <div class="caveat"><strong>Limitations.</strong><ul>${d.limitations.map((l) => `<li>${l}</li>`).join("")}</ul></div>
   `;
 }
 

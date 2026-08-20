@@ -34,6 +34,7 @@ dev = [
 
 [project.scripts]
 prem-analytics = "app.cli:main"
+prem-app = "app.cli:serve_main"
 understat-cli = "app.cli:main"
 
 [tool.setuptools.packages.find]

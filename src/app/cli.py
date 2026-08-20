@@ -70,6 +70,24 @@ def build_parser():
 
     subparsers.add_parser("endpoints", help="List available endpoints.")
 
+    serve_parser = subparsers.add_parser(
+        "serve",
+        help="Start the Premier League Analytics web dashboard and API server.",
+    )
+    serve_parser.add_argument("--host", default="127.0.0.1", help="Host address (default: 127.0.0.1).")
+    serve_parser.add_argument("--port", type=int, default=8000, help="Port (default: 8000).")
+    serve_parser.add_argument("--no-open", action="store_true", help="Do not automatically open browser.")
+    serve_parser.add_argument("--reload", action="store_true", help="Enable auto-reload.")
+
+    app_parser = subparsers.add_parser(
+        "app",
+        help="Alias for serve: start server and open the dashboard in browser.",
+    )
+    app_parser.add_argument("--host", default="127.0.0.1", help="Host address (default: 127.0.0.1).")
+    app_parser.add_argument("--port", type=int, default=8000, help="Port (default: 8000).")
+    app_parser.add_argument("--no-open", action="store_true", help="Do not automatically open browser.")
+    app_parser.add_argument("--reload", action="store_true", help="Enable auto-reload.")
+
     describe_parser = subparsers.add_parser(
         "describe",
         help="Show endpoint details.",
@@ -207,9 +225,47 @@ async def interactive_shell():
         print("Unknown command. Type 'help' for guidance.")
 
 
+def run_serve(host: str = "127.0.0.1", port: int = 8000, open_browser: bool = True, reload: bool = False):
+    import threading
+    import time
+    import webbrowser
+    import uvicorn
+
+    url = f"http://{host}:{port}/dashboard/"
+    print(f"\n⚽ Premier League Analytics Lab")
+    print(f"📡 API docs:  http://{host}:{port}/docs")
+    print(f"📊 Dashboard: {url}")
+    print(f"Press Ctrl+C to stop.\n")
+
+    if open_browser:
+        def _open():
+            time.sleep(0.6)
+            try:
+                webbrowser.open(url)
+            except Exception:
+                pass
+
+        threading.Thread(target=_open, daemon=True).start()
+
+    uvicorn.run("app.api:app", host=host, port=port, reload=reload)
+
+
+def serve_main():
+    run_serve(host="127.0.0.1", port=8000, open_browser=True, reload=False)
+
+
 def _main():
     parser = build_parser()
     args = parser.parse_args()
+
+    if args.command in ("serve", "app"):
+        run_serve(
+            host=args.host,
+            port=args.port,
+            open_browser=not args.no_open,
+            reload=args.reload,
+        )
+        return
 
     if args.command is None or args.command == "shell":
         asyncio.run(interactive_shell())
