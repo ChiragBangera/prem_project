@@ -114,6 +114,30 @@ class AnalyticsService:
 
         target = merged_by_id.get(player_id)
         if target is None:
+            # Fallback: discover the player's most recent active season in this league
+            if hasattr(self.client, "get_player_data"):
+                try:
+                    p_data = await self.client.get_player_data(player_id)
+                    groups = p_data.get("groups", {}) if isinstance(p_data, dict) else {}
+                    seasons_list = groups.get("season", [])
+                    if isinstance(seasons_list, list) and seasons_list:
+                        for s_entry in seasons_list:
+                            s_yr = int(s_entry.get("season", 0))
+                            if s_yr and s_yr not in target_seasons:
+                                fallback_stats = await self.client.get_league_player_stats(
+                                    league_name, s_yr, start_date=start_date, end_date=end_date
+                                )
+                                if isinstance(fallback_stats, list) and fallback_stats:
+                                    fallback_merged = _merge_league_players([fallback_stats])
+                                    if player_id in fallback_merged:
+                                        merged_by_id = fallback_merged
+                                        target = merged_by_id[player_id]
+                                        target_seasons = [s_yr]
+                                        break
+                except Exception:
+                    pass
+
+        if target is None:
             window = _window_label(start_date, end_date)
             raise ValueError(
                 f"Player id {player_id} is not in {league_name} {target_seasons}{window} per the league player stats tables."

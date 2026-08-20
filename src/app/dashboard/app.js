@@ -914,17 +914,38 @@ async function runPlayer() {
   if (!name) return;
   const node = $("playerContent"); loading(node);
   $("playerResolved").textContent = "";
+  let season = seasonOf("playerSeasons");
+  let seasons = seasonsOf("playerSeasons");
+
   try {
-    const d = await api("/api/v1/analyze/player", {
-      player_name: name,
-      league_name: state.league,
-      season: seasonOf("playerSeasons"),
-      seasons: seasonsOf("playerSeasons"),
-      start_date: dateOf("playerFrom"),
-      end_date: dateOf("playerTo"),
-    });
-    const seasonLabel = d.seasons && d.seasons.length > 1 ? ` · ${d.seasons.join("–")}` : ` · ${seasonOf("playerSeasons")}`;
-    $("playerResolved").textContent = `${d.player.name}${d.player.age != null ? ` (${d.player.age}y)` : ""} · ${d.player.team_title || "—"} · ${d.player.position || "—"}${seasonLabel}`;
+    let d;
+    try {
+      d = await api("/api/v1/analyze/player", {
+        player_name: name,
+        league_name: state.league,
+        season: season,
+        seasons: seasons,
+        start_date: dateOf("playerFrom"),
+        end_date: dateOf("playerTo"),
+      });
+    } catch (err) {
+      if (season === LATEST_SEASON) {
+        season = LATEST_SEASON - 1;
+        if ($("playerSeasons")) $("playerSeasons").value = String(season);
+        d = await api("/api/v1/analyze/player", {
+          player_name: name,
+          league_name: state.league,
+          season: season,
+          seasons: [season],
+          start_date: dateOf("playerFrom"),
+          end_date: dateOf("playerTo"),
+        });
+      } else {
+        throw err;
+      }
+    }
+    const resolvedSeason = d.seasons && d.seasons.length > 1 ? ` · ${d.seasons.join("–")}` : ` · ${d.season || seasonOf("playerSeasons")}`;
+    $("playerResolved").textContent = `${d.player.name}${d.player.age != null ? ` (${d.player.age}y)` : ""} · ${d.player.team_title || "—"} · ${d.player.position || "—"}${resolvedSeason}`;
     renderPlayer(node, d);
   } catch (e) { errored(node, e.message); }
 }
@@ -1245,12 +1266,30 @@ async function runTeam() {
   const name = $("teamName").value.trim();
   if (!name) return;
   const node = $("teamContent"); loading(node);
+  let season = seasonOf("teamSeasons");
+  let seasons = seasonsOf("teamSeasons");
+
   try {
-    const d = await api("/api/v1/analyze/team", {
-      team_name: name, league_name: state.league, season: seasonOf("teamSeasons"),
-      seasons: seasonsOf("teamSeasons"),
-      start_date: dateOf("teamFrom"), end_date: dateOf("teamTo"),
-    });
+    let d;
+    try {
+      d = await api("/api/v1/analyze/team", {
+        team_name: name, league_name: state.league, season: season,
+        seasons: seasons,
+        start_date: dateOf("teamFrom"), end_date: dateOf("teamTo"),
+      });
+    } catch (err) {
+      if (season === LATEST_SEASON) {
+        season = LATEST_SEASON - 1;
+        if ($("teamSeasons")) $("teamSeasons").value = String(season);
+        d = await api("/api/v1/analyze/team", {
+          team_name: name, league_name: state.league, season: season,
+          seasons: [season],
+          start_date: dateOf("teamFrom"), end_date: dateOf("teamTo"),
+        });
+      } else {
+        throw err;
+      }
+    }
     renderTeam(node, d);
   } catch (e) { errored(node, e.message); }
 }
