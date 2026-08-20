@@ -19,12 +19,12 @@ async function api(path, body, method = "POST") {
 function clear(node) { if (node._timer) clearInterval(node._timer); node.innerHTML = ""; }
 function loading(node) {
   node.dataset.t0 = Date.now();
-  node.innerHTML = `<div class="loading">Loading <span class="elapsed">(0s)</span></div>`;
+  node.innerHTML = `<div class="loading"><div class="loading-pulse"><span></span><span></span><span></span></div><span class="elapsed">0s</span></div>`;
   const span = node.querySelector(".elapsed");
   if (node._timer) clearInterval(node._timer);
   node._timer = setInterval(() => {
     const s = Math.round((Date.now() - Number(node.dataset.t0)) / 1000);
-    if (span) span.textContent = `(${s}s)`;
+    if (span) span.textContent = `${s}s`;
   }, 1000);
 }
 function errored(node, msg) { if (node._timer) clearInterval(node._timer); node.innerHTML = `<div class="error">${msg}</div>`; }
@@ -71,7 +71,7 @@ document.addEventListener("click", (e) => {
   if (action && typeof window[action] === "function") window[action]();
 });
 
-const LEAGUE_LABEL = { EPL: "EPL", La_liga: "La Liga", Serie_A: "Serie A", Ligue_1: "Ligue 1" };
+const LEAGUE_LABEL = { EPL: "EPL", La_liga: "La Liga", Serie_A: "Serie A", Bundesliga: "Bundesliga", Ligue_1: "Ligue 1" };
 
 // ---------- glossary / explanations ----------
 let GLOSSARY = {};

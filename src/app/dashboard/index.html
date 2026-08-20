@@ -3,136 +3,196 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Premier League Analytics Lab</title>
-  <link rel="stylesheet" href="/dashboard/styles.css?v=18" />
+  <meta name="theme-color" content="#282828" />
+  <title>Football Analytics Lab</title>
+  <link rel="stylesheet" href="/dashboard/styles.css?v=19" />
 </head>
 <body>
   <header class="topbar">
-    <div>
-      <h1>Premier League Analytics Lab</h1>
-      <div class="sub">Evidence-backed football analytics powered by Understat · unofficial project</div>
+    <div class="brand">
+      <h1>⚽ Football Analytics Lab</h1>
+      <div class="sub">Evidence-backed analytics · Understat data · personal project</div>
     </div>
     <div class="leagues" id="leaguePicker">
       <button data-league="EPL" class="active">EPL</button>
       <button data-league="La_liga">La Liga</button>
       <button data-league="Serie_A">Serie A</button>
+      <button data-league="Bundesliga">Bundesliga</button>
       <button data-league="Ligue_1">Ligue 1</button>
     </div>
   </header>
 
   <nav class="tabs" id="tabs">
-    <button data-tab="player" class="active">Player</button>
-    <button data-tab="team">Team</button>
-    <button data-tab="league">League</button>
-    <button data-tab="match">Match</button>
-    <button data-tab="discover">Discover</button>
-    <button data-tab="compare">Compare</button>
-    <button data-tab="predict">Predict</button>
-    <button data-tab="info">Info</button>
+    <button data-tab="player" class="active">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
+      Player
+    </button>
+    <button data-tab="team">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+      Team
+    </button>
+    <button data-tab="league">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
+      League
+    </button>
+    <button data-tab="match">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>
+      Match
+    </button>
+    <button data-tab="discover">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+      Discover
+    </button>
+    <button data-tab="compare">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>
+      Compare
+    </button>
+    <button data-tab="predict">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+      Predict
+    </button>
+    <button data-tab="info">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+      Info
+    </button>
   </nav>
 
   <main>
     <!-- PLAYER -->
     <section class="view active" id="view-player">
-      <div class="player-pick">
-        <div class="field"><label>Player name</label><input id="playerName" placeholder="e.g. Erling Haaland" style="min-width:240px" /></div>
-        <div class="field"><label>Season(s) · pick up to 5</label><div class="season-multi" id="playerSeasons" data-max="5"></div></div>
-        <div class="field"><label>From <span class="opt">(optional)</span></label><input id="playerFrom" type="date" /></div>
-        <div class="field"><label>To <span class="opt">(optional)</span></label><input id="playerTo" type="date" /></div>
-        <button class="primary" id="playerGo">Analyze</button>
-        <button class="ghost" id="playerCareerGo">Career</button>
-        <div id="playerResolved" class="mono" style="color:var(--muted);align-self:center;font-size:12px;"></div>
+      <div class="control-card">
+        <div class="controls">
+          <div class="field"><label>Player name</label><input id="playerName" placeholder="e.g. Erling Haaland" style="min-width:240px" /></div>
+          <div class="field"><label>Season(s) · pick up to 5</label><div class="season-multi" id="playerSeasons" data-max="5"></div></div>
+          <div class="field"><label>From <span class="opt">(optional)</span></label><input id="playerFrom" type="date" /></div>
+          <div class="field"><label>To <span class="opt">(optional)</span></label><input id="playerTo" type="date" /></div>
+          <button class="primary" id="playerGo">Analyze</button>
+          <button class="ghost" id="playerCareerGo">Career</button>
+          <div id="playerResolved" class="mono" style="color:var(--muted-dim);align-self:center;font-size:12px;"></div>
+        </div>
+        <div class="hint">Date range (both optional) narrows the season window — e.g. From 2026-01-01 for the second half only. Career spans the last 6 seasons from the Season field.</div>
       </div>
-      <div class="hint" style="color:var(--muted);font-size:12px;">Date range (both optional) narrows the season window — e.g. From 2026-01-01 for the second half only. Career spans the last 6 seasons from the Season field.</div>
-      <div id="playerContent"><div class="empty">Enter a player name to build a radar, per-90s, involvement and similarity profile.<div class="examples">Try: <span class="example" data-id="playerName" data-value="Erling Haaland" data-action="runPlayer">Erling Haaland</span> · <span class="example" data-id="playerName" data-value="Bukayo Saka" data-action="runPlayer">Bukayo Saka</span> · <span class="example" data-id="playerName" data-value="Mohamed Salah" data-action="runPlayer">Mohamed Salah</span></div></div></div>
+      <div id="playerContent"><div class="empty">
+        <svg class="empty-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
+        Enter a player name to build a radar, per-90s, involvement and similarity profile.
+        <div class="examples">Try: <span class="example" data-id="playerName" data-value="Erling Haaland" data-action="runPlayer">Erling Haaland</span> · <span class="example" data-id="playerName" data-value="Bukayo Saka" data-action="runPlayer">Bukayo Saka</span> · <span class="example" data-id="playerName" data-value="Mohamed Salah" data-action="runPlayer">Mohamed Salah</span></div>
+      </div></div>
     </section>
 
     <!-- TEAM -->
     <section class="view" id="view-team">
-      <div class="controls">
-        <div class="field"><label>Team name</label><input id="teamName" placeholder="e.g. Arsenal" /></div>
-        <div class="field"><label>Season(s) · pick up to 5</label><div class="season-multi" id="teamSeasons" data-max="5"></div></div>
-        <div class="field"><label>From <span class="opt">(optional)</span></label><input id="teamFrom" type="date" /></div>
-        <div class="field"><label>To <span class="opt">(optional)</span></label><input id="teamTo" type="date" /></div>
-        <button class="primary" id="teamGo">Analyze</button>
+      <div class="control-card">
+        <div class="controls">
+          <div class="field"><label>Team name</label><input id="teamName" placeholder="e.g. Arsenal" /></div>
+          <div class="field"><label>Season(s) · pick up to 5</label><div class="season-multi" id="teamSeasons" data-max="5"></div></div>
+          <div class="field"><label>From <span class="opt">(optional)</span></label><input id="teamFrom" type="date" /></div>
+          <div class="field"><label>To <span class="opt">(optional)</span></label><input id="teamTo" type="date" /></div>
+          <button class="primary" id="teamGo">Analyze</button>
+        </div>
       </div>
-      <div id="teamContent"><div class="empty">Enter a team name for PPDA, xGD, form/momentum and situational splits.<div class="examples">Try: <span class="example" data-id="teamName" data-value="Arsenal" data-action="runTeam">Arsenal</span> · <span class="example" data-id="teamName" data-value="Barcelona" data-action="runTeam">Barcelona</span> · </div></div></div>
+      <div id="teamContent"><div class="empty">
+        <svg class="empty-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        Enter a team name for PPDA, xGD, form/momentum and situational splits.
+        <div class="examples">Try: <span class="example" data-id="teamName" data-value="Arsenal" data-action="runTeam">Arsenal</span> · <span class="example" data-id="teamName" data-value="Barcelona" data-action="runTeam">Barcelona</span></div>
+      </div></div>
     </section>
 
     <!-- LEAGUE -->
     <section class="view" id="view-league">
-      <div class="controls">
-        <div class="field"><label>Season</label><select id="leagueSeason" class="season-select"></select></div>
-        <div class="field"><label>From <span class="opt">(optional)</span></label><input id="leagueFrom" type="date" /></div>
-        <div class="field"><label>To <span class="opt">(optional)</span></label><input id="leagueTo" type="date" /></div>
-        <button class="primary" id="leagueGo">Analyze</button>
+      <div class="control-card">
+        <div class="controls">
+          <div class="field"><label>Season</label><select id="leagueSeason" class="season-select"></select></div>
+          <div class="field"><label>From <span class="opt">(optional)</span></label><input id="leagueFrom" type="date" /></div>
+          <div class="field"><label>To <span class="opt">(optional)</span></label><input id="leagueTo" type="date" /></div>
+          <button class="primary" id="leagueGo">Analyze</button>
+        </div>
       </div>
-      <div id="leagueContent"><div class="empty">Click Analyze for the xPTS "is-lying" table, variance, PPDA ranking and league pace.</div></div>
+      <div id="leagueContent"><div class="empty">
+        <svg class="empty-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
+        Click Analyze for the xPTS "is-lying" table, variance, PPDA ranking and league pace.
+      </div></div>
     </section>
 
     <!-- MATCH -->
     <section class="view" id="view-match">
-      <div class="controls">
-        <div class="field"><label>Season</label><select id="matchSeason" class="season-select"></select></div>
-        <div class="field"><label>Round</label><select id="roundSelect" style="min-width:90px"><option value="">—</option></select></div>
-        <div class="field"><label>Match</label><select id="matchSelect" style="min-width:280px"><option value="">pick a round first</option></select></div>
-        <button class="ghost" id="loadRounds">Load rounds</button>
+      <div class="control-card">
+        <div class="controls">
+          <div class="field"><label>Season</label><select id="matchSeason" class="season-select"></select></div>
+          <div class="field"><label>Round</label><select id="roundSelect" style="min-width:90px"><option value="">—</option></select></div>
+          <div class="field"><label>Match</label><select id="matchSelect" style="min-width:280px"><option value="">pick a round first</option></select></div>
+          <button class="ghost" id="loadRounds">Load rounds</button>
+        </div>
+        <div class="controls">
+          <div class="field"><label>Or enter match id directly</label><input id="matchId" placeholder="e.g. 28778" style="min-width:160px" /></div>
+          <button class="primary" id="matchGo">Analyze</button>
+          <span class="hint" style="align-self:center;">Round = home team's nth league match (Understat has no official gameweek label).</span>
+        </div>
       </div>
-      <div class="controls">
-        <div class="field"><label>Or match id</label><input id="matchId" placeholder="e.g. 28778" /></div>
-        <button class="primary" id="matchGo">Analyze</button>
-        <span class="hint" style="color:var(--muted);font-size:12px;align-self:center;">Round = the home team's nth league match (Understat has no official gameweek label).</span>
-      </div>
-      <div id="matchContent"><div class="empty">Enter a match id for shot map, xG timeline, big-chance inventory and narrative.<div class="examples">Try: <span class="example" data-id="matchId" data-value="28778" data-action="runMatch">28778</span> · or use "a recent result" above</div></div></div>
+      <div id="matchContent"><div class="empty">
+        <svg class="empty-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>
+        Enter a match id for shot map, xG timeline, big-chance inventory and narrative.
+        <div class="examples">Try: <span class="example" data-id="matchId" data-value="28778" data-action="runMatch">28778</span> · or pick a recent result above</div>
+      </div></div>
     </section>
 
     <!-- DISCOVER -->
     <section class="view" id="view-discover">
-      <div class="controls">
-        <div class="field"><label>Season(s) · pick up to 5</label><div class="season-multi" id="discoverSeasons" data-max="5"></div></div>
-        <div class="field"><label>Position(s) · raw</label><div class="season-multi position-multi" id="discoverPositions" data-max="8"></div></div>
-        <div class="field"><label>Min minutes</label><input id="discoverMinutes" type="number" value="900" style="min-width:90px" /></div>
-        <div class="field"><label>Show</label>
-          <select id="discoverLimit"><option value="20">20</option><option value="50">50</option><option value="100">100</option></select>
+      <div class="control-card">
+        <div class="controls">
+          <div class="field"><label>Season(s) · pick up to 5</label><div class="season-multi" id="discoverSeasons" data-max="5"></div></div>
+          <div class="field"><label>Position(s)</label><div class="season-multi position-multi" id="discoverPositions" data-max="8"></div></div>
+          <div class="field"><label>Min minutes</label><input id="discoverMinutes" type="number" value="900" style="min-width:90px" /></div>
+          <div class="field"><label>Show</label>
+            <select id="discoverLimit"><option value="20">20</option><option value="50">50</option><option value="100">100</option></select>
+          </div>
+          <div class="field"><label>Order by</label>
+            <select id="discoverOrderBy">
+              <option value="npxG">NP xG</option>
+              <option value="xA">xA</option>
+              <option value="xGChain">xGChain</option>
+              <option value="xGBuildup">xGBuildup</option>
+              <option value="goals">Goals</option>
+              <option value="assists">Assists</option>
+              <option value="age_asc">Age · youngest first</option>
+              <option value="age_desc">Age · oldest first</option>
+            </select>
+          </div>
+          <div class="field"><label>Age from</label><input id="discoverMinAge" type="number" min="15" max="50" style="min-width:80px" /></div>
+          <div class="field"><label>to</label><input id="discoverMaxAge" type="number" min="15" max="50" style="min-width:80px" /></div>
+          <div class="field"><label>From <span class="opt">(optional)</span></label><input id="discoverFrom" type="date" /></div>
+          <div class="field"><label>To <span class="opt">(optional)</span></label><input id="discoverTo" type="date" /></div>
+          <button class="primary" id="discoverGo">Discover</button>
         </div>
-        <div class="field"><label>Order by</label>
-          <select id="discoverOrderBy">
-            <option value="npxG">NP xG</option>
-            <option value="xA">xA</option>
-            <option value="xGChain">xGChain</option>
-            <option value="xGBuildup">xGBuildup</option>
-            <option value="goals">Goals</option>
-            <option value="assists">Assists</option>
-            <option value="age_asc">Age · youngest first</option>
-            <option value="age_desc">Age · oldest first</option>
-          </select>
-        </div>
-        <div class="field"><label>Age from</label><input id="discoverMinAge" type="number" min="15" max="50" style="min-width:80px" /></div>
-        <div class="field"><label>to</label><input id="discoverMaxAge" type="number" min="15" max="50" style="min-width:80px" /></div>
-        <div class="field"><label>From <span class="opt">(optional)</span></label><input id="discoverFrom" type="date" /></div>
-        <div class="field"><label>To <span class="opt">(optional)</span></label><input id="discoverTo" type="date" /></div>
-        <button class="primary" id="discoverGo">Discover</button>
       </div>
-      <div id="discoverContent"><div class="empty">Filter the league player table by position and minutes; rank by involvement metrics.</div></div>
+      <div id="discoverContent"><div class="empty">
+        <svg class="empty-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+        Filter the league player table by position and minutes; rank by involvement metrics.
+      </div></div>
     </section>
 
     <!-- COMPARE -->
     <section class="view" id="view-compare">
       <div id="compareBasket"></div>
-      <div class="controls">
-        <div class="field"><label>Mode</label>
-          <select id="compareMode"><option value="players">Players</option><option value="teams">Teams</option></select>
+      <div class="control-card">
+        <div class="controls">
+          <div class="field"><label>Mode</label>
+            <select id="compareMode"><option value="players">Players</option><option value="teams">Teams</option></select>
+          </div>
+          <div class="field"><label id="compareLabelA">Player 1</label><input id="compareA" placeholder="e.g. Mohamed Salah" /></div>
+          <div class="field"><label id="compareLabelB">Player 2</label><input id="compareB" placeholder="e.g. Bukayo Saka" /></div>
+          <div class="field"><label>Season</label><select id="compareSeason" class="season-select"></select></div>
+          <div class="field"><label>From <span class="opt">(optional)</span></label><input id="compareFrom" type="date" /></div>
+          <div class="field"><label>To <span class="opt">(optional)</span></label><input id="compareTo" type="date" /></div>
+          <label class="check"><input type="checkbox" id="compareHighlight" checked /> highlight best</label>
+          <button class="primary" id="compareGo">Compare</button>
         </div>
-        <div class="field"><label id="compareLabelA">Player 1</label><input id="compareA" placeholder="e.g. Mohamed Salah" /></div>
-        <div class="field"><label id="compareLabelB">Player 2</label><input id="compareB" placeholder="e.g. Bukayo Saka" /></div>
-        <div class="field"><label>Season</label><select id="compareSeason" class="season-select"></select></div>
-        <div class="field"><label>From <span class="opt">(optional)</span></label><input id="compareFrom" type="date" /></div>
-        <div class="field"><label>To <span class="opt">(optional)</span></label><input id="compareTo" type="date" /></div>
-        <label class="check"><input type="checkbox" id="compareHighlight" checked /> highlight best</label>
-        <button class="primary" id="compareGo">Compare</button>
+        <div class="hint">Players share one percentile pool per season; teams compare style + this season's meetings. Date range optional.</div>
       </div>
-      <div class="hint" style="color:var(--muted);font-size:12px;">Players share one percentile pool per season; teams compare style + this season's meetings. Date range optional.</div>
-      <div id="compareContent"><div class="empty">Compare two players (overlaid radar, shared percentile pool) or two teams (style profile + head-to-head).<div class="examples">Try: <span class="example" data-id="compareA" data-value="Mohamed Salah" data-action="">Mohamed Salah</span> vs <span class="example" data-id="compareB" data-value="Bukayo Saka" data-action="runCompare">Bukayo Saka</span> · <span class="example" data-id="compareMode" data-value="teams" data-action="">teams</span></div></div></div>
+      <div id="compareContent"><div class="empty">
+        <svg class="empty-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>
+        Compare two players (overlaid radar, shared percentile pool) or two teams (style profile + head-to-head).
+        <div class="examples">Try: <span class="example" data-id="compareA" data-value="Mohamed Salah" data-action="">Mohamed Salah</span> vs <span class="example" data-id="compareB" data-value="Bukayo Saka" data-action="runCompare">Bukayo Saka</span></div>
+      </div></div>
     </section>
 
     <!-- PREDICT -->
@@ -169,15 +229,21 @@
         </div>
         <div class="hint">Refits every few matches through the season and scores predictions out-of-sample vs Understat's own forecast and a naive baseline.</div>
       </div>
-      <div id="predictContent" style="margin-top:16px"><div class="empty">Forecast a match, simulate the run-in, or calibrate the models against the season.<div class="examples">Try: <span class="example" data-id="predHome" data-value="Arsenal" data-action="runPredict">Arsenal</span> vs <span class="example" data-id="predAway" data-value="Liverpool" data-action="runPredict">Liverpool</span></div></div></div>
+      <div id="predictContent" style="margin-top:16px"><div class="empty">
+        <svg class="empty-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+        Forecast a match, simulate the run-in, or calibrate the models against the season.
+        <div class="examples">Try: <span class="example" data-id="predHome" data-value="Arsenal" data-action="runPredict">Arsenal</span> vs <span class="example" data-id="predAway" data-value="Liverpool" data-action="runPredict">Liverpool</span></div>
+      </div></div>
     </section>
 
     <!-- INFO -->
     <section class="view" id="view-info">
-      <div class="controls">
-        <div class="field"><label>Search metrics</label><input id="infoSearch" placeholder="e.g. xGChain, Brier, PPDA…" style="min-width:300px" /></div>
+      <div class="control-card">
+        <div class="controls">
+          <div class="field"><label>Search metrics</label><input id="infoSearch" placeholder="e.g. xGChain, Brier, PPDA…" style="min-width:320px" /></div>
+        </div>
+        <div class="hint">Every metric, derived metric, and projection the app shows — what it means and how to read it. Hover any highlighted metric anywhere in the app for the same explanation.</div>
       </div>
-      <div class="hint" style="color:var(--muted);font-size:12px;">Every metric, derived metric, and projection the app shows — what it means and how to read it. Hover any highlighted metric anywhere in the app for the same explanation.</div>
       <div id="infoContent"></div>
     </section>
   </main>
@@ -186,11 +252,11 @@
   <div id="chartTip" class="tooltip"></div>
 
   <footer>
-    Unofficial project · data: <a href="https://understat.com" target="_blank" rel="noopener">Understat</a> ·
+    Unofficial personal project · data: <a href="https://understat.com" target="_blank" rel="noopener">Understat</a> ·
     <a href="/docs" target="_blank" rel="noopener">API docs</a> ·
     metrics ship only what is honestly computable from this dataset
   </footer>
 
-  <script src="/dashboard/app.js?v=18"></script>
+  <script src="/dashboard/app.js?v=19"></script>
 </body>
 </html>
