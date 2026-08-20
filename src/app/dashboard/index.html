@@ -3,9 +3,9 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="theme-color" content="#1d2021" />
+  <meta name="theme-color" content="#07090e" />
   <title>Football Analytics Lab · Pro Intelligence Hub</title>
-  <link rel="stylesheet" href="/dashboard/styles.css?v=20" />
+  <link rel="stylesheet" href="/dashboard/styles.css?v=21" />
 </head>
 <body>
   <div class="app-container">
@@ -20,6 +20,16 @@
       </div>
 
       <nav class="sidebar-nav" id="sidebarNav">
+        <div class="nav-section-title">Matches & Fixtures</div>
+        <button class="nav-item" data-tab="match">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>
+          Match Deep-Dive
+        </button>
+        <button class="nav-item" data-tab="predict">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+          Predict & Sim
+        </button>
+
         <div class="nav-section-title">Scouting & Players</div>
         <button class="nav-item active" data-tab="player">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
@@ -44,16 +54,6 @@
           League & xPTS Table
         </button>
 
-        <div class="nav-section-title">Matches & Forecasting</div>
-        <button class="nav-item" data-tab="match">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>
-          Match Deep-Dive
-        </button>
-        <button class="nav-item" data-tab="predict">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
-          Predict & Sim
-        </button>
-
         <div class="nav-section-title">Reference</div>
         <button class="nav-item" data-tab="info">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
@@ -62,19 +62,18 @@
       </nav>
 
       <div class="sidebar-footer">
-        <div>Unofficial Personal Analytics</div>
+        <div>Evidence-Backed Football Analytics</div>
         <div>Data: <a href="https://understat.com" target="_blank" rel="noopener">Understat</a> · <a href="/docs" target="_blank" rel="noopener">API Docs</a></div>
       </div>
     </aside>
 
-    <!-- Main App Content Container -->
+    <!-- Main Content Container -->
     <div class="main-wrapper">
-      <!-- Top App Bar with League Selector -->
       <header class="app-topbar">
         <div class="topbar-left">
           <div class="view-title-wrap">
             <h2 id="viewTitle">Player Scouting & Intelligence</h2>
-            <div class="view-desc" id="viewDesc">Comprehensive radars, finishing diagnostics, tactical shot heatmaps, and peer similarity.</div>
+            <div class="view-desc" id="viewDesc">Radars, tactical shot density heatmaps, finishing diagnostics, and peer similarity.</div>
           </div>
         </div>
 
@@ -87,17 +86,73 @@
         </div>
       </header>
 
-      <!-- Main Viewport -->
       <main class="main-viewport">
+        <!-- MATCH DEEPDIVE VIEW -->
+        <section class="view" id="view-match">
+          <!-- Recent Completed Fixtures Carousel / Grid -->
+          <div id="matchRecentSection">
+            <div class="fixture-section-header">
+              <span class="fixture-section-title">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                Recent Completed Fixtures · 1-Click Deep Dive
+              </span>
+              <span id="fixtureCountBadge" class="hero-pill accent" style="font-size:11px">Auto-Loading…</span>
+            </div>
+            <div id="matchRecentFeed" class="fixture-grid">
+              <div class="loading"><div class="loading-pulse"><span></span><span></span><span></span></div><span>Loading recent matches…</span></div>
+            </div>
+          </div>
+
+          <!-- Fixture Search / Round Selector Card -->
+          <div class="control-card">
+            <div class="control-card-header">
+              <span class="control-card-title">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+                Select Season, Gameweek, or Enter Match ID
+              </span>
+            </div>
+            <div class="controls-row">
+              <div class="field">
+                <label>Season</label>
+                <select id="matchSeason" class="season-select"></select>
+              </div>
+              <div class="field">
+                <label>Round / Gameweek</label>
+                <select id="roundSelect" style="min-width:140px"><option value="">Loading rounds…</option></select>
+              </div>
+              <div class="field">
+                <label>Fixture</label>
+                <select id="matchSelect" style="min-width:300px"><option value="">Pick a round first…</option></select>
+              </div>
+              <div class="field">
+                <label>Or Match ID</label>
+                <input id="matchId" placeholder="e.g. 29148" style="min-width:120px" />
+              </div>
+              <button class="primary" id="matchGo">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                Analyze Match
+              </button>
+            </div>
+          </div>
+
+          <div id="matchContent">
+            <div class="empty">
+              <svg class="empty-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>
+              <div class="empty-title">Select any fixture card above or choose from the dropdown</div>
+              <div class="empty-sub">Renders full tactical pitch shot maps with xG radii, cumulative timeline curves, big chance audits, and process calibration.</div>
+            </div>
+          </div>
+        </section>
+
         <!-- PLAYER VIEW -->
         <section class="view active" id="view-player">
           <div class="control-card">
             <div class="control-card-header">
               <span class="control-card-title">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-                Player Search & Filter
+                Player Search & Profile Filters
               </span>
-              <span class="mono" id="playerResolved" style="color:var(--accent);font-size:12px;font-weight:600;"></span>
+              <span class="mono" id="playerResolved" style="color:var(--accent);font-size:12px;font-weight:700;"></span>
             </div>
             <div class="controls-row">
               <div class="field">
@@ -109,11 +164,11 @@
                 <div class="season-multi" id="playerSeasons" data-max="5"></div>
               </div>
               <div class="field">
-                <label>From <span class="opt">(optional)</span></label>
+                <label>From <span class="opt">(opt)</span></label>
                 <input id="playerFrom" type="date" />
               </div>
               <div class="field">
-                <label>To <span class="opt">(optional)</span></label>
+                <label>To <span class="opt">(opt)</span></label>
                 <input id="playerTo" type="date" />
               </div>
               <button class="primary" id="playerGo">
@@ -127,8 +182,8 @@
           <div id="playerContent">
             <div class="empty">
               <svg class="empty-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
-              <div class="empty-title">Enter a player name to generate full intelligence report</div>
-              <div class="empty-sub">Calculates percentile pizza radars, shot quality density heatmaps, finishing efficiency, and peer cluster similarity.</div>
+              <div class="empty-title">Enter a player name to generate complete tactical scouting report</div>
+              <div class="empty-sub">Calculates percentile pizza radars, shot density heatmaps, finishing skill, and peer cluster similarity.</div>
               <div class="examples">
                 Quick load:
                 <span class="example" data-id="playerName" data-value="Erling Haaland" data-action="runPlayer">Erling Haaland</span> ·
@@ -146,7 +201,7 @@
             <div class="control-card-header">
               <span class="control-card-title">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
-                Team Filter & Scope
+                Team Tactical Filter
               </span>
             </div>
             <div class="controls-row">
@@ -159,11 +214,11 @@
                 <div class="season-multi" id="teamSeasons" data-max="5"></div>
               </div>
               <div class="field">
-                <label>From <span class="opt">(optional)</span></label>
+                <label>From <span class="opt">(opt)</span></label>
                 <input id="teamFrom" type="date" />
               </div>
               <div class="field">
-                <label>To <span class="opt">(optional)</span></label>
+                <label>To <span class="opt">(opt)</span></label>
                 <input id="teamTo" type="date" />
               </div>
               <button class="primary" id="teamGo">
@@ -177,13 +232,12 @@
             <div class="empty">
               <svg class="empty-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
               <div class="empty-title">Enter a club name for comprehensive tactical diagnosis</div>
-              <div class="empty-sub">Examines pressing intensity (PPDA/OPPDA), deep completion rates, rolling form CUSUM, attacking & defensive shot heatmaps.</div>
+              <div class="empty-sub">Pressing intensity (PPDA/OPPDA), deep completion rates, rolling form CUSUM, attacking & defensive shot maps.</div>
               <div class="examples">
                 Quick load:
                 <span class="example" data-id="teamName" data-value="Arsenal" data-action="runTeam">Arsenal</span> ·
                 <span class="example" data-id="teamName" data-value="Manchester City" data-action="runTeam">Manchester City</span> ·
-                <span class="example" data-id="teamName" data-value="Liverpool" data-action="runTeam">Liverpool</span> ·
-                <span class="example" data-id="teamName" data-value="Barcelona" data-action="runTeam">Barcelona</span>
+                <span class="example" data-id="teamName" data-value="Liverpool" data-action="runTeam">Liverpool</span>
               </div>
             </div>
           </div>
@@ -204,16 +258,16 @@
                 <select id="leagueSeason" class="season-select"></select>
               </div>
               <div class="field">
-                <label>From <span class="opt">(optional)</span></label>
+                <label>From <span class="opt">(opt)</span></label>
                 <input id="leagueFrom" type="date" />
               </div>
               <div class="field">
-                <label>To <span class="opt">(optional)</span></label>
+                <label>To <span class="opt">(opt)</span></label>
                 <input id="leagueTo" type="date" />
               </div>
               <button class="primary" id="leagueGo">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-                Compute League Table & xPTS
+                Compute League & xPTS Table
               </button>
             </div>
           </div>
@@ -221,54 +275,8 @@
           <div id="leagueContent">
             <div class="empty">
               <svg class="empty-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
-              <div class="empty-title">Click Compute for Expected Points (xPTS) Table & Diagnostics</div>
-              <div class="empty-sub">Identifies "lying tables", luck/variance gaps, pressing intensity rankings, and pace across the division.</div>
-            </div>
-          </div>
-        </section>
-
-        <!-- MATCH VIEW -->
-        <section class="view" id="view-match">
-          <div class="control-card">
-            <div class="control-card-header">
-              <span class="control-card-title">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>
-                Match Selector & Audit
-              </span>
-            </div>
-            <div class="controls-row">
-              <div class="field">
-                <label>Season</label>
-                <select id="matchSeason" class="season-select"></select>
-              </div>
-              <div class="field">
-                <label>Round</label>
-                <select id="roundSelect" style="min-width:90px"><option value="">—</option></select>
-              </div>
-              <div class="field">
-                <label>Fixture / Match</label>
-                <select id="matchSelect" style="min-width:280px"><option value="">pick a round first</option></select>
-              </div>
-              <button class="ghost" id="loadRounds">Fetch Rounds</button>
-              <div class="field">
-                <label>Or Match ID</label>
-                <input id="matchId" placeholder="e.g. 28778" style="min-width:130px" />
-              </div>
-              <button class="primary" id="matchGo">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-                Analyze Match
-              </button>
-            </div>
-          </div>
-
-          <div id="matchContent">
-            <div class="empty">
-              <svg class="empty-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>
-              <div class="empty-title">Select a fixture or enter a match ID</div>
-              <div class="empty-sub">Generates full tactical pitch shot map, cumulative xG timeline curve, big-chance inventory, and process calibration.</div>
-              <div class="examples">
-                Try recent ID: <span class="example" data-id="matchId" data-value="28778" data-action="runMatch">28778</span>
-              </div>
+              <div class="empty-title">Click Compute for Expected Points (xPTS) Diagnostic Table</div>
+              <div class="empty-sub">Identifies "lying tables", luck/variance gaps, pressing intensity rankings, and divisional pace.</div>
             </div>
           </div>
         </section>
@@ -279,7 +287,7 @@
             <div class="control-card-header">
               <span class="control-card-title">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-                Player Discovery & Talent Filters
+                Talent Discovery & Scouting Filters
               </span>
             </div>
             <div class="controls-row">
@@ -335,8 +343,8 @@
           <div id="discoverContent">
             <div class="empty">
               <svg class="empty-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-              <div class="empty-title">Filter and rank players across European leagues</div>
-              <div class="empty-sub">Rank by xGBuildup, xGChain, npxG/90, and age curves. Click any player to add them to your comparison basket.</div>
+              <div class="empty-title">Filter and rank players across European divisions</div>
+              <div class="empty-sub">Rank by xGBuildup, xGChain, npxG/90, and age curves.</div>
             </div>
           </div>
         </section>
@@ -370,15 +378,15 @@
                 <select id="compareSeason" class="season-select"></select>
               </div>
               <div class="field">
-                <label>From <span class="opt">(optional)</span></label>
+                <label>From <span class="opt">(opt)</span></label>
                 <input id="compareFrom" type="date" />
               </div>
               <div class="field">
-                <label>To <span class="opt">(optional)</span></label>
+                <label>To <span class="opt">(opt)</span></label>
                 <input id="compareTo" type="date" />
               </div>
               <label class="check" style="margin-bottom:8px">
-                <input type="checkbox" id="compareHighlight" checked /> Highlight Best
+                <input type="checkbox" id="compareHighlight" checked /> Highlight Winner
               </label>
               <button class="primary" id="compareGo">Compare</button>
             </div>
@@ -387,10 +395,7 @@
           <div id="compareContent">
             <div class="empty">
               <svg class="empty-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>
-              <div class="empty-title">Compare players with overlaid pizza radars or teams with style profiles</div>
-              <div class="examples">
-                Try: <span class="example" data-id="compareA" data-value="Mohamed Salah" data-action="">Mohamed Salah</span> vs <span class="example" data-id="compareB" data-value="Bukayo Saka" data-action="runCompare">Bukayo Saka</span>
-              </div>
+              <div class="empty-title">Compare two players with overlaid radars or clubs with style metrics</div>
             </div>
           </div>
         </section>
@@ -414,7 +419,6 @@
                 <label class="check" style="margin-bottom:8px"><input type="checkbox" id="predUseXg" checked /> Fit on xG (Denoised)</label>
                 <button class="primary" id="predGo">Generate Forecast</button>
               </div>
-              <div class="hint" style="margin-top:8px">Fits bivariate Poisson with low-score dependency and Elo strength rating over all played matches.</div>
             </div>
 
             <div class="card">
@@ -429,7 +433,6 @@
                 <div class="field"><label>Simulations</label><input id="simCount" type="number" value="2000" style="min-width:90px" /></div>
                 <button class="primary" id="simGo">Run Simulation</button>
               </div>
-              <div class="hint" style="margin-top:8px">Simulates the remaining fixtures thousands of times, banking current points for championship, top 4, and relegation distributions.</div>
             </div>
           </div>
 
@@ -437,23 +440,19 @@
             <div class="card-header">
               <span class="card-title">
                 <svg class="card-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-                Walk-Forward Model Calibration
+                Walk-Forward Model Calibration Benchmarks
               </span>
             </div>
             <div class="controls-row">
               <div class="field"><label>Season</label><select id="calSeason" class="season-select"></select></div>
               <button class="primary" id="calGo">Run Calibration Benchmark</button>
             </div>
-            <div class="hint" style="margin-top:8px">Refits repeatedly through the season and scores out-of-sample accuracy, Brier score, and Ranked Probability Score (RPS) against naive baseline.</div>
           </div>
 
           <div id="predictContent" style="margin-top:20px">
             <div class="empty">
               <svg class="empty-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
               <div class="empty-title">Generate statistical match forecasts or season projections</div>
-              <div class="examples">
-                Try: <span class="example" data-id="predHome" data-value="Arsenal" data-action="runPredict">Arsenal</span> vs <span class="example" data-id="predAway" data-value="Liverpool" data-action="runPredict">Liverpool</span>
-              </div>
             </div>
           </div>
         </section>
@@ -464,16 +463,15 @@
             <div class="control-card-header">
               <span class="control-card-title">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
-                Search Metric Definitions
+                Football Analytics Metric Glossary
               </span>
             </div>
             <div class="controls-row">
               <div class="field">
-                <label>Search glossary</label>
+                <label>Search metrics</label>
                 <input id="infoSearch" placeholder="e.g. xGChain, Brier score, PPDA, Expected Points..." style="min-width:340px" />
               </div>
             </div>
-            <div class="hint" style="margin-top:8px">Every analytical formula and model parameter explained honestly. Hover highlighted dotted terms anywhere in the app for quick definitions.</div>
           </div>
           <div id="infoContent"></div>
         </section>
@@ -484,6 +482,6 @@
   <div id="tooltip" class="tooltip"></div>
   <div id="chartTip" class="tooltip"></div>
 
-  <script src="/dashboard/app.js?v=20"></script>
+  <script src="/dashboard/app.js?v=21"></script>
 </body>
 </html>

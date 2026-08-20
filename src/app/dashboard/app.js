@@ -2,23 +2,25 @@
 
 const state = {
   league: "EPL",
-  tab: "player",
+  tab: "match", // Default to match deepdive or player
   season: 2025,
   hiddenSeasons: new Set(),
   pitchModes: {}, // containerId -> 'shots' | 'heatmap'
+  roundsData: null,
+  roundsLoadedFor: null,
 };
 
 const $ = (id) => document.getElementById(id);
 
 const TAB_TITLES = {
-  player: { title: "Player Scouting & Intelligence", desc: "Comprehensive radars, finishing diagnostics, tactical shot heatmaps, and peer similarity." },
+  match: { title: "Match Intelligence Deep-Dive", desc: "Full pitch tactical shot maps, cumulative xG timelines, big chance audits, and process diagnostics." },
+  player: { title: "Player Scouting & Intelligence", desc: "Radars, tactical shot density heatmaps, finishing diagnostics, and peer similarity." },
   discover: { title: "Talent Discovery & Scouting", desc: "Filter and rank players across European leagues by involvement metrics, roles, and age curves." },
   compare: { title: "Head-to-Head Comparison & Basket", desc: "Overlay radar charts and compare multi-metric player and club profiles directly." },
   team: { title: "Team Tactical Intelligence", desc: "Pressing intensity (PPDA), deep completions, form momentum CUSUM, attacking & defensive shot maps." },
   league: { title: "League Overview & xPTS Diagnostics", desc: "Examine expected points (xPTS), lying tables, finishing variance, and division pace." },
-  match: { title: "Match Intelligence Deep-Dive", desc: "Cumulative xG timelines, full pitch shot maps, big chance inventory, and process diagnostics." },
   predict: { title: "Predictive Modeling & Simulations", desc: "Bivariate Dixon-Coles and Elo match forecasting, Monte Carlo season simulations, and calibration." },
-  info: { title: "Football Analytics Dictionary", desc: "Mathematical formulas, metric definitions, and honest limitations of the Understat dataset." },
+  info: { title: "Football Analytics Metric Glossary", desc: "Mathematical formulas, metric definitions, and honest limitations of the Understat dataset." },
 };
 
 async function api(path, body, method = "POST") {
@@ -168,20 +170,21 @@ document.getElementById("leaguePicker").addEventListener("click", (e) => {
   state.league = btn.dataset.league;
   localStorage.setItem("prem_league", state.league);
   document.querySelectorAll("#leaguePicker button").forEach((b) => b.classList.toggle("active", b === btn));
+  if (state.tab === "match") loadRounds();
 });
 
 function activateTab(tab, push = true) {
   state.tab = tab;
   document.querySelectorAll(".sidebar-nav .nav-item").forEach((b) => b.classList.toggle("active", b.dataset.tab === tab));
   document.querySelectorAll("section.view").forEach((s) => s.classList.toggle("active", s.id === `view-${tab}`));
-  
+
   const meta = TAB_TITLES[tab] || { title: "Football Analytics", desc: "" };
   if ($("viewTitle")) $("viewTitle").textContent = meta.title;
   if ($("viewDesc")) $("viewDesc").textContent = meta.desc;
 
   if (push && window.location.hash !== `#${tab}`) window.history.pushState(null, "", `#${tab}`);
   if (tab === "info") renderInfo();
-  if (tab === "match" && !state.roundsLoaded) loadRounds();
+  if (tab === "match") loadRounds();
 }
 
 window.addEventListener("popstate", () => {
@@ -192,9 +195,11 @@ document.addEventListener("click", (e) => {
   if (e.target.closest("[data-back]")) { e.preventDefault(); window.history.back(); }
 });
 
-const initialHash = (window.location.hash || "").slice(1);
+const initialHash = (window.location.hash || "#player").slice(1);
 if (initialHash && document.querySelector(`.sidebar-nav .nav-item[data-tab="${initialHash}"]`)) {
   activateTab(initialHash, false);
+} else {
+  activateTab("player", false);
 }
 
 // Season Helpers
@@ -358,6 +363,9 @@ function populateSeasonSelects() {
 }
 populateSeasonSelects();
 
+// Match Season Change triggers reloading rounds
+$("matchSeason").addEventListener("change", () => loadRounds());
+
 // Chart Tooltip
 const chartTipEl = document.getElementById("chartTip");
 document.addEventListener("mousemove", (e) => {
@@ -403,11 +411,11 @@ function renderPitchHeatmap(containerId, shots, options = {}) {
           <button class="pitch-mode-btn ${currentMode === 'heatmap' ? 'active' : ''}" data-mode="heatmap">🔥 Density Heatmap</button>
         </div>
         <div class="pitch-legend">
-          <div class="pitch-legend-item"><span class="pitch-dot" style="background:#fabd2f;box-shadow:0 0 6px #fabd2f"></span> Goal</div>
-          <div class="pitch-legend-item"><span class="pitch-dot" style="background:#83a598"></span> Saved</div>
-          <div class="pitch-legend-item"><span class="pitch-dot" style="background:#fb4934"></span> Missed</div>
-          <div class="pitch-legend-item"><span class="pitch-dot" style="background:#a89984"></span> Blocked</div>
-          <span style="opacity:0.6;margin-left:4px">Radius scales with xG</span>
+          <div class="pitch-legend-item"><span class="pitch-dot" style="background:#f59e0b;box-shadow:0 0 8px #f59e0b"></span> Goal</div>
+          <div class="pitch-legend-item"><span class="pitch-dot" style="background:#38bdf8"></span> Saved</div>
+          <div class="pitch-legend-item"><span class="pitch-dot" style="background:#f43f5e"></span> Missed</div>
+          <div class="pitch-legend-item"><span class="pitch-dot" style="background:#94a3b8"></span> Blocked</div>
+          <span style="opacity:0.6;margin-left:4px">Radius = xG size</span>
         </div>
       </div>
       <canvas id="${containerId}_canvas" class="pitch-canvas" width="${width}" height="${height}"></canvas>
@@ -430,7 +438,7 @@ function renderPitchHeatmap(containerId, shots, options = {}) {
 
   if (currentMode === "heatmap") {
     drawGaussianHeatmap(ctx, shots, width, height);
-    drawPitchLines(ctx, width, height, isHalfPitch); // redraw lines on top
+    drawPitchLines(ctx, width, height, isHalfPitch);
   } else {
     drawShotCircles(ctx, shots, width, height, options);
   }
@@ -460,9 +468,9 @@ function renderPitchHeatmap(containerId, shots, options = {}) {
 
     if (closest) {
       const tip = `<strong>${closest.player || "Shooter"} (${closest.minute}')</strong><br>
-        Outcome: <span style="color:${closest.result === 'Goal' ? '#fabd2f' : '#ebdbb2'};font-weight:700">${closest.result}</span><br>
+        Outcome: <span style="color:${closest.result === 'Goal' ? '#f59e0b' : '#38bdf8'};font-weight:700">${closest.result}</span><br>
         xG: <strong>${fmt(closest.xG, 3)}</strong> · ${closest.situation || "OpenPlay"}<br>
-        Body part: ${closest.shotType || "Foot"}${closest.lastAction ? ` · Via ${closest.lastAction}` : ""}`;
+        Shot: ${closest.shotType || "Foot"}${closest.lastAction ? ` · Via ${closest.lastAction}` : ""}`;
       chartTipEl.innerHTML = tip;
       chartTipEl.classList.add("show");
       chartTipEl.style.left = `${e.clientX + 14}px`;
@@ -478,21 +486,19 @@ function renderPitchHeatmap(containerId, shots, options = {}) {
 }
 
 function drawPitchBackground(ctx, w, h, isHalf) {
-  // Grass stripes
   const stripes = 12;
   const sw = w / stripes;
   for (let i = 0; i < stripes; i++) {
-    ctx.fillStyle = i % 2 === 0 ? "#1a2a17" : "#162314";
+    ctx.fillStyle = i % 2 === 0 ? "#092014" : "#06180e";
     ctx.fillRect(i * sw, 0, sw, h);
   }
   drawPitchLines(ctx, w, h, isHalf);
 }
 
 function drawPitchLines(ctx, w, h, isHalf) {
-  ctx.strokeStyle = "rgba(235, 219, 178, 0.35)";
+  ctx.strokeStyle = "rgba(255, 255, 255, 0.35)";
   ctx.lineWidth = 1.5;
 
-  // Outer boundary
   ctx.strokeRect(12, 12, w - 24, h - 24);
 
   // Halfway line & Center Circle
@@ -505,19 +511,19 @@ function drawPitchLines(ctx, w, h, isHalf) {
   ctx.arc(w / 2, h / 2, 52, 0, Math.PI * 2);
   ctx.stroke();
 
-  ctx.fillStyle = "rgba(235, 219, 178, 0.4)";
+  ctx.fillStyle = "rgba(255, 255, 255, 0.4)";
   ctx.beginPath();
   ctx.arc(w / 2, h / 2, 2.5, 0, Math.PI * 2);
   ctx.fill();
 
-  // Left Penalty Area (Defending)
+  // Left Penalty Box
   ctx.strokeRect(12, h / 2 - 76, 96, 152);
   ctx.strokeRect(12, h / 2 - 34, 32, 68);
   ctx.beginPath();
   ctx.arc(12 + 64, h / 2, 2, 0, Math.PI * 2);
   ctx.fill();
 
-  // Right Penalty Area (Attacking)
+  // Right Penalty Box
   ctx.strokeRect(w - 108, h / 2 - 76, 96, 152);
   ctx.strokeRect(w - 44, h / 2 - 34, 32, 68);
   ctx.beginPath();
@@ -540,27 +546,26 @@ function drawShotCircles(ctx, shots, w, h, options) {
     const xg = Math.max(parseFloat(s.xG) || 0, 0.01);
     const r = Math.min(4 + Math.sqrt(xg) * 20, 24);
 
-    let fill = "rgba(168, 153, 132, 0.4)";
-    let stroke = "#a89984";
+    let fill = "rgba(148, 163, 184, 0.4)";
+    let stroke = "#94a3b8";
 
     if (s.result === "Goal") {
-      fill = "rgba(250, 189, 47, 0.9)";
-      stroke = "#fabd2f";
-      // Glowing ring for goals
+      fill = "rgba(245, 158, 11, 0.9)";
+      stroke = "#f59e0b";
       ctx.beginPath();
       ctx.arc(x, y, r + 4, 0, Math.PI * 2);
-      ctx.strokeStyle = "rgba(250, 189, 47, 0.4)";
+      ctx.strokeStyle = "rgba(245, 158, 11, 0.4)";
       ctx.lineWidth = 2;
       ctx.stroke();
     } else if (s.result === "SavedShot") {
-      fill = "rgba(131, 165, 152, 0.75)";
-      stroke = "#83a598";
+      fill = "rgba(56, 189, 248, 0.75)";
+      stroke = "#38bdf8";
     } else if (s.result === "MissedShots" || s.result === "ShotOnPost") {
-      fill = "rgba(251, 73, 52, 0.7)";
-      stroke = "#fb4934";
+      fill = "rgba(244, 63, 94, 0.7)";
+      stroke = "#f43f5e";
     } else if (s.result === "BlockedShot") {
-      fill = "rgba(146, 131, 116, 0.5)";
-      stroke = "#928374";
+      fill = "rgba(100, 116, 139, 0.5)";
+      stroke = "#64748b";
     }
 
     ctx.beginPath();
@@ -576,7 +581,6 @@ function drawShotCircles(ctx, shots, w, h, options) {
 function drawGaussianHeatmap(ctx, shots, w, h) {
   if (!shots || !shots.length) return;
 
-  // Offscreen density accumulator
   const offCanvas = document.createElement("canvas");
   offCanvas.width = w;
   offCanvas.height = h;
@@ -586,10 +590,10 @@ function drawGaussianHeatmap(ctx, shots, w, h) {
     const x = s.X * w;
     const y = (1 - s.Y) * h;
     const xg = Math.max(parseFloat(s.xG) || 0.05, 0.05);
-    const radius = 34 + xg * 24;
+    const radius = 36 + xg * 26;
 
     const grad = offCtx.createRadialGradient(x, y, 0, x, y, radius);
-    grad.addColorStop(0, `rgba(0,0,0,${Math.min(0.8, 0.3 + xg)})`);
+    grad.addColorStop(0, `rgba(0,0,0,${Math.min(0.85, 0.35 + xg)})`);
     grad.addColorStop(1, "rgba(0,0,0,0)");
 
     offCtx.fillStyle = grad;
@@ -598,7 +602,6 @@ function drawGaussianHeatmap(ctx, shots, w, h) {
     offCtx.fill();
   });
 
-  // Colorize density map using football warm gradient
   const imgData = offCtx.getImageData(0, 0, w, h);
   const data = imgData.data;
 
@@ -606,36 +609,288 @@ function drawGaussianHeatmap(ctx, shots, w, h) {
     const alpha = data[i + 3];
     if (alpha > 0) {
       const norm = alpha / 255;
-      // Colormap: Teal -> Lime Green -> Warm Yellow -> Fiery Crimson
       let r = 0, g = 0, b = 0;
       if (norm < 0.25) {
         const t = norm / 0.25;
-        r = Math.round(131 * t); g = Math.round(165 * t); b = Math.round(152 * t);
+        r = Math.round(16 * t); g = Math.round(185 * t); b = Math.round(129 * t);
       } else if (norm < 0.55) {
         const t = (norm - 0.25) / 0.3;
-        r = Math.round(131 + (184 - 131) * t);
-        g = Math.round(165 + (187 - 165) * t);
-        b = Math.round(152 * (1 - t));
+        r = Math.round(16 + (56 - 16) * t);
+        g = Math.round(185 + (189 - 185) * t);
+        b = Math.round(129 + (248 - 129) * t);
       } else if (norm < 0.8) {
         const t = (norm - 0.55) / 0.25;
-        r = Math.round(184 + (250 - 184) * t);
-        g = Math.round(187 + (189 - 187) * t);
-        b = Math.round(47 * t);
+        r = Math.round(56 + (245 - 56) * t);
+        g = Math.round(189 + (158 - 189) * t);
+        b = Math.round(248 * (1 - t));
       } else {
         const t = (norm - 0.8) / 0.2;
-        r = Math.round(250 + (251 - 250) * t);
-        g = Math.round(189 * (1 - t * 0.7));
-        b = Math.round(52 * (1 - t));
+        r = Math.round(245 + (244 - 245) * t);
+        g = Math.round(158 * (1 - t * 0.75));
+        b = Math.round(63 * (1 - t));
       }
       data[i] = r;
       data[i + 1] = g;
       data[i + 2] = b;
-      data[i + 3] = Math.min(220, Math.round(alpha * 1.2));
+      data[i + 3] = Math.min(230, Math.round(alpha * 1.25));
     }
   }
 
   offCtx.putImageData(imgData, 0, 0);
   ctx.drawImage(offCanvas, 0, 0);
+}
+
+// ==========================================================
+// MATCH DEEP-DIVE & AUTOMATIC RECENT FIXTURES
+// ==========================================================
+$("matchGo").addEventListener("click", () => runMatch());
+$("roundSelect").addEventListener("change", populateMatchesForRound);
+$("matchSelect").addEventListener("change", () => {
+  const mid = $("matchSelect").value;
+  if (mid) loadMatchById(mid);
+});
+$("matchId").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") {
+    const mid = $("matchId").value.trim();
+    if (mid) loadMatchById(mid);
+  }
+});
+
+async function loadRounds() {
+  const season = seasonOf("matchSeason");
+  const key = `${state.league}_${season}`;
+  if (state.roundsLoadedFor === key && state.roundsData) {
+    renderRecentFixtures(state.roundsData);
+    return;
+  }
+
+  if ($("fixtureCountBadge")) $("fixtureCountBadge").textContent = "Loading…";
+  if ($("roundSelect")) $("roundSelect").innerHTML = `<option value="">Loading rounds…</option>`;
+  if ($("matchRecentFeed")) $("matchRecentFeed").innerHTML = `<div class="loading"><div class="loading-pulse"><span></span><span></span><span></span></div><span>Loading recent matches for ${LEAGUE_LABEL[state.league] || state.league} ${season}…</span></div>`;
+
+  try {
+    const d = await api("/api/v1/matches/rounds", { league_name: state.league, season });
+    state.roundsData = d;
+    state.roundsLoadedFor = key;
+
+    if ($("fixtureCountBadge")) $("fixtureCountBadge").textContent = `${d.n_played} Played`;
+
+    renderRecentFixtures(d);
+
+    // Populate Rounds Dropdown
+    const rounds = d.rounds || [];
+    if (rounds.length) {
+      $("roundSelect").innerHTML = rounds.map((r) => `<option value="${r.round}">Round ${r.round}</option>`).join("");
+      // Select the latest round by default
+      const latestRound = rounds[rounds.length - 1];
+      $("roundSelect").value = String(latestRound.round);
+      populateMatchesForRound();
+    } else {
+      $("roundSelect").innerHTML = `<option value="">No rounds found</option>`;
+      $("matchSelect").innerHTML = `<option value="">—</option>`;
+    }
+  } catch (e) {
+    if ($("matchRecentFeed")) $("matchRecentFeed").innerHTML = `<div class="error">Failed to load fixtures: ${e.message}</div>`;
+    if ($("roundSelect")) $("roundSelect").innerHTML = `<option value="">Error loading rounds</option>`;
+  }
+}
+
+function renderRecentFixtures(d) {
+  const feed = $("matchRecentFeed");
+  if (!feed) return;
+  const recent = d.latest_matches || [];
+  if (!recent.length) {
+    feed.innerHTML = `<div class="empty">No completed fixtures found for this season.</div>`;
+    return;
+  }
+
+  feed.innerHTML = recent.map((m) => {
+    const homeWinner = m.home_goals > m.away_goals;
+    const awayWinner = m.away_goals > m.home_goals;
+    const matchId = m.id || m.match_id;
+    return `
+      <div class="fixture-card" data-match-id="${matchId}" onclick="loadMatchById('${matchId}')">
+        <div class="fixture-top">
+          <span>${m.date}</span>
+          <span class="badge ${m.home_goals != null ? 'good' : ''}">FT</span>
+        </div>
+        <div class="fixture-teams">
+          <div class="fixture-team-row ${homeWinner ? 'winner' : ''}">
+            <span>${m.home}</span>
+            <span class="fixture-score">${m.home_goals ?? '—'}</span>
+          </div>
+          <div class="fixture-team-row ${awayWinner ? 'winner' : ''}">
+            <span>${m.away}</span>
+            <span class="fixture-score">${m.away_goals ?? '—'}</span>
+          </div>
+        </div>
+        <div class="fixture-footer">
+          <span class="fixture-xg-badge">xG: ${fmt(m.home_xg)} — ${fmt(m.away_xg)}</span>
+          <span style="color:var(--accent);font-weight:700">Deep Dive →</span>
+        </div>
+      </div>
+    `;
+  }).join("");
+}
+
+function populateMatchesForRound() {
+  const r = parseInt($("roundSelect").value, 10);
+  if (!state.roundsData || !r) return;
+  const rounds = state.roundsData.rounds || [];
+  const round = rounds.find((x) => x.round === r);
+  if (!round) return;
+
+  $("matchSelect").innerHTML = `<option value="">Pick a fixture…</option>` +
+    round.matches.map((m) => {
+      const matchId = m.id || m.match_id;
+      const hg = m.home_goals ?? m.home_score ?? "—";
+      const ag = m.away_goals ?? m.away_score ?? "—";
+      return `<option value="${matchId}">${m.home} ${hg}–${ag} ${m.away} (${m.date})</option>`;
+    }).join("");
+}
+
+window.loadMatchById = async function (matchId) {
+  if (!matchId) return;
+  $("matchId").value = matchId;
+  if ($("matchSelect")) $("matchSelect").value = matchId;
+
+  // Highlight selected card if visible
+  document.querySelectorAll(".fixture-card").forEach((c) => {
+    c.classList.toggle("active", c.dataset.matchId === String(matchId));
+  });
+
+  const node = $("matchContent");
+  loading(node);
+  node.scrollIntoView({ behavior: "smooth", block: "start" });
+
+  try {
+    const d = await api(`/api/v1/analyze/match/${encodeURIComponent(matchId)}`);
+    renderMatch(node, d);
+  } catch (e) {
+    errored(node, e.message);
+  }
+};
+
+async function runMatch() {
+  const matchId = ($("matchSelect").value || $("matchId").value).trim();
+  if (!matchId) {
+    alert("Please select a fixture or enter a valid Match ID");
+    return;
+  }
+  loadMatchById(matchId);
+}
+
+function renderMatch(node, d) {
+  const n = d.narrative;
+  clear(node);
+
+  const homeShots = (d.shot_map.home || []).map((s) => ({ ...s, side: "home" }));
+  const awayShots = (d.shot_map.away || []).map((s) => ({ ...s, side: "away" }));
+  const allShots = [...homeShots, ...awayShots];
+
+  node.innerHTML = `
+    <!-- Match Hero Scoreline Banner -->
+    <div class="player-hero-card">
+      <div class="hero-main" style="justify-content:center;text-align:center">
+        <div>
+          <div style="font-size:11px;text-transform:uppercase;color:var(--accent);letter-spacing:1.2px;font-weight:800">
+            OFFICIAL MATCH INTELLIGENCE
+          </div>
+          <div style="font-size:36px;font-weight:900;color:var(--text-bright);margin:8px 0;letter-spacing:-0.5px">
+            ${n.scoreline.h} — ${n.scoreline.a}
+          </div>
+          <div style="font-size:15px;color:var(--accent);font-family:var(--mono);font-weight:700">
+            Expected Goals (xG): ${fmt(n.xG.h)} vs ${fmt(n.xG.a)}
+          </div>
+          <div class="hint" style="margin-top:10px;max-width:650px;margin-left:auto;margin-right:auto;font-size:13px">
+            ${n.narrative}
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Row 1: Full Pitch Shot Map vs Cumulative xG Flow Timeline -->
+    <div class="grid cols-2">
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">
+            <svg class="card-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="m4.93 4.93 4.24 4.24M14.83 14.83l4.24 4.24"/></svg>
+            Full Pitch Tactical Shot Map & Heatmap
+          </span>
+          <span style="font-size:11px;color:var(--muted)">${allShots.length} total shots</span>
+        </div>
+        <div id="matchPitch"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">
+            <svg class="card-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+            Cumulative xG Timeline Flow
+          </span>
+        </div>
+        <div id="xgtl"></div>
+      </div>
+    </div>
+
+    <!-- Row 2: Big Chance Inventory vs Situations Breakdown -->
+    <div class="grid cols-2" style="margin-top:20px">
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Big Chance Inventory (xG ≥ ${d.big_chance_inventory.xG_threshold})</span>
+        </div>
+        ${bigChances(d.big_chance_inventory)}
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Situations Breakdown (Open Play vs Set Pieces)</span>
+        </div>
+        ${situationBreakdown(d.situation_breakdown)}
+      </div>
+    </div>
+
+    <div class="caveat"><strong>Limitations.</strong><ul>${d.limitations.map((l) => `<li>${l}</li>`).join("")}</ul></div>
+  `;
+
+  renderPitchHeatmap("matchPitch", allShots);
+  drawXgTimeline("xgtl", d.xg_timeline);
+}
+
+function bigChances(inv) {
+  return `<table><thead><tr><th>Side</th><th>Min</th><th>Shooter</th><th class="num">xG</th><th>Result</th></tr></thead><tbody>
+    ${inv.home.map((s) => row("Home", s)).join("")}${inv.away.map((s) => row("Away", s)).join("")}
+  </tbody></table>`;
+  function row(side, s) { return `<tr><td><strong>${side}</strong></td><td>${s.minute}'</td><td>${s.player || "—"}</td><td class="num">${fmt(s.xG)}</td><td><span class="badge ${s.result === 'Goal' ? 'good' : ''}">${s.result}</span></td></tr>`; }
+}
+
+function situationBreakdown(sb) {
+  const head = `<tr><th>${term("situations")}</th><th class="num">${term("shots")}</th><th class="num">${term("xG")}</th><th class="num">${term("goals")}</th></tr>`;
+  const rows = (obj) => Object.entries(obj).sort((a, b) => b[1].xG - a[1].xG).map(([k, v]) => `<tr><td>${k}</td><td class="num">${v.shots}</td><td class="num">${fmt(v.xG)}</td><td class="num"><strong>${v.goals}</strong></td></tr>`).join("");
+  return `<table><thead><tr><th colspan=4 style="color:var(--accent)">Home Team</th></tr>${head}</thead><tbody>${rows(sb.home)}</tbody></table>` +
+    `<table style="margin-top:14px"><thead><tr><th colspan=4 style="color:var(--accent-emerald)">Away Team</th></tr>${head}</thead><tbody>${rows(sb.away)}</tbody></table>`;
+}
+
+function drawXgTimeline(container, tl) {
+  const el = document.getElementById(container); if (!el) return;
+  const w = 1100, h = 260, padL = 56, pad = 30, x0 = padL, x1 = w - pad, y0 = 24, y1 = h - 40;
+  const home = tl.home || [], away = tl.away || [];
+  const allMax = Math.max(...home.map((p) => p.cumulative_xG), ...away.map((p) => p.cumulative_xG), 0.5);
+  const minuteMax = Math.max(...home.map((p) => p.minute), ...away.map((p) => p.minute), 90);
+  const x = (m) => x0 + (m / minuteMax) * (x1 - x0);
+  const y = (v) => y1 - (v / allMax) * (y1 - y0);
+  const path = (pts, color) => pts.length ? `<path d="${pts.map((p, i) => `${i ? "L" : "M"}${x(p.minute)},${y(p.cumulative_xG)}`).join(" ")}" fill="none" stroke="${color}" stroke-width="2.5"/>` : "";
+  const dots = (pts, color) => pts.map((p) => hoverDot(x(p.minute), y(p.cumulative_xG), `${p.minute}' — Cumulative xG: ${fmt(p.cumulative_xG, 3)}`, color, 3.5)).join("");
+
+  el.innerHTML = `<svg class="timeline-svg" viewBox="0 0 ${w} ${h}">
+    <line x1="${x0}" y1="${y1}" x2="${x1}" y2="${y1}" stroke="#1e293b"/>
+    <line x1="${x0}" y1="${y1}" x2="${x0}" y2="${y0}" stroke="#1e293b"/>
+    ${path(home, "#38bdf8")}${path(away, "#10b981")}
+    ${dots(home, "#38bdf8")}${dots(away, "#10b981")}
+    <text x="${x0}" y="${y0}" fill="#94a3b8" font-size="10.5"><tspan fill="#38bdf8">— Home</tspan>  <tspan fill="#10b981">— Away</tspan>  · Cumulative Match xG</text>
+    <text x="${x0 + (x1 - x0) / 2}" y="${h - 6}" fill="#94a3b8" font-size="10" text-anchor="middle">Minute →</text>
+    <text x="14" y="${y0 + (y1 - y0) / 2}" fill="#94a3b8" font-size="10" text-anchor="middle" transform="rotate(-90 14 ${y0 + (y1 - y0) / 2})">xG ↑</text>
+  </svg>`;
 }
 
 // ==========================================================
@@ -672,8 +927,6 @@ function renderPlayer(node, d) {
   const p90 = d.per90_breakdown.per90;
   const radar = d.radar.profile.filter((item) => item.percentile > 0 || item.raw > 0);
   const shots = d.shots || [];
-
-  // Calculate high-level elite percentile
   const avgPct = radar.length ? Math.round(radar.reduce((acc, r) => acc + r.percentile, 0) / radar.length) : 50;
 
   node.innerHTML = `
@@ -725,7 +978,7 @@ function renderPlayer(node, d) {
         <div class="kpi-card">
           <span class="kpi-label">${term("xG_chain")}</span>
           <span class="kpi-value">${fmt(p90.xGChain, 2)}</span>
-          <span class="kpi-sub">Total play involvement</span>
+          <span class="kpi-sub">Possession involvement</span>
         </div>
         <div class="kpi-card">
           <span class="kpi-label">${term("xG_buildup")}</span>
@@ -737,7 +990,7 @@ function renderPlayer(node, d) {
           <span class="kpi-value ${d.finishing_overperformance.g_minus_xg >= 0 ? 'positive' : 'negative'}">
             ${d.finishing_overperformance.g_minus_xg >= 0 ? '+' : ''}${fmt(d.finishing_overperformance.g_minus_xg)}
           </span>
-          <span class="kpi-sub">${fmt(d.per90_breakdown.minutes, 0)} mins played</span>
+          <span class="kpi-sub">${fmt(d.per90_breakdown.minutes, 0)} mins</span>
         </div>
       </div>
     </div>
@@ -767,14 +1020,11 @@ function renderPlayer(node, d) {
       </div>
     </div>
 
-    <!-- Row 2: Finishing & Shot Diagnostics + Playmaking & Involvement -->
+    <!-- Row 2: Finishing Diagnostics + Playmaking & Involvement -->
     <div class="grid cols-2" style="margin-top:20px">
       <div class="card">
         <div class="card-header">
-          <span class="card-title">
-            <svg class="card-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="22" y1="12" x2="18" y2="12"/><line x1="6" y1="12" x2="2" y2="12"/><line x1="12" y1="6" x2="12" y2="2"/><line x1="12" y1="22" x2="12" y2="18"/></svg>
-            Finishing & Shot Quality Diagnostics
-          </span>
+          <span class="card-title">Finishing & Shot Quality Diagnostics</span>
         </div>
         ${finishing(d.finishing_overperformance)}
         <div style="margin-top:16px">${shotSelection(d.shot_selection)}</div>
@@ -782,14 +1032,11 @@ function renderPlayer(node, d) {
 
       <div class="card">
         <div class="card-header">
-          <span class="card-title">
-            <svg class="card-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>
-            Playmaking & Possession Involvement
-          </span>
+          <span class="card-title">Playmaking & Possession Involvement</span>
         </div>
         ${involvement(d.involvement_profile)}
         ${d.creative_dominance ? `
-          <div style="margin-top:16px;padding-top:14px;border-top:1px solid rgba(80,73,69,0.4)">
+          <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border)">
             <div class="kv">
               <span class="k">${term("creative_dominance")}</span>
               <span class="v" style="color:var(--accent);font-weight:700">${pct(d.creative_dominance.xA_share, 1)} of team xA</span>
@@ -803,22 +1050,16 @@ function renderPlayer(node, d) {
     <!-- Row 3: Similar Players Cluster -->
     <div class="card" style="margin-top:20px">
       <div class="card-header">
-        <span class="card-title">
-          <svg class="card-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="7" r="4"/><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/></svg>
-          Similar Player Profiles (Euclidean Peer Clustered)
-        </span>
+        <span class="card-title">Similar Player Profiles (Euclidean Peer Clustered)</span>
         <span style="font-size:11px;color:var(--muted)">Pool: ${d.similar_players.pool_after_filters} players</span>
       </div>
       ${similarCards(d.similar_players)}
     </div>
 
-    <!-- Row 4: Percentile Rankings Table with visual bars -->
+    <!-- Row 4: Percentile Rankings Table -->
     <div class="card" style="margin-top:20px">
       <div class="card-header">
-        <span class="card-title">
-          <svg class="card-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
-          Tactical Metrics & League Percentile Rankings
-        </span>
+        <span class="card-title">Tactical Metrics & League Percentile Rankings</span>
       </div>
       ${percentileTable(radar, d.per90_breakdown)}
     </div>
@@ -830,10 +1071,9 @@ function renderPlayer(node, d) {
       </div>
     ` : ""}
 
-    <div class="caveat"><strong>Limitations & Context.</strong><ul>${d.limitations.map((l) => `<li>${l}</li>`).join("")}</ul></div>
+    <div class="caveat"><strong>Limitations.</strong><ul>${d.limitations.map((l) => `<li>${l}</li>`).join("")}</ul></div>
   `;
 
-  // Draw Visual Components
   renderPitchHeatmap("playerPitch", shots);
   drawRadar("playerRadar", radar);
 }
@@ -850,7 +1090,7 @@ function similarCards(s) {
           </div>
           <div class="similar-meta">
             <div>${m.team_title || "—"} · ${m.position || "—"}</div>
-            <div>${m.age ? `${m.age} years old · ` : ""}${fmt(m.minutes, 0)} minutes</div>
+            <div>${m.age ? `${m.age} years old · ` : ""}${fmt(m.minutes, 0)} mins</div>
           </div>
           <button class="ghost" style="padding:4px 8px;font-size:11px;margin-top:4px" onclick="$('playerName').value='${m.player_name}';runPlayer()">
             Analyze Profile →
@@ -886,7 +1126,7 @@ function percentileTable(profile, b) {
                   <div class="pct-track"><div class="pct-fill ${tier}" style="width:${Math.max(4, p.percentile)}%"></div></div>
                 </div>
               </td>
-              <td class="num" style="font-weight:700;color:${p.percentile >= 80 ? 'var(--accent-2)' : 'var(--text)'}">
+              <td class="num" style="font-weight:700;color:${p.percentile >= 80 ? 'var(--accent-emerald)' : 'var(--text)'}">
                 ${Math.round(p.percentile)}%
               </td>
             </tr>
@@ -900,14 +1140,13 @@ function percentileTable(profile, b) {
 function pressingBlock(p) {
   return `
     <div class="kv">
-      <span class="k">Regain shots / xG</span><span class="v">${p.regain_shots} shots · ${fmt(p.regain_xG)} xG (${pct(p.regain_xG_share)} of player total)</span>
+      <span class="k">Regain shots / xG</span><span class="v">${p.regain_shots} shots · ${fmt(p.regain_xG)} xG (${pct(p.regain_xG_share)} of total)</span>
       <span class="k">Goals from regains</span><span class="v">${p.regain_goals}</span>
     </div>
     <div class="hint">${p.interpretation}</div>
   `;
 }
 
-// Career Trajectory View
 async function runCareer() {
   const name = $("playerName").value.trim();
   if (!name) return;
@@ -928,11 +1167,9 @@ function renderCareer(node, d) {
   const latest = present[present.length - 1];
   node.innerHTML = `
     <div class="card">
-      <div class="card-header">
-        <span class="card-title">Career Trajectory · ${d.player_name}</span>
-      </div>
+      <div class="card-header"><span class="card-title">Career Trajectory · ${d.player_name}</span></div>
       <div class="controls-row">
-        <div class="field"><label>Metric to plot</label>
+        <div class="field"><label>Metric</label>
           <select id="careerMetric">
             <option value="xGChain_per90">${term("xG_chain")} /90</option>
             <option value="xGBuildup_per90">${term("xG_buildup")} /90</option>
@@ -949,7 +1186,7 @@ function renderCareer(node, d) {
       <div id="careerChart"></div>
     </div>
     <div class="card" style="margin-top:20px">
-      <div class="card-header"><span class="card-title">Multi-Season Statistics</span></div>
+      <div class="card-header"><span class="card-title">Multi-Season Records</span></div>
       <table><thead><tr><th>Season</th><th>Team</th><th>Pos</th><th class="num">Games</th><th class="num">Min</th><th class="num">${term("goals")}</th><th class="num">${term("xG")}</th><th class="num">${term("npxG")}</th><th class="num">${term("assists")}</th><th class="num">${term("xA")}</th><th class="num">${term("shots")}</th><th class="num">${term("xG_per_shot")}</th><th class="num">${term("conversion")}</th></tr></thead><tbody>
         ${d.seasons.map((s, i) => {
           if (!s.present) return `<tr><td>${s.season}</td><td colspan=12 style="color:var(--muted)">— not in this league</td></tr>`;
@@ -978,15 +1215,15 @@ function drawCareerChart(container, rows, metricKey) {
   const x = (i) => x0 + (i * (x1 - x0)) / Math.max(rows.length - 1, 1);
   const y = (v) => y1 - (v / allMax) * (y1 - y0);
   const path = vals.map((v, i) => `${i ? "L" : "M"}${x(i)},${y(v)}`).join(" ");
-  const dots = vals.map((v, i) => hoverDot(x(i), y(v), `${rows[i].season}: ${fmt(v, 3)}\n${rows[i].team || ""}\n${fmt(rows[i].minutes, 0)} min`, "#83a598")).join("");
-  const labels = rows.map((r, i) => `<text x="${x(i)}" y="${y1 + 16}" fill="#a89984" font-size="10" text-anchor="middle">${r.season}</text>`).join("");
+  const dots = vals.map((v, i) => hoverDot(x(i), y(v), `${rows[i].season}: ${fmt(v, 3)}\n${rows[i].team || ""}\n${fmt(rows[i].minutes, 0)} min`, "#38bdf8")).join("");
+  const labels = rows.map((r, i) => `<text x="${x(i)}" y="${y1 + 16}" fill="#94a3b8" font-size="10" text-anchor="middle">${r.season}</text>`).join("");
   const entry = GLOSSARY[metricKey] || {};
   el.innerHTML = `<svg class="timeline-svg" viewBox="0 0 ${w} ${h}">
-    <line x1="${x0}" y1="${y1}" x2="${x1}" y2="${y1}" stroke="#504945"/>
-    <line x1="${x0}" y1="${y1}" x2="${x0}" y2="${y0}" stroke="#504945"/>
-    <path d="${path}" fill="none" stroke="#83a598" stroke-width="2.5"/>${dots}
+    <line x1="${x0}" y1="${y1}" x2="${x1}" y2="${y1}" stroke="#1e293b"/>
+    <line x1="${x0}" y1="${y1}" x2="${x0}" y2="${y0}" stroke="#1e293b"/>
+    <path d="${path}" fill="none" stroke="#38bdf8" stroke-width="2.5"/>${dots}
     ${labels}
-    <text x="${x0}" y="${y0}" fill="#a89984" font-size="11">${entry.label || metricKey} by Season</text>
+    <text x="${x0}" y="${y0}" fill="#94a3b8" font-size="11">${entry.label || metricKey} by Season</text>
   </svg>`;
 }
 
@@ -1011,8 +1248,7 @@ async function runTeam() {
 }
 
 function renderTeam(node, d) {
-  const s = d.style, pp = d.ppda_home_away;
-  const seasonsLabel = d.seasons && d.seasons.length > 1 ? ` · ${d.seasons.join("–")}` : ` · ${seasonOf("teamSeasons")}`;
+  const s = d.style;
   clear(node);
 
   node.innerHTML = `
@@ -1020,7 +1256,7 @@ function renderTeam(node, d) {
     <div class="team-hero-card">
       <div class="hero-main">
         <div class="hero-identity">
-          <div class="hero-avatar" style="background:var(--accent-dim);color:var(--accent)">🛡️</div>
+          <div class="hero-avatar">🛡️</div>
           <div class="hero-name-wrap">
             <h2>${s.team}</h2>
             <div class="hero-meta">
@@ -1045,7 +1281,7 @@ function renderTeam(node, d) {
           <span class="kpi-sub">Defensive concession</span>
         </div>
         <div class="kpi-card">
-          <span class="kpi-label">xG Difference / Game</span>
+          <span class="kpi-label">xG Difference</span>
           <span class="kpi-value ${s.xG_diff_per_game >= 0 ? 'positive' : 'negative'}">
             ${s.xG_diff_per_game >= 0 ? '+' : ''}${fmt(s.xG_diff_per_game)}
           </span>
@@ -1092,9 +1328,7 @@ function renderTeam(node, d) {
 
     <!-- Row 3: 5-Match Rolling Trend Charts -->
     <div class="card" style="margin-top:20px">
-      <div class="card-header">
-        <span class="card-title">5-Match Rolling Tactical Trends</span>
-      </div>
+      <div class="card-header"><span class="card-title">5-Match Rolling Tactical Trends</span></div>
       <div class="controls-row">
         <div class="field"><label>Metric</label>
           <select id="trendMetric">
@@ -1127,7 +1361,7 @@ function renderTeam(node, d) {
     <div class="caveat"><strong>Limitations.</strong><ul>${d.limitations.map((l) => `<li>${l}</li>`).join("")}</ul></div>
   `;
 
-  // Fetch Team Attacking & Defensive Shots Asynchronously
+  // Asynchronously fetch team attacking & defensive shots
   (async () => {
     try {
       const shotsData = await api("/api/v1/analyze/team/shots", {
@@ -1191,7 +1425,7 @@ function drawSeasonLines(container, trends, metric, opts) {
   let lines = "", dots = "";
 
   for (const [s, t] of entries) {
-    const color = "#83a598";
+    const color = "#38bdf8";
     const vals = t.matchdays.map((m) => m[metric]);
     if (opts.invert) {
       const y = (v) => y0 + ((v - 1) / (opts.ymax - 1)) * (y1 - y0);
@@ -1211,11 +1445,11 @@ function drawSeasonLines(container, trends, metric, opts) {
 
   const axisLabel = opts.invert ? "Table Rank (1 = Top)" : "Points";
   el.innerHTML = `<svg class="timeline-svg" viewBox="0 0 ${w} ${h}">
-    <line x1="${x0}" y1="${y1}" x2="${x1}" y2="${y1}" stroke="#504945"/>
-    <line x1="${x0}" y1="${y1}" x2="${x0}" y2="${y0}" stroke="#504945"/>
+    <line x1="${x0}" y1="${y1}" x2="${x1}" y2="${y1}" stroke="#1e293b"/>
+    <line x1="${x0}" y1="${y1}" x2="${x0}" y2="${y0}" stroke="#1e293b"/>
     ${lines}${dots}
-    <text x="${x0}" y="${y0}" fill="#a89984" font-size="10">${axisLabel}</text>
-    <text x="${x0 + (x1 - x0) / 2}" y="${h - 6}" fill="#a89984" font-size="10" text-anchor="middle">Matchday →</text>
+    <text x="${x0}" y="${y0}" fill="#94a3b8" font-size="10">${axisLabel}</text>
+    <text x="${x0 + (x1 - x0) / 2}" y="${h - 6}" fill="#94a3b8" font-size="10" text-anchor="middle">Matchday →</text>
   </svg>`;
 }
 
@@ -1228,15 +1462,15 @@ function drawLuckChart(container, lc) {
   const x = (i) => x0 + (i * (x1 - x0)) / Math.max(vals.length - 1, 1);
   const y = (v) => y1 - ((v - lo) / span) * (y1 - y0);
   const path = vals.map((v, i) => `${i ? "L" : "M"}${x(i)},${y(v)}`).join(" ");
-  const dots = lc.points.map((p, i) => hoverDot(x(i), y(p.cumulative_g_minus_xg), `${p.date}\nCumulative G − xG: ${fmt(p.cumulative_g_minus_xg, 2)}`, lc.final >= 0 ? "#b8bb26" : "#fb4934", 3.5)).join("");
+  const dots = lc.points.map((p, i) => hoverDot(x(i), y(p.cumulative_g_minus_xg), `${p.date}\nCumulative G − xG: ${fmt(p.cumulative_g_minus_xg, 2)}`, lc.final >= 0 ? "#10b981" : "#f43f5e", 3.5)).join("");
   const zero = y(0);
 
   el.innerHTML = `<svg class="timeline-svg" viewBox="0 0 ${w} ${h}">
-    <line x1="${x0}" y1="${y1}" x2="${x1}" y2="${y1}" stroke="#504945"/>
-    <line x1="${x0}" y1="${y1}" x2="${x0}" y2="${y0}" stroke="#504945"/>
-    <line x1="${x0}" y1="${zero}" x2="${x1}" y2="${zero}" stroke="#504945" stroke-dasharray="3 4"/>
-    <path d="${path}" fill="none" stroke="${lc.final >= 0 ? '#b8bb26' : '#fb4934'}" stroke-width="2.5"/>${dots}
-    <text x="${x0}" y="${y0}" fill="#a89984" font-size="9">Cumulative Goals − xG Overperformance</text>
+    <line x1="${x0}" y1="${y1}" x2="${x1}" y2="${y1}" stroke="#1e293b"/>
+    <line x1="${x0}" y1="${y1}" x2="${x0}" y2="${y0}" stroke="#1e293b"/>
+    <line x1="${x0}" y1="${zero}" x2="${x1}" y2="${zero}" stroke="#1e293b" stroke-dasharray="3 4"/>
+    <path d="${path}" fill="none" stroke="${lc.final >= 0 ? '#10b981' : '#f43f5e'}" stroke-width="2.5"/>${dots}
+    <text x="${x0}" y="${y0}" fill="#94a3b8" font-size="9.5">Cumulative Goals − xG Overperformance</text>
   </svg>`;
 }
 
@@ -1249,16 +1483,16 @@ function drawTrendChart(container, mt, key) {
   const x = (i) => x0 + (i * (x1 - x0)) / Math.max(vals.length - 1, 1);
   const y = (v) => y1 - ((v + allMax) / (2 * allMax)) * (y1 - y0);
   const path = vals.map((v, i) => `${i ? "L" : "M"}${x(i)},${y(v)}`).join(" ");
-  const dots = vals.map((v, i) => hoverDot(x(i), y(v), `${mt.dates[i]}\n${key}: ${fmt(v, 2)}`, "#83a598", 3.5)).join("");
+  const dots = vals.map((v, i) => hoverDot(x(i), y(v), `${mt.dates[i]}\n${key}: ${fmt(v, 2)}`, "#38bdf8", 3.5)).join("");
   const zero = y(0);
   const entry = GLOSSARY[key] || {};
 
   el.innerHTML = `<svg class="timeline-svg" viewBox="0 0 ${w} ${h}">
-    <line x1="${x0}" y1="${y1}" x2="${x1}" y2="${y1}" stroke="#504945"/>
-    <line x1="${x0}" y1="${y1}" x2="${x0}" y2="${y0}" stroke="#504945"/>
-    <line x1="${x0}" y1="${zero}" x2="${x1}" y2="${zero}" stroke="#504945" stroke-dasharray="3 4"/>
-    <path d="${path}" fill="none" stroke="#83a598" stroke-width="2.5"/>${dots}
-    <text x="${x0}" y="${y0}" fill="#a89984" font-size="10">Rolling 5-Match ${entry.label || key}</text>
+    <line x1="${x0}" y1="${y1}" x2="${x1}" y2="${y1}" stroke="#1e293b"/>
+    <line x1="${x0}" y1="${y1}" x2="${x0}" y2="${y0}" stroke="#1e293b"/>
+    <line x1="${x0}" y1="${zero}" x2="${x1}" y2="${zero}" stroke="#1e293b" stroke-dasharray="3 4"/>
+    <path d="${path}" fill="none" stroke="#38bdf8" stroke-width="2.5"/>${dots}
+    <text x="${x0}" y="${y0}" fill="#94a3b8" font-size="10.5">Rolling 5-Match ${entry.label || key}</text>
   </svg>`;
 }
 
@@ -1304,14 +1538,14 @@ function drawRadar(container, profile) {
   for (let g = 1; g <= 4; g++) {
     const rr = r * g / 4;
     let pts = ""; for (let i = 0; i < n; i++) { const [x, y] = pt(i, rr); pts += `${x},${y} `; }
-    rings += `<polygon points="${pts}" fill="none" stroke="#444746" stroke-width="1"/>`;
+    rings += `<polygon points="${pts}" fill="none" stroke="#1e293b" stroke-width="1"/>`;
   }
   let spokes = "", labels = "";
   for (let i = 0; i < n; i++) {
     const [x, y] = pt(i, r);
-    spokes += `<line x1="${cx}" y1="${cy}" x2="${x}" y2="${y}" stroke="#444746" stroke-width="1"/>`;
+    spokes += `<line x1="${cx}" y1="${cy}" x2="${x}" y2="${y}" stroke="#1e293b" stroke-width="1"/>`;
     const [lx, ly] = pt(i, r + 18);
-    labels += `<text x="${lx}" y="${ly}" fill="#a89984" font-size="10.5" font-weight="600" text-anchor="middle" dominant-baseline="middle">${profile[i].label}</text>`;
+    labels += `<text x="${lx}" y="${ly}" fill="#94a3b8" font-size="10.5" font-weight="600" text-anchor="middle" dominant-baseline="middle">${profile[i].label}</text>`;
   }
   let poly = ""; const vals = [];
   for (let i = 0; i < n; i++) {
@@ -1319,158 +1553,12 @@ function drawRadar(container, profile) {
     const rr = r * pct / 100;
     const [x, y] = pt(i, rr);
     poly += `${x},${y} `;
-    vals.push(`<circle cx="${x}" cy="${y}" r="3" fill="#b8bb26"/>`);
+    vals.push(`<circle cx="${x}" cy="${y}" r="3.5" fill="#38bdf8"/>`);
   }
   el.innerHTML = `<svg class="radar-svg" viewBox="0 0 ${size} ${size}">
     ${rings}${spokes}
-    <polygon points="${poly}" fill="rgba(184,187,38,0.25)" stroke="#b8bb26" stroke-width="2.5"/>
+    <polygon points="${poly}" fill="rgba(56,189,248,0.2)" stroke="#38bdf8" stroke-width="2.5"/>
     ${labels}${vals.join("")}
-  </svg>`;
-}
-
-// ==========================================================
-// MATCH DEEP-DIVE
-// ==========================================================
-$("matchGo").addEventListener("click", runMatch);
-$("loadRounds").addEventListener("click", loadRounds);
-$("roundSelect").addEventListener("change", populateMatchesForRound);
-$("matchSelect").addEventListener("change", () => { if ($("matchSelect").value) runMatch(); });
-$("matchId").addEventListener("keydown", (e) => { if (e.key === "Enter") runMatch(); });
-
-async function loadRounds() {
-  const season = seasonOf("matchSeason");
-  $("roundSelect").innerHTML = `<option value="">loading…</option>`;
-  try {
-    const d = await api("/api/v1/matches/rounds", { league_name: state.league, season });
-    state.roundsData = d.rounds;
-    state.roundsLoaded = true;
-    $("roundSelect").innerHTML = `<option value="">pick round</option>` +
-      d.rounds.map((r) => `<option value="${r.round}">Round ${r.round} (${r.date_range.start || ""})</option>`).join("");
-  } catch (e) {
-    $("roundSelect").innerHTML = `<option value="">failed: ${e.message}</option>`;
-  }
-}
-
-function populateMatchesForRound() {
-  const r = parseInt($("roundSelect").value, 10);
-  if (!state.roundsData || !r) return;
-  const round = state.roundsData.find((x) => x.round === r);
-  if (!round) return;
-  $("matchSelect").innerHTML = `<option value="">pick a fixture…</option>` +
-    round.matches.map((m) => `<option value="${m.id}">${m.home} ${m.home_score ?? "—"}–${m.away_score ?? "—"} ${m.away} (${m.date})</option>`).join("");
-}
-
-async function runMatch() {
-  const matchId = ($("matchSelect").value || $("matchId").value).trim();
-  if (!matchId) return;
-  const node = $("matchContent"); loading(node);
-  try {
-    const d = await api(`/api/v1/analyze/match/${encodeURIComponent(matchId)}`);
-    renderMatch(node, d);
-  } catch (e) { errored(node, e.message); }
-}
-
-function renderMatch(node, d) {
-  const n = d.narrative;
-  clear(node);
-
-  // Combine shots for the match
-  const homeShots = (d.shot_map.home || []).map(s => ({ ...s, side: 'home' }));
-  const awayShots = (d.shot_map.away || []).map(s => ({ ...s, side: 'away' }));
-  const allShots = [...homeShots, ...awayShots];
-
-  node.innerHTML = `
-    <!-- Match Hero Scoreline Banner -->
-    <div class="player-hero-card">
-      <div class="hero-main" style="justify-content:center;text-align:center">
-        <div>
-          <div style="font-size:12px;text-transform:uppercase;color:var(--muted);letter-spacing:1px;font-weight:700">Official Match Result</div>
-          <div style="font-size:32px;font-weight:900;color:var(--text-bright);margin:6px 0">
-            ${n.scoreline.h} — ${n.scoreline.a}
-          </div>
-          <div style="font-size:14px;color:var(--accent);font-family:var(--mono)">
-            Expected Goals (xG): <strong>${fmt(n.xG.h)}</strong> vs <strong>${fmt(n.xG.a)}</strong>
-          </div>
-          <div class="hint" style="margin-top:6px">${n.narrative}</div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Row 1: Full Pitch Shot Map vs Cumulative xG Timeline -->
-    <div class="grid cols-2">
-      <div class="card">
-        <div class="card-header">
-          <span class="card-title">Full Pitch Shot Map & Coordinates</span>
-          <span style="font-size:11px;color:var(--muted)">${allShots.length} total shots</span>
-        </div>
-        <div id="matchPitch"></div>
-      </div>
-
-      <div class="card">
-        <div class="card-header">
-          <span class="card-title">Cumulative xG Flow Timeline</span>
-        </div>
-        <div id="xgtl"></div>
-      </div>
-    </div>
-
-    <!-- Row 2: Big Chance Inventory vs Situations Breakdown -->
-    <div class="grid cols-2" style="margin-top:20px">
-      <div class="card">
-        <div class="card-header">
-          <span class="card-title">Big Chance Inventory (xG ≥ ${d.big_chance_inventory.xG_threshold})</span>
-        </div>
-        ${bigChances(d.big_chance_inventory)}
-      </div>
-
-      <div class="card">
-        <div class="card-header">
-          <span class="card-title">Situations Breakdown (OpenPlay vs SetPieces)</span>
-        </div>
-        ${situationBreakdown(d.situation_breakdown)}
-      </div>
-    </div>
-
-    <div class="caveat"><strong>Limitations.</strong><ul>${d.limitations.map((l) => `<li>${l}</li>`).join("")}</ul></div>
-  `;
-
-  renderPitchHeatmap("matchPitch", allShots);
-  drawXgTimeline("xgtl", d.xg_timeline);
-}
-
-function bigChances(inv) {
-  return `<table><thead><tr><th>Side</th><th>Min</th><th>Shooter</th><th class="num">xG</th><th>Result</th></tr></thead><tbody>
-    ${inv.home.map((s) => row("Home", s)).join("")}${inv.away.map((s) => row("Away", s)).join("")}
-  </tbody></table>`;
-  function row(side, s) { return `<tr><td><strong>${side}</strong></td><td>${s.minute}'</td><td>${s.player || "—"}</td><td class="num">${fmt(s.xG)}</td><td>${s.result}</td></tr>`; }
-}
-
-function situationBreakdown(sb) {
-  const head = `<tr><th>${term("situations")}</th><th class="num">${term("shots")}</th><th class="num">${term("xG")}</th><th class="num">${term("goals")}</th></tr>`;
-  const rows = (obj) => Object.entries(obj).sort((a, b) => b[1].xG - a[1].xG).map(([k, v]) => `<tr><td>${k}</td><td class="num">${v.shots}</td><td class="num">${fmt(v.xG)}</td><td class="num"><strong>${v.goals}</strong></td></tr>`).join("");
-  return `<table><thead><tr><th colspan=4 style="color:var(--accent)">Home Team</th></tr>${head}</thead><tbody>${rows(sb.home)}</tbody></table>` +
-    `<table style="margin-top:14px"><thead><tr><th colspan=4 style="color:#b8bb26">Away Team</th></tr>${head}</thead><tbody>${rows(sb.away)}</tbody></table>`;
-}
-
-function drawXgTimeline(container, tl) {
-  const el = document.getElementById(container); if (!el) return;
-  const w = 1100, h = 260, padL = 56, pad = 30, x0 = padL, x1 = w - pad, y0 = 24, y1 = h - 40;
-  const home = tl.home || [], away = tl.away || [];
-  const allMax = Math.max(...home.map((p) => p.cumulative_xG), ...away.map((p) => p.cumulative_xG), 0.5);
-  const minuteMax = Math.max(...home.map((p) => p.minute), ...away.map((p) => p.minute), 90);
-  const x = (m) => x0 + (m / minuteMax) * (x1 - x0);
-  const y = (v) => y1 - (v / allMax) * (y1 - y0);
-  const path = (pts, color) => pts.length ? `<path d="${pts.map((p, i) => `${i ? "L" : "M"}${x(p.minute)},${y(p.cumulative_xG)}`).join(" ")}" fill="none" stroke="${color}" stroke-width="2.5"/>` : "";
-  const dots = (pts, color) => pts.map((p) => hoverDot(x(p.minute), y(p.cumulative_xG), `${p.minute}' — Cumulative xG: ${fmt(p.cumulative_xG, 3)}`, color, 3.5)).join("");
-
-  el.innerHTML = `<svg class="timeline-svg" viewBox="0 0 ${w} ${h}">
-    <line x1="${x0}" y1="${y1}" x2="${x1}" y2="${y1}" stroke="#504945"/>
-    <line x1="${x0}" y1="${y1}" x2="${x0}" y2="${y0}" stroke="#504945"/>
-    ${path(home, "#83a598")}${path(away, "#b8bb26")}
-    ${dots(home, "#83a598")}${dots(away, "#b8bb26")}
-    <text x="${x0}" y="${y0}" fill="#a89984" font-size="10"><tspan fill="#83a598">— Home</tspan>  <tspan fill="#b8bb26">— Away</tspan>  · Cumulative Match xG</text>
-    <text x="${x0 + (x1 - x0) / 2}" y="${h - 6}" fill="#a89984" font-size="10" text-anchor="middle">Minute →</text>
-    <text x="14" y="${y0 + (y1 - y0) / 2}" fill="#a89984" font-size="10" text-anchor="middle" transform="rotate(-90 14 ${y0 + (y1 - y0) / 2})">xG ↑</text>
   </svg>`;
 }
 
@@ -1498,7 +1586,7 @@ function renderLeague(node, d) {
     <div class="card">
       <div class="card-header">
         <span class="card-title">Expected Points (xPTS) Diagnostic & "Is-Lying" Table</span>
-        <span class="mono" style="font-size:11px;color:var(--muted)">${LEAGUE_LABEL[state.league] || state.league} · ${d.season}</span>
+        <span class="mono" style="font-size:11.5px;color:var(--muted)">${LEAGUE_LABEL[state.league] || state.league} · ${d.season}</span>
       </div>
       <table>
         <thead>
@@ -1524,7 +1612,7 @@ function renderLeague(node, d) {
             return `
               <tr>
                 <td><span class="rank-badge ${isTop4 ? 'top4' : ''}">${i + 1}</span></td>
-                <td><strong style="cursor:pointer" onclick="$('teamName').value='${r.team}';activateTab('team');runTeam()">${r.team}</strong></td>
+                <td><strong style="cursor:pointer;color:var(--text-bright)" onclick="$('teamName').value='${r.team}';activateTab('team');runTeam()">${r.team}</strong></td>
                 <td class="num">${r.played}</td>
                 <td class="num"><strong>${r.pts}</strong></td>
                 <td class="num" style="color:var(--accent);font-weight:700">${fmt(r.xpts, 1)}</td>
@@ -1542,7 +1630,7 @@ function renderLeague(node, d) {
           }).join("")}
         </tbody>
       </table>
-      <div class="hint" style="margin-top:10px">Positive points gap (+) denotes overperformance / positive variance vs expected chance creation.</div>
+      <div class="hint" style="margin-top:12px">Positive points gap (+) denotes overperformance / positive variance vs expected chance creation.</div>
     </div>
 
     <!-- Row 2: Finishing Variance vs PPDA Pressing Rankings -->
@@ -1593,9 +1681,7 @@ function renderDiscover(node, d) {
   clear(node);
   node.innerHTML = `
     <div class="card">
-      <div class="card-header">
-        <span class="card-title">Ranked Discovery Pool (${d.players.length} players found)</span>
-      </div>
+      <div class="card-header"><span class="card-title">Ranked Discovery Pool (${d.players.length} players found)</span></div>
       <table>
         <thead>
           <tr>
@@ -1616,7 +1702,7 @@ function renderDiscover(node, d) {
         <tbody>
           ${d.players.map((p) => `
             <tr>
-              <td><strong style="cursor:pointer" onclick="$('playerName').value='${p.player_name}';activateTab('player');runPlayer()">${p.player_name}</strong></td>
+              <td><strong style="cursor:pointer;color:var(--text-bright)" onclick="$('playerName').value='${p.player_name}';activateTab('player');runPlayer()">${p.player_name}</strong></td>
               <td>${p.team_title || "—"}</td>
               <td><span class="badge">${p.position || "—"}</span></td>
               <td class="num">${p.age ?? "—"}</td>
@@ -1628,7 +1714,7 @@ function renderDiscover(node, d) {
               <td class="num" style="color:var(--accent);font-weight:700">${fmt(p.xGChain)}</td>
               <td class="num">${fmt(p.xGBuildup)}</td>
               <td>
-                <button class="ghost" style="padding:3px 8px;font-size:11px" onclick="$('playerName').value='${p.player_name}';activateTab('player');runPlayer()">Profile →</button>
+                <button class="ghost" style="padding:3px 10px;font-size:11.5px" onclick="$('playerName').value='${p.player_name}';activateTab('player');runPlayer()">Profile →</button>
               </td>
             </tr>
           `).join("")}
@@ -1704,7 +1790,7 @@ function drawCompareRadar(container, r1, r2, name1, name2) {
   for (let g = 1; g <= 4; g++) {
     const rr = r * g / 4;
     let pts = ""; for (let i = 0; i < n; i++) { const [x, y] = pt(i, rr); pts += `${x},${y} `; }
-    rings += `<polygon points="${pts}" fill="none" stroke="#444746" stroke-width="1"/>`;
+    rings += `<polygon points="${pts}" fill="none" stroke="#1e293b" stroke-width="1"/>`;
   }
   let poly1 = "", poly2 = "", labels = "";
   for (let i = 0; i < n; i++) {
@@ -1713,15 +1799,15 @@ function drawCompareRadar(container, r1, r2, name1, name2) {
     poly1 += `${x1},${y1} `;
     poly2 += `${x2},${y2} `;
     const [lx, ly] = pt(i, r + 18);
-    labels += `<text x="${lx}" y="${ly}" fill="#a89984" font-size="10" text-anchor="middle">${r1[i].label}</text>`;
+    labels += `<text x="${lx}" y="${ly}" fill="#94a3b8" font-size="10" text-anchor="middle">${r1[i].label}</text>`;
   }
   el.innerHTML = `<svg class="radar-svg" viewBox="0 0 ${size} ${size}">
     ${rings}
-    <polygon points="${poly1}" fill="rgba(131,165,152,0.25)" stroke="#83a598" stroke-width="2"/>
-    <polygon points="${poly2}" fill="rgba(184,187,38,0.25)" stroke="#b8bb26" stroke-width="2"/>
+    <polygon points="${poly1}" fill="rgba(56,189,248,0.2)" stroke="#38bdf8" stroke-width="2"/>
+    <polygon points="${poly2}" fill="rgba(16,185,129,0.2)" stroke="#10b981" stroke-width="2"/>
     ${labels}
-    <text x="16" y="24" fill="#83a598" font-size="11">● ${name1}</text>
-    <text x="16" y="42" fill="#b8bb26" font-size="11">● ${name2}</text>
+    <text x="16" y="24" fill="#38bdf8" font-size="11">● ${name1}</text>
+    <text x="16" y="42" fill="#10b981" font-size="11">● ${name2}</text>
   </svg>`;
 }
 
@@ -1780,7 +1866,7 @@ function renderPredict(node, d) {
           <div class="seg away" style="width:${p.p_away*100}%"><span class="seg-pct">${pct(p.p_away)}</span><span class="seg-name">${d.away_team}</span></div>
         </div>
       </div>
-      <div class="kv" style="margin-top:14px">
+      <div class="kv" style="margin-top:16px">
         <span class="k">Expected Goals (Lambda)</span><span class="v">${fmt(d.dixon_coles.lambda_home)} (Home) — ${fmt(d.dixon_coles.lambda_away)} (Away)</span>
         <span class="k">Most Probable Scorelines</span><span class="v">${d.dixon_coles.most_likely_scorelines.map((s)=>`${s.score} (${pct(s.probability)})`).join(" · ")}</span>
       </div>
@@ -1872,9 +1958,9 @@ function renderInfo() {
     if (!entries.length) return "";
     return `<div class="card" style="margin-top:20px">
       <div class="card-header"><span class="card-title">${g.group}</span></div>
-      ${entries.map((en) => `<div class="gloss"><div class="gloss-label">${en.label}</div>
-        <div class="gloss-short">${en.short}</div>
-        <div class="gloss-long">${en.long}</div></div>`).join("")}
+      ${entries.map((en) => `<div class="gloss" style="margin:12px 0"><div class="gloss-label" style="font-weight:700;color:var(--accent)">${en.label}</div>
+        <div class="gloss-short" style="color:var(--text-bright);font-size:13px;margin:2px 0">${en.short}</div>
+        <div class="gloss-long" style="color:var(--muted);font-size:12px">${en.long}</div></div>`).join("")}
     </div>`;
   }).join("") || `<div class="empty">No metrics match "${query}".</div>`;
 }

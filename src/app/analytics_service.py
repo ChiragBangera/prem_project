@@ -598,22 +598,43 @@ class AnalyticsService:
                     "round": round_number,
                     "matches": [
                         {
-                            "match_id": row["match_id"],
+                            "match_id": str(row["match_id"]),
+                            "id": str(row["match_id"]),
                             "date": row["date"],
                             "home": row["home"],
                             "away": row["away"],
                             "home_goals": row["home_goals"],
                             "away_goals": row["away_goals"],
+                            "home_xg": row["home_xg"],
+                            "away_xg": row["away_xg"],
                         }
                         for row in matches
                     ],
                 }
             )
+
+        latest = sorted(played, key=lambda r: r["date"], reverse=True)[:18]
+        latest_matches = [
+            {
+                "match_id": str(r["match_id"]),
+                "id": str(r["match_id"]),
+                "date": r["date"],
+                "home": r["home"],
+                "away": r["away"],
+                "home_goals": r["home_goals"],
+                "away_goals": r["away_goals"],
+                "home_xg": r["home_xg"],
+                "away_xg": r["away_xg"],
+            }
+            for r in latest
+        ]
+
         return {
             "league_name": league_name,
             "season": season,
             "n_played": len(played),
             "rounds": rounds,
+            "latest_matches": latest_matches,
             "note": "Round = the home team's nth league match of the season (Understat has no official gameweek label).",
         }
 
