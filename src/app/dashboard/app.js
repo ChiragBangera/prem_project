@@ -2107,25 +2107,36 @@ function renderLeague(node, d, notice = "") {
       <div class="hint" style="margin-top:12px">${d.is_lying.interpretation}</div>
     </div>
 
-    <!-- Row 2: Tactical Visualizations (Points vs xPTS Divergence & Pressing vs Penetration Quadrant) -->
-    <div class="grid cols-2" style="margin-top:20px">
-      <div class="card">
-        <div class="card-header">
+    <!-- Row 2: Divergence Waterfall Chart (Dedicated Full-Width Card) -->
+    <div class="card" style="margin-top:20px">
+      <div class="card-header" style="flex-wrap:wrap;gap:10px;justify-content:space-between;align-items:center">
+        <div>
           <span class="card-title">Points vs xPTS Divergence (Table Flattery vs Harshness)</span>
-          <span class="chart-subtitle">Green = Overperforming Luck · Red = Unrewarded Process</span>
+          <div class="chart-subtitle">
+            <span style="color:#10b981;font-weight:700">■ Green Bars</span> = Actual Points outrunning expected quality (flattering table) · 
+            <span style="color:#f43f5e;font-weight:700">■ Red Bars</span> = Points trailing underlying process (unrewarded / harsh table)
+          </div>
         </div>
-        <div id="leagueDivergenceChart"></div>
+        <span class="mono" style="font-size:11.5px;color:var(--muted)">Sorted by Flattery Gap (PTS − xPTS)</span>
       </div>
-      <div class="card">
-        <div class="card-header">
-          <span class="card-title">Tactical Landscape (Pressing vs Deep Box Penetration)</span>
-          <span class="chart-subtitle">PPDA vs Deep Completions (DC)</span>
-        </div>
-        <div id="leaguePressQuadrant"></div>
-      </div>
+      <div id="leagueDivergenceChart" style="width:100%;overflow-x:auto;padding-top:10px"></div>
     </div>
 
-    <!-- Row 3: Finishing & Defensive Variance Breakdown -->
+    <!-- Row 3: Tactical Landscape Quadrant (Dedicated Full-Width Card) -->
+    <div class="card" style="margin-top:20px">
+      <div class="card-header" style="flex-wrap:wrap;gap:10px;justify-content:space-between;align-items:center">
+        <div>
+          <span class="card-title">Tactical Landscape · Pressing Intensity vs Deep Box Penetration</span>
+          <div class="chart-subtitle">
+            Passes per Defensive Action (PPDA, inverted for aggressive press on right) vs Non-Cross Passes within 20 Yards (DC)
+          </div>
+        </div>
+        <span class="mono" style="font-size:11.5px;color:var(--muted)">League Baseline Crosshairs</span>
+      </div>
+      <div id="leaguePressQuadrant" style="width:100%;overflow-x:auto;padding-top:10px"></div>
+    </div>
+
+    <!-- Row 4: Finishing & Defensive Variance Breakdown -->
     ${d.variance ? `
       <div class="grid cols-2" style="margin-top:20px">
         <div class="card">
@@ -2176,31 +2187,64 @@ function drawLeagueDivergenceChart(container, rows) {
   const el = document.getElementById(container);
   if (!el || !rows || !rows.length) return;
   const sorted = [...rows].sort((a, b) => (b.xPTS_gap || 0) - (a.xPTS_gap || 0));
-  const maxGap = Math.max(...sorted.map(r => Math.abs(r.xPTS_gap || 0)), 1.0);
-  const w = 540, rowH = 19, h = sorted.length * rowH + 42;
-  const padL = 90, padR = 64, x0 = padL, x1 = w - padR;
+  const maxGap = Math.max(...sorted.map(r => Math.abs(r.xPTS_gap || 0)), 1.5);
+  const w = 1100, rowH = 34, h = sorted.length * rowH + 60;
+  const padL = 230, padR = 140, x0 = padL, x1 = w - padR;
   const midX = (x0 + x1) / 2;
 
-  let bars = "", labels = "";
+  let bars = "", labels = "", lines = "";
   sorted.forEach((r, i) => {
-    const y = 30 + i * rowH;
+    const y = 42 + i * rowH;
     const gap = r.xPTS_gap || 0;
     const isOver = gap >= 0;
-    const barLen = (Math.abs(gap) / maxGap) * ((x1 - x0) / 2 - 12);
+    const barLen = (Math.abs(gap) / maxGap) * ((x1 - x0) / 2 - 20);
     const barX = isOver ? midX : midX - barLen;
     const color = isOver ? "#10b981" : "#f43f5e";
 
-    bars += `<rect x="${barX}" y="${y - 7}" width="${Math.max(barLen, 1)}" height="13" fill="${color}" rx="2" opacity="0.85"/>`;
-    labels += `<text x="${x0 - 8}" y="${y + 3}" fill="#cbd5e1" font-size="10.5" font-weight="600" text-anchor="end">${r.team.slice(0, 11)}</text>`;
-    const valX = isOver ? midX + barLen + 5 : midX - barLen - 5;
-    const anchor = isOver ? "start" : "end";
-    labels += `<text x="${valX}" y="${y + 3}" fill="${color}" font-size="10" font-weight="700" text-anchor="${anchor}">${gap >= 0 ? '+' : ''}${fmt(gap, 1)}</text>`;
+    // Row divider
+    lines += `<line x1="${x0}" y1="${y + rowH/2 - 2}" x2="${x1}" y2="${y + rowH/2 - 2}" stroke="#1e293b" stroke-dasharray="2 4"/>`;
+
+    // Bar
+    if (Math.abs(gap) > 0.05) {
+      bars += `<rect x="${barX}" y="${y - 9}" width="${Math.max(barLen, 2)}" height="18" fill="${color}" rx="4" opacity="0.9"/>`;
+    } else {
+      bars += `<circle cx="${midX}" cy="${y}" r="3.5" fill="#64748b"/>`;
+    }
+
+    // Team Label
+    labels += `<g style="cursor:pointer" onclick="$('teamName').value='${r.team}';activateTab('team');runTeam()">
+      <text x="${x0 - 14}" y="${y - 1}" fill="#f8fafc" font-size="12.5" font-weight="700" text-anchor="end">${r.team}</text>
+      <text x="${x0 - 14}" y="${y + 13}" fill="#64748b" font-size="10" font-family="var(--mono)" text-anchor="end">${r.points || 0} pts · ${fmt(r.xPTS, 1)} xPTS</text>
+    </g>`;
+
+    // Gap Badge
+    if (isOver && Math.abs(gap) > 0.05) {
+      labels += `<rect x="${midX + barLen + 8}" y="${y - 9}" width="60" height="18" rx="4" fill="rgba(16, 185, 129, 0.15)" stroke="rgba(16, 185, 129, 0.35)"/>
+        <text x="${midX + barLen + 38}" y="${y + 4}" fill="#34d399" font-size="11.5" font-weight="800" font-family="var(--mono)" text-anchor="middle">+${fmt(gap, 1)} pts</text>`;
+    } else if (!isOver && Math.abs(gap) > 0.05) {
+      labels += `<rect x="${midX - barLen - 68}" y="${y - 9}" width="60" height="18" rx="4" fill="rgba(244, 63, 94, 0.15)" stroke="rgba(244, 63, 94, 0.35)"/>
+        <text x="${midX - barLen - 38}" y="${y + 4}" fill="#fb7185" font-size="11.5" font-weight="800" font-family="var(--mono)" text-anchor="middle">${fmt(gap, 1)} pts</text>`;
+    } else {
+      labels += `<text x="${midX + 12}" y="${y + 4}" fill="#94a3b8" font-size="11" font-family="var(--mono)" font-weight="700">0.0 pts</text>`;
+    }
   });
 
   el.innerHTML = `<svg class="timeline-svg" viewBox="0 0 ${w} ${h}">
-    <line x1="${midX}" y1="20" x2="${midX}" y2="${h - 10}" stroke="#334155" stroke-width="1.5" stroke-dasharray="3 3"/>
-    <text x="${midX - 8}" y="15" fill="#f43f5e" font-size="9.5" text-anchor="end">← Harsh Table</text>
-    <text x="${midX + 8}" y="15" fill="#10b981" font-size="9.5" text-anchor="start">Flattering Table →</text>
+    <!-- Zone Tints -->
+    <rect x="${x0}" y="24" width="${midX - x0}" height="${h - 36}" fill="rgba(244, 63, 94, 0.03)" rx="6"/>
+    <rect x="${midX}" y="24" width="${x1 - midX}" height="${h - 36}" fill="rgba(16, 185, 129, 0.03)" rx="6"/>
+
+    <!-- Grid lines -->
+    ${lines}
+
+    <!-- Center Line -->
+    <line x1="${midX}" y1="24" x2="${midX}" y2="${h - 12}" stroke="#334155" stroke-width="2" stroke-dasharray="4 4"/>
+
+    <!-- Header Banners -->
+    <text x="${x0 + (midX - x0)/2}" y="18" fill="#fb7185" font-size="11" font-weight="700" text-anchor="middle">← HARSH TABLE (Unrewarded Process / Bad Luck)</text>
+    <text x="${midX + (x1 - midX)/2}" y="18" fill="#34d399" font-size="11" font-weight="700" text-anchor="middle">FLATTERING TABLE (Points Outrunning xPTS) →</text>
+
+    <!-- Bars & Labels -->
     ${bars}${labels}
   </svg>`;
 }
@@ -2209,15 +2253,15 @@ function drawLeagueTacticalQuadrant(container, rows) {
   const el = document.getElementById(container);
   if (!el || !rows || !rows.length) return;
   const valid = rows.filter(r => (r.PPDA || 0) > 0 && (r.deep_completions || 0) > 0);
-  if (valid.length < 3) { el.innerHTML = `<div class="empty">Not enough team match data.</div>`; return; }
+  if (valid.length < 3) { el.innerHTML = `<div class="empty">Not enough team match data for tactical landscape.</div>`; return; }
 
-  const w = 540, h = Math.max(valid.length * 19 + 42, 340), padL = 46, padR = 24, padT = 28, padB = 34;
+  const w = 1100, h = 540, padL = 90, padR = 80, padT = 60, padB = 60;
   const x0 = padL, x1 = w - padR, y0 = padT, y1 = h - padB;
 
   const ppdas = valid.map(r => r.PPDA);
   const dcs = valid.map(r => r.deep_completions);
-  const minPPDA = Math.min(...ppdas) - 0.5, maxPPDA = Math.max(...ppdas) + 0.5;
-  const minDC = Math.min(...dcs) - 10, maxDC = Math.max(...dcs) + 15;
+  const minPPDA = Math.max(3, Math.min(...ppdas) - 1.2), maxPPDA = Math.max(...ppdas) + 1.5;
+  const minDC = Math.max(0, Math.min(...dcs) - 12), maxDC = Math.max(Math.max(...dcs) + 20, 25);
 
   const avgPPDA = ppdas.reduce((a, b) => a + b, 0) / ppdas.length;
   const avgDC = dcs.reduce((a, b) => a + b, 0) / dcs.length;
@@ -2228,29 +2272,71 @@ function drawLeagueTacticalQuadrant(container, rows) {
   const midX = x(avgPPDA);
   const midY = y(avgDC);
 
-  let dots = "", names = "";
+  let dots = "", tags = "";
   valid.forEach(r => {
     const px = x(r.PPDA);
     const py = y(r.deep_completions);
-    dots += hoverDot(px, py, `${r.team}\nPPDA: ${fmt(r.PPDA, 1)} · Box Passes: ${r.deep_completions}`, "#38bdf8", 4);
-    names += `<text x="${px}" y="${py - 6}" fill="#94a3b8" font-size="8.5" text-anchor="middle">${r.team.slice(0, 3).toUpperCase()}</text>`;
+    const name = r.team;
+    const tagW = Math.max(64, name.length * 7 + 16);
+
+    dots += `
+      <g style="cursor:pointer" onclick="$('teamName').value='${r.team}';activateTab('team');runTeam()">
+        <circle cx="${px}" cy="${py}" r="8" fill="rgba(56, 189, 248, 0.35)"/>
+        <circle cx="${px}" cy="${py}" r="5" fill="#38bdf8" stroke="#ffffff" stroke-width="1.5"/>
+      </g>
+    `;
+
+    // Clean pill label with background
+    tags += `
+      <g style="cursor:pointer" onclick="$('teamName').value='${r.team}';activateTab('team');runTeam()">
+        <rect x="${px - tagW/2}" y="${py - 24}" width="${tagW}" height="17" rx="4" fill="rgba(15, 23, 42, 0.9)" stroke="#334155" stroke-width="1"/>
+        <text x="${px}" y="${py - 12}" fill="#f8fafc" font-size="10.5" font-weight="700" text-anchor="middle">${name}</text>
+      </g>
+    `;
   });
 
   el.innerHTML = `<svg class="timeline-svg" viewBox="0 0 ${w} ${h}">
-    <rect x="${midX}" y="${y0}" width="${x1 - midX}" height="${midY - y0}" fill="rgba(16, 185, 129, 0.05)"/>
-    <line x1="${x0}" y1="${midY}" x2="${x1}" y2="${midY}" stroke="#334155" stroke-dasharray="2 3"/>
-    <line x1="${midX}" y1="${y0}" x2="${midX}" y2="${y1}" stroke="#334155" stroke-dasharray="2 3"/>
-    <line x1="${x0}" y1="${y1}" x2="${x1}" y2="${y1}" stroke="#1e293b"/>
-    <line x1="${x0}" y1="${y1}" x2="${x0}" y2="${y0}" stroke="#1e293b"/>
+    <!-- Quadrant Background Zones -->
+    <rect x="${midX}" y="${y0}" width="${x1 - midX}" height="${midY - y0}" fill="rgba(16, 185, 129, 0.06)" rx="4"/>
+    <rect x="${x0}" y="${y0}" width="${midX - x0}" height="${midY - y0}" fill="rgba(56, 189, 248, 0.05)" rx="4"/>
+    <rect x="${midX}" y="${midY}" width="${x1 - midX}" height="${y1 - midY}" fill="rgba(245, 158, 11, 0.05)" rx="4"/>
+    <rect x="${x0}" y="${midY}" width="${midX - x0}" height="${y1 - midY}" fill="rgba(100, 116, 139, 0.05)" rx="4"/>
 
-    <text x="${x1 - 6}" y="${y0 + 12}" fill="#10b981" font-size="9" text-anchor="end" font-weight="700">Dominant & High Press</text>
-    <text x="${x0 + 6}" y="${y0 + 12}" fill="#94a3b8" font-size="9" text-anchor="start">Direct Threat</text>
-    <text x="${x0 + 6}" y="${y1 - 6}" fill="#64748b" font-size="9" text-anchor="start">Low Block & Low DC</text>
-    <text x="${x1 - 6}" y="${y1 - 6}" fill="#94a3b8" font-size="9" text-anchor="end">High Press / Inefficient</text>
+    <!-- Crosshair Reference Lines -->
+    <line x1="${x0}" y1="${midY}" x2="${x1}" y2="${midY}" stroke="#475569" stroke-width="1.5" stroke-dasharray="4 4"/>
+    <line x1="${midX}" y1="${y0}" x2="${midX}" y2="${y1}" stroke="#475569" stroke-width="1.5" stroke-dasharray="4 4"/>
 
-    ${dots}${names}
-    <text x="${x0 + (x1 - x0)/2}" y="${h - 6}" fill="#94a3b8" font-size="9.5" text-anchor="middle">Pressing Intensity (PPDA → Lower/More Intense)</text>
-    <text x="14" y="${y0 + (y1 - y0)/2}" fill="#94a3b8" font-size="9.5" text-anchor="middle" transform="rotate(-90 14 ${y0 + (y1 - y0)/2})">Deep Completions ↑</text>
+    <!-- Main Axis Border -->
+    <line x1="${x0}" y1="${y1}" x2="${x1}" y2="${y1}" stroke="#334155" stroke-width="2"/>
+    <line x1="${x0}" y1="${y1}" x2="${x0}" y2="${y0}" stroke="#334155" stroke-width="2"/>
+
+    <!-- Quadrant Header Badges -->
+    <rect x="${x1 - 180}" y="${y0 + 10}" width="170" height="24" rx="4" fill="rgba(16, 185, 129, 0.2)" stroke="#10b981"/>
+    <text x="${x1 - 95}" y="${y0 + 26}" fill="#34d399" font-size="11" font-weight="800" text-anchor="middle">👑 Dominant & High Press</text>
+
+    <rect x="${x0 + 10}" y="${y0 + 10}" width="170" height="24" rx="4" fill="rgba(56, 189, 248, 0.2)" stroke="#38bdf8"/>
+    <text x="${x0 + 95}" y="${y0 + 26}" fill="#7dd3fc" font-size="11" font-weight="800" text-anchor="middle">⚡ Direct / Counter Threat</text>
+
+    <rect x="${x0 + 10}" y="${y1 - 34}" width="180" height="24" rx="4" fill="rgba(100, 116, 139, 0.2)" stroke="#64748b"/>
+    <text x="${x0 + 100}" y="${y1 - 18}" fill="#cbd5e1" font-size="11" font-weight="800" text-anchor="middle">🛡️ Low Block & Low Infiltration</text>
+
+    <rect x="${x1 - 200}" y="${y1 - 34}" width="190" height="24" rx="4" fill="rgba(245, 158, 11, 0.2)" stroke="#f59e0b"/>
+    <text x="${x1 - 105}" y="${y1 - 18}" fill="#fcd34d" font-size="11" font-weight="800" text-anchor="middle">⚠️ High Press / Inefficient Threat</text>
+
+    <!-- Crosshair Badges -->
+    <text x="${x1 - 8}" y="${midY - 6}" fill="#94a3b8" font-size="10" font-family="var(--mono)" text-anchor="end">Avg DC: ${fmt(avgDC, 1)}</text>
+    <text x="${midX + 6}" y="${y0 + 46}" fill="#94a3b8" font-size="10" font-family="var(--mono)">Avg PPDA: ${fmt(avgPPDA, 1)}</text>
+
+    <!-- Club Nodes and Tags -->
+    ${dots}${tags}
+
+    <!-- Axis Labels -->
+    <text x="${x0 + (x1 - x0)/2}" y="${h - 16}" fill="#cbd5e1" font-size="12" font-weight="700" text-anchor="middle">
+      ← Passive Pressing (Higher PPDA) ································ Aggressive High Press (Lower PPDA) →
+    </text>
+    <text x="24" y="${y0 + (y1 - y0)/2}" fill="#cbd5e1" font-size="12" font-weight="700" text-anchor="middle" transform="rotate(-90 24 ${y0 + (y1 - y0)/2})">
+      Deep Box Completions (DC) ↑
+    </text>
   </svg>`;
 }
 
