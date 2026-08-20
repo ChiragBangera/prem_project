@@ -949,7 +949,7 @@ table tr:hover td.table-sticky-team {
   color: var(--muted);
 }
 
-/* Percentile Bar (Inside Table) */
+/* Percentile Bar (Inside Table & Cards) */
 .pct-bar-cell {
   display: flex;
   align-items: center;
@@ -972,6 +972,38 @@ table tr:hover td.table-sticky-team {
 .pct-fill.tier-good { background: #38bdf8; }
 .pct-fill.tier-avg { background: #64748b; }
 .pct-fill.tier-low { background: #475569; }
+
+.pct-breakdown-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+  font-size: 12.5px;
+}
+.pct-breakdown-row .label-col {
+  width: 150px;
+  color: var(--text);
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.pct-breakdown-row .val-col {
+  width: 70px;
+  text-align: right;
+  font-family: var(--mono);
+  color: var(--text-bright);
+}
+.pct-breakdown-row .bar-col {
+  flex: 1;
+  margin: 0 14px;
+}
+
+.chart-subtitle {
+  font-size: 11.5px;
+  color: var(--muted);
+  margin-top: 2px;
+}
 
 /* ─── KV Grids ───────────────────────────────────────────── */
 .kv {

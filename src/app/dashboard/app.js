@@ -1057,7 +1057,7 @@ function renderPlayer(node, d) {
           <span class="card-title">Finishing & Shot Quality Diagnostics</span>
         </div>
         ${finishing(d.finishing_overperformance)}
-        <div style="margin-top:16px">${shotSelection(d.shot_selection)}</div>
+        <div style="margin-top:16px">${shotSelection(d.shot_selection, shots)}</div>
       </div>
 
       <div class="card">
@@ -1214,6 +1214,26 @@ function renderCareer(node, d) {
       </div>
       <div id="careerChart"></div>
     </div>
+
+    <!-- Dual Career Evolution Analytics -->
+    <div class="grid cols-2" style="margin-top:20px">
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Finishing Evolution · Goals vs Expected Goals (xG)</span>
+          <span class="chart-subtitle">${present.length} active seasons</span>
+        </div>
+        <div id="careerGoalsVsXgChart"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Role & Build-up Evolution · xGChain vs xGBuildup /90</span>
+          <span class="chart-subtitle">Progression vs Finishing Load</span>
+        </div>
+        <div id="careerInvolvementChart"></div>
+      </div>
+    </div>
+
     <div class="card" style="margin-top:20px">
       <div class="card-header"><span class="card-title">Multi-Season Records</span></div>
       <table><thead><tr><th>Season</th><th>Team</th><th>Pos</th><th class="num">Games</th><th class="num">Min</th><th class="num">${term("goals")}</th><th class="num">${term("xG")}</th><th class="num">${term("npxG")}</th><th class="num">${term("assists")}</th><th class="num">${term("xA")}</th><th class="num">${term("shots")}</th><th class="num">${term("xG_per_shot")}</th><th class="num">${term("conversion")}</th></tr></thead><tbody>
@@ -1232,6 +1252,8 @@ function renderCareer(node, d) {
   const draw = () => drawCareerChart("careerChart", present, $("careerMetric").value);
   $("careerMetric").addEventListener("change", draw);
   draw();
+  drawCareerGoalsVsXg("careerGoalsVsXgChart", present);
+  drawCareerInvolvementEvolution("careerInvolvementChart", present);
 }
 
 function drawCareerChart(container, rows, metricKey) {
@@ -1253,6 +1275,69 @@ function drawCareerChart(container, rows, metricKey) {
     <path d="${path}" fill="none" stroke="#38bdf8" stroke-width="2.5"/>${dots}
     ${labels}
     <text x="${x0}" y="${y0}" fill="#94a3b8" font-size="11">${entry.label || metricKey} by Season</text>
+  </svg>`;
+}
+
+function drawCareerGoalsVsXg(container, rows) {
+  const el = document.getElementById(container);
+  if (!el) return;
+  if (rows.length < 2) { el.innerHTML = `<div class="empty">Not enough seasons present.</div>`; return; }
+  const w = 540, h = 240, padL = 46, pad = 30, x0 = padL, x1 = w - pad, y0 = 24, y1 = h - 36;
+  const maxVal = Math.max(...rows.flatMap(r => [r.goals || 0, r.xG || 0]), 1);
+  const n = rows.length;
+  const colW = (x1 - x0) / n;
+  const barW = Math.min(22, colW * 0.45);
+
+  let bars = "", dots = "", labels = "";
+  const pts = [];
+
+  rows.forEach((r, i) => {
+    const cx = x0 + i * colW + colW / 2;
+    const gH = ((r.goals || 0) / maxVal) * (y1 - y0);
+    const gY = y1 - gH;
+    const xgY = y1 - ((r.xG || 0) / maxVal) * (y1 - y0);
+    const diff = (r.goals || 0) - (r.xG || 0);
+
+    bars += `<rect x="${cx - barW}" y="${gY}" width="${barW}" height="${gH}" fill="#38bdf8" rx="2"/>`;
+    pts.push({ x: cx, y: xgY });
+    dots += hoverDot(cx, xgY, `${r.season}: ${r.goals || 0} Goals · ${fmt(r.xG, 2)} xG (Gap: ${diff >= 0 ? '+' : ''}${fmt(diff, 2)})`, "#10b981", 4);
+    labels += `<text x="${cx}" y="${y1 + 16}" fill="#94a3b8" font-size="10" text-anchor="middle">${r.season}</text>`;
+  });
+
+  const path = pts.map((p, i) => `${i ? 'L' : 'M'}${p.x},${p.y}`).join(' ');
+  const xgLine = `<path d="${path}" fill="none" stroke="#10b981" stroke-width="2.5" stroke-dasharray="4 3"/>`;
+
+  el.innerHTML = `<svg class="timeline-svg" viewBox="0 0 ${w} ${h}">
+    <line x1="${x0}" y1="${y1}" x2="${x1}" y2="${y1}" stroke="#1e293b"/>
+    <line x1="${x0}" y1="${y1}" x2="${x0}" y2="${y0}" stroke="#1e293b"/>
+    ${bars}${xgLine}${dots}${labels}
+    <text x="${x0}" y="${y0 - 6}" fill="#94a3b8" font-size="10.5"><tspan fill="#38bdf8">■ Goals Scored</tspan>   <tspan fill="#10b981">- - Expected Goals (xG)</tspan></text>
+  </svg>`;
+}
+
+function drawCareerInvolvementEvolution(container, rows) {
+  const el = document.getElementById(container);
+  if (!el) return;
+  if (rows.length < 2) { el.innerHTML = `<div class="empty">Not enough seasons present.</div>`; return; }
+  const w = 540, h = 240, padL = 46, pad = 30, x0 = padL, x1 = w - pad, y0 = 24, y1 = h - 36;
+  const maxVal = Math.max(...rows.flatMap(r => [r.xGChain_per90 || 0, r.xGBuildup_per90 || 0]), 0.1);
+  const x = (i) => x0 + (i * (x1 - x0)) / Math.max(rows.length - 1, 1);
+  const y = (v) => y1 - ((v || 0) / maxVal) * (y1 - y0);
+
+  const chainPts = rows.map((r, i) => `${i ? 'L' : 'M'}${x(i)},${y(r.xGChain_per90)}`).join(' ');
+  const buildPts = rows.map((r, i) => `${i ? 'L' : 'M'}${x(i)},${y(r.xGBuildup_per90)}`).join(' ');
+
+  const chainDots = rows.map((r, i) => hoverDot(x(i), y(r.xGChain_per90), `${r.season}\nxGChain/90: ${fmt(r.xGChain_per90, 2)}`, "#38bdf8", 3.5)).join('');
+  const buildDots = rows.map((r, i) => hoverDot(x(i), y(r.xGBuildup_per90), `${r.season}\nxGBuildup/90: ${fmt(r.xGBuildup_per90, 2)}`, "#f59e0b", 3.5)).join('');
+  const labels = rows.map((r, i) => `<text x="${x(i)}" y="${y1 + 16}" fill="#94a3b8" font-size="10" text-anchor="middle">${r.season}</text>`).join('');
+
+  el.innerHTML = `<svg class="timeline-svg" viewBox="0 0 ${w} ${h}">
+    <line x1="${x0}" y1="${y1}" x2="${x1}" y2="${y1}" stroke="#1e293b"/>
+    <line x1="${x0}" y1="${y1}" x2="${x0}" y2="${y0}" stroke="#1e293b"/>
+    <path d="${chainPts}" fill="none" stroke="#38bdf8" stroke-width="2.5"/>
+    <path d="${buildPts}" fill="none" stroke="#f59e0b" stroke-width="2.5"/>
+    ${chainDots}${buildDots}${labels}
+    <text x="${x0}" y="${y0 - 6}" fill="#94a3b8" font-size="10.5"><tspan fill="#38bdf8">— xGChain /90</tspan>   <tspan fill="#f59e0b">— xGBuildup /90</tspan></text>
   </svg>`;
 }
 
@@ -1370,7 +1455,25 @@ function renderTeam(node, d) {
       </div>
     </div>
 
-    <!-- Row 2: Matchday Progression Trajectory -->
+    <!-- Row 2: Tactical DNA & Process Balance -->
+    <div class="grid cols-2" style="margin-top:20px">
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Team Tactical DNA (6-Pillar Radar Profile)</span>
+          <span class="chart-subtitle">Process Fingerprint vs League Scale</span>
+        </div>
+        <div id="teamTacticalRadar"></div>
+      </div>
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Tactical Process & Territorial Balance</span>
+          <span class="chart-subtitle">${s.matches} matches · Process ratios</span>
+        </div>
+        ${teamTacticalBreakdownHTML(s)}
+      </div>
+    </div>
+
+    <!-- Row 3: Matchday Progression Trajectory -->
     ${seasonComparisonSection(d)}
 
     <!-- Row 3: 5-Match Rolling Trend Charts -->
@@ -1497,9 +1600,119 @@ function renderTeam(node, d) {
 
   drawSeasonComparisonCharts(d);
   drawLuckChart("luckChart", d.luck_curve);
+  drawTeamTacticalRadar("teamTacticalRadar", s);
   const drawTrend = () => drawTrendChart("trendChart", d.metric_trends, $("trendMetric").value);
   $("trendMetric").addEventListener("change", drawTrend);
   drawTrend();
+}
+
+function teamTacticalBreakdownHTML(s) {
+  const m = Math.max(s.matches || 1, 1);
+  const npxgShare = (s.npxG && s.xG) ? (s.npxG / s.xG) * 100 : 90;
+  const dcRatio = (s.deep_completions && s.deep_completions_allowed) ? (s.deep_completions / (s.deep_completions + s.deep_completions_allowed)) * 100 : 50;
+
+  return `
+    <div style="padding:4px 0">
+      <div class="pct-breakdown-row">
+        <div class="label-col"><span>⚽ Attack (xG/g)</span></div>
+        <div class="bar-col">
+          <div class="pct-track"><div class="pct-fill tier-elite" style="width:${Math.min(100, ((s.xG_per_game || 1.3) / 2.5) * 100)}%"></div></div>
+        </div>
+        <div class="val-col">${fmt(s.xG_per_game, 2)}</div>
+      </div>
+
+      <div class="pct-breakdown-row">
+        <div class="label-col"><span>🛡️ Defense (xGA/g)</span></div>
+        <div class="bar-col">
+          <div class="pct-track"><div class="pct-fill tier-good" style="width:${Math.min(100, Math.max(5, (2.5 - (s.xGA_per_game || 1.3)) / 2.0 * 100))}%"></div></div>
+        </div>
+        <div class="val-col">${fmt(s.xGA_per_game, 2)}</div>
+      </div>
+
+      <div class="pct-breakdown-row">
+        <div class="label-col"><span>⚡ Press (PPDA)</span></div>
+        <div class="bar-col">
+          <div class="pct-track"><div class="pct-fill tier-elite" style="width:${Math.min(100, Math.max(5, (18 - (s.PPDA || 12)) / 11 * 100))}%"></div></div>
+        </div>
+        <div class="val-col">${fmt(s.PPDA, 1)}</div>
+      </div>
+
+      <div class="pct-breakdown-row">
+        <div class="label-col"><span>🎯 Box Penetration</span></div>
+        <div class="bar-col">
+          <div class="pct-track"><div class="pct-fill tier-good" style="width:${Math.min(100, ((s.deep_completions || 0) / m / 12) * 100)}%"></div></div>
+        </div>
+        <div class="val-col">${fmt((s.deep_completions || 0) / m, 1)}/g</div>
+      </div>
+
+      <div class="pct-breakdown-row">
+        <div class="label-col"><span>📊 Open-Play Dominance</span></div>
+        <div class="bar-col">
+          <div class="pct-track"><div class="pct-fill tier-elite" style="width:${Math.min(100, Math.max(5, ((s.npxGD || 0) + 20) / 50 * 100))}%"></div></div>
+        </div>
+        <div class="val-col">${(s.npxGD || 0) >= 0 ? '+' : ''}${fmt(s.npxGD, 1)}</div>
+      </div>
+
+      <div class="hint" style="margin-top:12px">
+        Non-penalty open play represents <strong>${fmt(npxgShare, 0)}%</strong> of attacking threat. Box penetration control is <strong>${fmt(dcRatio, 1)}%</strong> (${s.deep_completions || 0} for vs ${s.deep_completions_allowed || 0} conceded).
+      </div>
+    </div>
+  `;
+}
+
+function drawTeamTacticalRadar(container, style) {
+  const el = document.getElementById(container);
+  if (!el || !style) return;
+  const size = 320, cx = size / 2, cy = size / 2, r = 105;
+
+  const m = Math.max(style.matches || 1, 1);
+  const xgG = style.xG_per_game || (style.xG ? style.xG / m : 1.3);
+  const xgaG = style.xGA_per_game || (style.xGA ? style.xGA / m : 1.3);
+  const npxgd = style.npxGD || 0;
+  const ppda = style.PPDA || 12;
+  const oppda = style.OPPDA || 12;
+  const dcG = (style.deep_completions || 0) / m;
+
+  const clamp = (v) => Math.max(8, Math.min(96, v));
+  const metrics = [
+    { label: "Attack (xG)", pct: clamp((xgG / 2.5) * 100) },
+    { label: "Defense (xGA)", pct: clamp(((2.5 - xgaG) / 2.0) * 100) },
+    { label: "NPxGD Process", pct: clamp(((npxgd + 20) / 50) * 100) },
+    { label: "Press (PPDA)", pct: clamp(((18 - ppda) / 11) * 100) },
+    { label: "Press Resist", pct: clamp(((oppda - 7) / 11) * 100) },
+    { label: "Box Threat (DC)", pct: clamp((dcG / 12) * 100) },
+  ];
+
+  const n = metrics.length;
+  const ang = (i) => -Math.PI / 2 + (i * 2 * Math.PI) / n;
+  const pt = (i, rad) => [cx + rad * Math.cos(ang(i)), cy + rad * Math.sin(ang(i))];
+
+  let rings = "", spokes = "", labels = "";
+  for (let g = 1; g <= 4; g++) {
+    const rr = r * g / 4;
+    let pts = ""; for (let i = 0; i < n; i++) { const [x, y] = pt(i, rr); pts += `${x},${y} `; }
+    rings += `<polygon points="${pts}" fill="none" stroke="#1e293b" stroke-width="1"/>`;
+  }
+  for (let i = 0; i < n; i++) {
+    const [x, y] = pt(i, r);
+    spokes += `<line x1="${cx}" y1="${cy}" x2="${x}" y2="${y}" stroke="#1e293b" stroke-width="1"/>`;
+    const [lx, ly] = pt(i, r + 18);
+    labels += `<text x="${lx}" y="${ly}" fill="#94a3b8" font-size="9.5" font-weight="600" text-anchor="middle" dominant-baseline="middle">${metrics[i].label}</text>`;
+  }
+
+  let poly = ""; const vals = [];
+  for (let i = 0; i < n; i++) {
+    const rr = r * metrics[i].pct / 100;
+    const [x, y] = pt(i, rr);
+    poly += `${x},${y} `;
+    vals.push(`<circle cx="${x}" cy="${y}" r="3.5" fill="#38bdf8"/>`);
+  }
+
+  el.innerHTML = `<svg class="radar-svg" viewBox="0 0 ${size} ${size}">
+    ${rings}${spokes}
+    <polygon points="${poly}" fill="rgba(56,189,248,0.25)" stroke="#38bdf8" stroke-width="2.5"/>
+    ${labels}${vals.join("")}
+  </svg>`;
 }
 
 function halfSplitTable(hs) {
@@ -1632,12 +1845,49 @@ function finishing(f) {
   </div><div class="hint">${f.interpretation}</div>`;
 }
 
-function shotSelection(s) {
+function shotSelection(s, shots = []) {
   return `<div class="kv">
     <span class="k">${term("shots")}</span><span class="v">${fmt(s.shots, 0)} · ${fmt(s.shots_per90, 2)}/90</span>
     <span class="k">${term("xG_per_shot")}</span><span class="v">${s.xG_per_shot == null ? "N/A" : fmt(s.xG_per_shot, 3)}</span>
     <span class="k">Non-Penalty xG / Shot</span><span class="v">${s.npxG_per_shot == null ? "N/A" : fmt(s.npxG_per_shot, 3)}</span>
-  </div><div class="hint">${s.interpretation}</div>`;
+  </div>
+  ${playerShotMixBars(shots)}
+  <div class="hint" style="margin-top:10px">${s.interpretation}</div>`;
+}
+
+function playerShotMixBars(shots) {
+  if (!shots || !shots.length) return "";
+  const counts = { "Open Play": 0, "From Corner": 0, "Set Piece": 0, "Direct FK": 0, "Penalty": 0 };
+  shots.forEach(s => {
+    const sit = s.situation === "OpenPlay" ? "Open Play" :
+                s.situation === "FromCorner" ? "From Corner" :
+                s.situation === "SetPiece" ? "Set Piece" :
+                s.situation === "DirectFreekick" ? "Direct FK" :
+                s.situation === "Penalty" ? "Penalty" : s.situation;
+    counts[sit] = (counts[sit] || 0) + 1;
+  });
+  const total = shots.length;
+  const sitItems = Object.entries(counts).filter(([_, c]) => c > 0);
+  if (!sitItems.length) return "";
+
+  const colors = ["#38bdf8", "#10b981", "#f59e0b", "#a855f7", "#ec4899", "#64748b"];
+
+  return `
+    <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border)">
+      <div style="font-size:11.5px;font-weight:700;color:var(--text);margin-bottom:6px">Shot Situations & Creation Mix</div>
+      <div style="display:flex;gap:3px;margin-bottom:8px;height:9px;border-radius:var(--radius-full);overflow:hidden;background:var(--bg)">
+        ${sitItems.map(([sit, count], idx) => {
+          const p = (count / total) * 100;
+          return `<div style="width:${p}%;background:${colors[idx % colors.length]};height:100%" title="${sit}: ${count} (${fmt(p, 1)}%)"></div>`;
+        }).join("")}
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:10px;font-size:11px;color:var(--muted)">
+        ${sitItems.map(([sit, count], idx) => {
+          return `<span style="display:flex;align-items:center;gap:4px"><span style="display:inline-block;width:7px;height:7px;border-radius:2px;background:${colors[idx % colors.length]}"></span>${sit}: <strong>${fmt((count / total) * 100, 0)}%</strong> (${count})</span>`;
+        }).join("")}
+      </div>
+    </div>
+  `;
 }
 
 const RADAR_LABEL_KEYS = { Goals: "goals", xG: "xG", "NP xG": "npxG", Assists: "assists", xA: "xA", Shots: "shots", "Key passes": "key_passes", xGChain: "xG_chain", xGBuildup: "xG_buildup" };
@@ -1857,7 +2107,25 @@ function renderLeague(node, d, notice = "") {
       <div class="hint" style="margin-top:12px">${d.is_lying.interpretation}</div>
     </div>
 
-    <!-- Row 2: Finishing & Defensive Variance Breakdown -->
+    <!-- Row 2: Tactical Visualizations (Points vs xPTS Divergence & Pressing vs Penetration Quadrant) -->
+    <div class="grid cols-2" style="margin-top:20px">
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Points vs xPTS Divergence (Table Flattery vs Harshness)</span>
+          <span class="chart-subtitle">Green = Overperforming Luck · Red = Unrewarded Process</span>
+        </div>
+        <div id="leagueDivergenceChart"></div>
+      </div>
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Tactical Landscape (Pressing vs Deep Box Penetration)</span>
+          <span class="chart-subtitle">PPDA vs Deep Completions (DC)</span>
+        </div>
+        <div id="leaguePressQuadrant"></div>
+      </div>
+    </div>
+
+    <!-- Row 3: Finishing & Defensive Variance Breakdown -->
     ${d.variance ? `
       <div class="grid cols-2" style="margin-top:20px">
         <div class="card">
@@ -1899,6 +2167,91 @@ function renderLeague(node, d, notice = "") {
     <!-- Limitations -->
     <div class="caveat" style="margin-top:20px"><strong>Limitations & Analytical Honesty.</strong><ul>${d.limitations.map((l) => `<li>${l}</li>`).join("")}</ul></div>
   `;
+
+  drawLeagueDivergenceChart("leagueDivergenceChart", rawRows);
+  drawLeagueTacticalQuadrant("leaguePressQuadrant", rawRows);
+}
+
+function drawLeagueDivergenceChart(container, rows) {
+  const el = document.getElementById(container);
+  if (!el || !rows || !rows.length) return;
+  const sorted = [...rows].sort((a, b) => (b.xPTS_gap || 0) - (a.xPTS_gap || 0));
+  const maxGap = Math.max(...sorted.map(r => Math.abs(r.xPTS_gap || 0)), 1.0);
+  const w = 540, rowH = 19, h = sorted.length * rowH + 42;
+  const padL = 90, padR = 64, x0 = padL, x1 = w - padR;
+  const midX = (x0 + x1) / 2;
+
+  let bars = "", labels = "";
+  sorted.forEach((r, i) => {
+    const y = 30 + i * rowH;
+    const gap = r.xPTS_gap || 0;
+    const isOver = gap >= 0;
+    const barLen = (Math.abs(gap) / maxGap) * ((x1 - x0) / 2 - 12);
+    const barX = isOver ? midX : midX - barLen;
+    const color = isOver ? "#10b981" : "#f43f5e";
+
+    bars += `<rect x="${barX}" y="${y - 7}" width="${Math.max(barLen, 1)}" height="13" fill="${color}" rx="2" opacity="0.85"/>`;
+    labels += `<text x="${x0 - 8}" y="${y + 3}" fill="#cbd5e1" font-size="10.5" font-weight="600" text-anchor="end">${r.team.slice(0, 11)}</text>`;
+    const valX = isOver ? midX + barLen + 5 : midX - barLen - 5;
+    const anchor = isOver ? "start" : "end";
+    labels += `<text x="${valX}" y="${y + 3}" fill="${color}" font-size="10" font-weight="700" text-anchor="${anchor}">${gap >= 0 ? '+' : ''}${fmt(gap, 1)}</text>`;
+  });
+
+  el.innerHTML = `<svg class="timeline-svg" viewBox="0 0 ${w} ${h}">
+    <line x1="${midX}" y1="20" x2="${midX}" y2="${h - 10}" stroke="#334155" stroke-width="1.5" stroke-dasharray="3 3"/>
+    <text x="${midX - 8}" y="15" fill="#f43f5e" font-size="9.5" text-anchor="end">← Harsh Table</text>
+    <text x="${midX + 8}" y="15" fill="#10b981" font-size="9.5" text-anchor="start">Flattering Table →</text>
+    ${bars}${labels}
+  </svg>`;
+}
+
+function drawLeagueTacticalQuadrant(container, rows) {
+  const el = document.getElementById(container);
+  if (!el || !rows || !rows.length) return;
+  const valid = rows.filter(r => (r.PPDA || 0) > 0 && (r.deep_completions || 0) > 0);
+  if (valid.length < 3) { el.innerHTML = `<div class="empty">Not enough team match data.</div>`; return; }
+
+  const w = 540, h = Math.max(valid.length * 19 + 42, 340), padL = 46, padR = 24, padT = 28, padB = 34;
+  const x0 = padL, x1 = w - padR, y0 = padT, y1 = h - padB;
+
+  const ppdas = valid.map(r => r.PPDA);
+  const dcs = valid.map(r => r.deep_completions);
+  const minPPDA = Math.min(...ppdas) - 0.5, maxPPDA = Math.max(...ppdas) + 0.5;
+  const minDC = Math.min(...dcs) - 10, maxDC = Math.max(...dcs) + 15;
+
+  const avgPPDA = ppdas.reduce((a, b) => a + b, 0) / ppdas.length;
+  const avgDC = dcs.reduce((a, b) => a + b, 0) / dcs.length;
+
+  const x = (ppda) => x1 - ((ppda - minPPDA) / (maxPPDA - minPPDA)) * (x1 - x0);
+  const y = (dc) => y1 - ((dc - minDC) / (maxDC - minDC)) * (y1 - y0);
+
+  const midX = x(avgPPDA);
+  const midY = y(avgDC);
+
+  let dots = "", names = "";
+  valid.forEach(r => {
+    const px = x(r.PPDA);
+    const py = y(r.deep_completions);
+    dots += hoverDot(px, py, `${r.team}\nPPDA: ${fmt(r.PPDA, 1)} · Box Passes: ${r.deep_completions}`, "#38bdf8", 4);
+    names += `<text x="${px}" y="${py - 6}" fill="#94a3b8" font-size="8.5" text-anchor="middle">${r.team.slice(0, 3).toUpperCase()}</text>`;
+  });
+
+  el.innerHTML = `<svg class="timeline-svg" viewBox="0 0 ${w} ${h}">
+    <rect x="${midX}" y="${y0}" width="${x1 - midX}" height="${midY - y0}" fill="rgba(16, 185, 129, 0.05)"/>
+    <line x1="${x0}" y1="${midY}" x2="${x1}" y2="${midY}" stroke="#334155" stroke-dasharray="2 3"/>
+    <line x1="${midX}" y1="${y0}" x2="${midX}" y2="${y1}" stroke="#334155" stroke-dasharray="2 3"/>
+    <line x1="${x0}" y1="${y1}" x2="${x1}" y2="${y1}" stroke="#1e293b"/>
+    <line x1="${x0}" y1="${y1}" x2="${x0}" y2="${y0}" stroke="#1e293b"/>
+
+    <text x="${x1 - 6}" y="${y0 + 12}" fill="#10b981" font-size="9" text-anchor="end" font-weight="700">Dominant & High Press</text>
+    <text x="${x0 + 6}" y="${y0 + 12}" fill="#94a3b8" font-size="9" text-anchor="start">Direct Threat</text>
+    <text x="${x0 + 6}" y="${y1 - 6}" fill="#64748b" font-size="9" text-anchor="start">Low Block & Low DC</text>
+    <text x="${x1 - 6}" y="${y1 - 6}" fill="#94a3b8" font-size="9" text-anchor="end">High Press / Inefficient</text>
+
+    ${dots}${names}
+    <text x="${x0 + (x1 - x0)/2}" y="${h - 6}" fill="#94a3b8" font-size="9.5" text-anchor="middle">Pressing Intensity (PPDA → Lower/More Intense)</text>
+    <text x="14" y="${y0 + (y1 - y0)/2}" fill="#94a3b8" font-size="9.5" text-anchor="middle" transform="rotate(-90 14 ${y0 + (y1 - y0)/2})">Deep Completions ↑</text>
+  </svg>`;
 }
 
 function setLeagueViewMode(mode) {
