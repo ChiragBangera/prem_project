@@ -778,7 +778,7 @@ async function loadRounds() {
   const season = seasonOf("matchSeason");
   const key = `${state.league}_${season}`;
   if (state.roundsLoadedFor === key && state.roundsData) {
-    renderRecentFixtures(state.roundsData);
+    renderMatchMode();
     return;
   }
 
@@ -793,7 +793,7 @@ async function loadRounds() {
 
     if ($("fixtureCountBadge")) $("fixtureCountBadge").textContent = `${d.n_played} Played`;
 
-    renderRecentFixtures(d);
+    renderMatchMode();
 
     const rounds = d.rounds || [];
     if (rounds.length) {
@@ -809,6 +809,124 @@ async function loadRounds() {
     if ($("matchRecentFeed")) $("matchRecentFeed").innerHTML = `<div class="error">Failed to load fixtures: ${e.message}</div>`;
     if ($("roundSelect")) $("roundSelect").innerHTML = `<option value="">Error loading rounds</option>`;
   }
+}
+
+// ==========================================================
+// MATCH MODE: Recent Results | Gameweek Board (Phase 3)
+// ==========================================================
+state.matchMode = "recent"; // "recent" | "board"
+state.liveData = null;
+state.liveLoadedFor = null;
+state.boardRound = null;
+
+function renderMatchMode() {
+  if (state.matchMode === "board") {
+    loadLiveBoard();
+  } else if (state.roundsData) {
+    renderRecentFixtures(state.roundsData);
+    renderBoardToggle();
+  }
+}
+
+async function loadLiveBoard() {
+  const season = seasonOf("matchSeason");
+  const key = `${state.league}_${season}`;
+  const feed = $("matchRecentFeed");
+  if (!feed) return;
+  renderBoardToggle();
+  if (state.liveLoadedFor === key && state.liveData) {
+    renderGameweekBoard(state.liveData);
+    return;
+  }
+  feed.innerHTML = `<div class="loading"><div class="loading-pulse"><span></span><span></span><span></span></div><span>Loading gameweek board…</span></div>`;
+  try {
+    const d = await api("/api/v1/matches/live", { league_name: state.league, season });
+    state.liveData = d;
+    state.liveLoadedFor = key;
+    renderGameweekBoard(d);
+  } catch (e) {
+    feed.innerHTML = `<div class="error">Failed to load board: ${e.message}</div>`;
+  }
+}
+
+window.setMatchMode = function (mode) {
+  state.matchMode = mode;
+  renderMatchMode();
+};
+
+window.selectBoardRound = function (r) {
+  state.boardRound = r;
+  if (state.liveData) renderGameweekBoard(state.liveData);
+};
+
+function renderBoardToggle() {
+  const host = $("matchModeToggle");
+  if (!host) return;
+  host.innerHTML = `
+    <button class="view-pill-btn ${state.matchMode === "recent" ? "active" : ""}" onclick="setMatchMode('recent')">Recent Results</button>
+    <button class="view-pill-btn ${state.matchMode === "board" ? "active" : ""}" onclick="setMatchMode('board')">Gameweek Board</button>
+  `;
+}
+
+const BOARD_STATUS_LABEL = { "pre-season": "Season not started", "in-progress": "Season in progress", "complete": "Season complete" };
+
+function renderGameweekBoard(d) {
+  const feed = $("matchRecentFeed");
+  if (!feed) return;
+  const rounds = d.rounds || [];
+  if (!rounds.length) {
+    feed.innerHTML = `<div class="empty" style="padding:28px 16px;grid-column:1/-1"><div class="empty-title">${LEAGUE_LABEL[state.league] || state.league} ${d.season} — No Fixtures Published</div><div class="empty-sub">Understat has no fixture data for this season yet.</div></div>`;
+    return;
+  }
+  if (!state.boardRound || !rounds.some((r) => r.round === state.boardRound)) {
+    state.boardRound = d.round_current != null ? d.round_current : rounds[0].round;
+  }
+  const sel = rounds.find((r) => r.round === state.boardRound) || rounds[0];
+  const pills = rounds.map((r) => `
+    <button class="view-pill-btn ${r.round === state.boardRound ? "active" : ""}"
+      style="${r.complete ? "" : "opacity:0.55"}${r.round === d.round_current && d.season_status !== "complete" ? ";box-shadow:0 0 0 2px rgba(56,189,248,0.5)" : ""}"
+      onclick="selectBoardRound(${r.round})" title="${BOARD_STATUS_LABEL[d.season_status] || ""} · Round ${r.round}${r.complete ? " · complete" : " · upcoming"}">${r.round}</button>
+  `).join("");
+
+  const cards = sel.matches.map((m) => {
+    if (m.isResult) {
+      const hw = m.home_goals > m.away_goals, aw = m.away_goals > m.home_goals;
+      return `
+        <div class="fixture-card" data-match-id="${m.id}" onclick="loadMatchById('${m.id}')">
+          <div class="fixture-top"><span>${m.date}</span><span class="badge good">FT</span></div>
+          <div class="fixture-teams">
+            <div class="fixture-team-row ${hw ? "winner" : ""}"><span>${m.home}</span><span class="fixture-score">${m.home_goals ?? "—"}</span></div>
+            <div class="fixture-team-row ${aw ? "winner" : ""}"><span>${m.away}</span><span class="fixture-score">${m.away_goals ?? "—"}</span></div>
+          </div>
+          <div class="fixture-footer"><span class="fixture-xg-badge">xG: ${fmt(m.home_xg)} — ${fmt(m.away_xg)}</span><span style="color:var(--accent);font-weight:700">Deep Dive →</span></div>
+        </div>`;
+    }
+    const f = m.forecast;
+    const fc = f && f.w != null ? `<span class="fixture-xg-badge" style="color:var(--muted)">H ${Math.round(f.w * 100)}% · D ${Math.round(f.d * 100)}% · A ${Math.round(f.l * 100)}% — Understat model</span>` : `<span class="fixture-xg-badge" style="color:var(--muted)">Forecast unavailable</span>`;
+    return `
+      <div class="fixture-card" style="cursor:default;opacity:0.85" title="Not yet played — forecasts in Predict & Sim">
+        <div class="fixture-top"><span>${m.date}</span><span class="badge">Upcoming</span></div>
+        <div class="fixture-teams">
+          <div class="fixture-team-row"><span>${m.home}</span><span class="fixture-score">—</span></div>
+          <div class="fixture-team-row"><span>${m.away}</span><span class="fixture-score">—</span></div>
+        </div>
+        <div class="fixture-footer">${fc}<span style="color:var(--muted)">Preview</span></div>
+      </div>`;
+  }).join("");
+
+  feed.innerHTML = `
+    <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:14px;grid-column:1/-1">
+      <span style="font-size:11.5px;font-weight:700;color:var(--muted);margin-right:4px">Round:</span>
+      ${pills}
+    </div>
+    <div style="grid-column:1/-1;margin-bottom:10px;display:flex;flex-wrap:wrap;gap:8px;align-items:center">
+      <span class="hero-pill accent" style="font-size:11px">${BOARD_STATUS_LABEL[d.season_status] || ""} · Round ${sel.round} ${sel.complete ? "(complete)" : "(upcoming)"}</span>
+      <span style="font-size:11px;color:var(--muted)">${d.note}</span>
+    </div>
+    <div style="grid-column:1/-1;display:grid;gap:14px;grid-template-columns:repeat(auto-fill,minmax(280px,1fr))">
+      ${cards}
+    </div>
+  `;
 }
 
 function renderRecentFixtures(d) {

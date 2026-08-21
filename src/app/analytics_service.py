@@ -957,6 +957,63 @@ class AnalyticsService:
             "note": "Round = the home team's nth league match of the season (Understat has no official gameweek label). Forecast from Understat dates.forecast where available.",
         }
 
+    async def match_live(self, league_name: str = "EPL", season: int = DEFAULT_SEASON) -> dict:
+        """Season-state gameweek board: played and upcoming rounds merged per fixture.
+
+        Honest scope: Understat has no kickoff times or in-play data, so "live"
+        means season-state aware (pre-season / in-progress / complete). Round
+        stays the home team's nth league match; forecast is Understat's model.
+        """
+        base = await self.match_rounds(league_name, season)
+
+        merged: dict[int, dict] = {}
+        for r in base.get("rounds", []):
+            merged[r["round"]] = {
+                "round": r["round"],
+                "complete": True,
+                "matches": [{**m, "isResult": True} for m in r.get("matches", [])],
+            }
+        for r in base.get("upcoming_by_round", []):
+            rn = r["round"]
+            if rn in merged:
+                merged[rn]["matches"].extend(r.get("matches", []))
+                merged[rn]["complete"] = False
+            else:
+                merged[rn] = {"round": rn, "complete": False, "matches": list(r.get("matches", []))}
+
+        rounds_out = [merged[k] for k in sorted(merged)]
+        for entry in rounds_out:
+            entry["matches"].sort(key=lambda m: m.get("date") or "")
+
+        n_played = int(base.get("n_played") or 0)
+        n_upcoming = sum(len(r.get("matches", [])) for r in base.get("upcoming_by_round", []))
+        if n_played == 0:
+            season_status = "pre-season"
+        elif n_upcoming == 0:
+            season_status = "complete"
+        else:
+            season_status = "in-progress"
+
+        upcoming_round_numbers = sorted(r["round"] for r in base.get("upcoming_by_round", []))
+        round_current = upcoming_round_numbers[0] if upcoming_round_numbers else (
+            rounds_out[-1]["round"] if rounds_out else None
+        )
+
+        return {
+            "league_name": league_name,
+            "season": season,
+            "season_status": season_status,
+            "round_current": round_current,
+            "n_played": n_played,
+            "n_upcoming": n_upcoming,
+            "rounds": rounds_out,
+            "note": (
+                "Live = season-state board. Understat updates post-match; no kickoff times or "
+                "in-play xG exist in this source. Round = home team's nth league match "
+                "(postponements can shift). Forecast = Understat model, not our Dixon-Coles."
+            ),
+        }
+
     async def analyze_match(self, match_id: int) -> dict:
         shots = await self.client.get_match_shots(match_id)
         home_shots = shots.get("h", [])

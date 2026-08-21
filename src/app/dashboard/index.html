@@ -94,9 +94,12 @@
             <div class="fixture-section-header">
               <span class="fixture-section-title">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                Recent Completed Fixtures · 1-Click Deep Dive
+                Fixtures · Recent Results & Gameweek Board
               </span>
-              <span id="fixtureCountBadge" class="hero-pill accent" style="font-size:11px">Auto-Loading…</span>
+              <span style="display:flex;gap:6px;align-items:center">
+                <span id="matchModeToggle" class="view-pills-row" style="margin:0;gap:6px"></span>
+                <span id="fixtureCountBadge" class="hero-pill accent" style="font-size:11px">Auto-Loading…</span>
+              </span>
             </div>
             <div id="matchRecentFeed" class="fixture-grid">
               <div class="loading"><div class="loading-pulse"><span></span><span></span><span></span></div><span>Loading recent matches…</span></div>
@@ -504,6 +507,6 @@
   <div id="tooltip" class="tooltip"></div>
   <div id="chartTip" class="tooltip"></div>
 
-  <script src="/dashboard/app.js?v=23"></script>
+  <script src="/dashboard/app.js?v=24"></script>
 </body>
 </html>

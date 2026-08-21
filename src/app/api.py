@@ -568,6 +568,18 @@ async def match_rounds(payload: AnalyzeLeagueRequest, request: Request):
 
 
 @app.post(
+    "/api/v1/matches/live",
+    tags=["Analytics"],
+    responses={502: {"model": ErrorResponse}},
+)
+async def match_live(payload: AnalyzeLeagueRequest, request: Request):
+    return await request.app.state.analytics.match_live(
+        league_name=payload.league_name,
+        season=payload.season,
+    )
+
+
+@app.post(
     "/api/v1/analyze/match/{match_id}",
     tags=["Analytics"],
     responses={502: {"model": ErrorResponse}},
