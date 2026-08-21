@@ -10,6 +10,7 @@ from .analytics import player as player_engine
 from .analytics import team as team_engine
 from .analytics import league as league_engine
 from .analytics import match as match_engine
+from .analytics import tactical
 from .analytics._shared import as_list_matches, round_value
 from .ml.engine import build_match_rows
 from .stat_data import UnderstatData
@@ -658,6 +659,13 @@ class AnalyticsService:
         )
         team_rows = [_find_team_row(table, team_name) for table in tables if isinstance(table, list)]
         team_rows = [row for row in team_rows if row is not None]
+        # Full per-season tables kept for the archetype z-scores (latest season's
+        # table, never the merged multi-season row).
+        valid_tables = {
+            current_season: table
+            for current_season, table in zip(target_seasons, tables)
+            if isinstance(table, list)
+        }
         if not team_rows:
             raise ValueError(
                 f"Team '{team_name}' is not in the {league_name} {target_seasons} tables"
@@ -742,6 +750,22 @@ class AnalyticsService:
         report["date_window"] = {"start_date": start_date, "end_date": end_date}
         report["seasons"] = target_seasons
 
+        # Archetype from the latest season's full league table (not the merged row).
+        archetype = None
+        for current_season in sorted(valid_tables, reverse=True):
+            candidate_table = valid_tables[current_season]
+            candidate_row = _find_team_row(candidate_table, team_name)
+            if candidate_row is None:
+                continue
+            season_note = (
+                f"Computed on the {current_season} league table (latest available of the requested seasons)."
+                if len(target_seasons) > 1
+                else None
+            )
+            archetype = tactical.archetype_report(candidate_row, candidate_table, season_note=season_note)
+            break
+        report["archetype"] = archetype
+
         try:
             raw_squad = await self.client.get_team_player_stats(
                 team_name, str(target_seasons[-1]), start_date=start_date, end_date=end_date
@@ -786,6 +810,7 @@ class AnalyticsService:
             league_name, season, start_date=start_date, end_date=end_date
         )
         report = league_engine.league_report(table)
+        report["archetypes"] = tactical.league_archetype_map(table)
         report["date_window"] = {"start_date": start_date, "end_date": end_date}
         return report
 

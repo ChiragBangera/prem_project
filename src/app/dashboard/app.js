@@ -1573,6 +1573,7 @@ function renderTeam(node, d) {
             <div class="hero-meta">
               <span class="hero-pill accent">${LEAGUE_LABEL[state.league] || state.league}</span>
               <span class="hero-pill">${s.matches} matches analyzed</span>
+              ${d.archetype ? `<span class="hero-pill" style="background:rgba(56,189,248,0.10);border:1px solid rgba(56,189,248,0.35);color:#7dd3fc" title="${(d.archetype.description || "").replace(/"/g, "&quot;")} — ${(d.archetype.honest_note || "").replace(/"/g, "&quot;")}">🧬 ${d.archetype.label}${d.archetype.confidence != null ? ` · ${Math.round(d.archetype.confidence * 100)}%` : ""}</span>` : ""}
               ${windowBadge(d)}
             </div>
           </div>
@@ -1639,9 +1640,15 @@ function renderTeam(node, d) {
       <div class="card">
         <div class="card-header">
           <span class="card-title">Team Tactical DNA (6-Pillar Radar Profile)</span>
-          <span class="chart-subtitle">Process Fingerprint vs League Scale</span>
+          <span class="chart-subtitle">${d.archetype ? `🧬 ${d.archetype.label} · ${Math.round((d.archetype.confidence || 0) * 100)}%` : "Process Fingerprint vs League Scale"}</span>
         </div>
         <div id="teamTacticalRadar"></div>
+        ${d.archetype && d.archetype.peers && d.archetype.peers.length ? `
+          <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);display:flex;flex-wrap:wrap;gap:6px;align-items:center">
+            <span style="font-size:11px;color:var(--muted);font-weight:700">Archetype peers:</span>
+            ${d.archetype.peers.slice(0, 3).map((p) => `<button class="view-pill-btn" style="padding:3px 10px;font-size:11px" onclick="$('teamName').value='${p.team}';runTeam()">${p.team}</button>`).join("")}
+          </div>
+        ` : ""}
       </div>
       <div class="card">
         <div class="card-header">
@@ -2384,6 +2391,31 @@ function renderLeague(node, d, notice = "") {
 
       <div class="hint" style="margin-top:12px">${d.is_lying.interpretation}</div>
     </div>
+
+    <!-- Tactical Archetypes Summary -->
+    ${d.archetypes ? `
+      <div class="card" style="margin-top:20px">
+        <div class="card-header" style="flex-wrap:wrap;gap:10px;justify-content:space-between;align-items:center">
+          <div>
+            <span class="card-title">Tactical Archetypes</span>
+            <div style="font-size:11.5px;color:var(--muted);margin-top:2px">${d.archetypes.honest_note}</div>
+          </div>
+          <span class="mono" style="font-size:11.5px;color:var(--muted)">${Object.keys(d.archetypes.by_team || {}).length} teams classified</span>
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:18px;padding:14px 16px 16px">
+          ${Object.entries(d.archetypes.counts || {}).sort((a, b) => b[1] - a[1]).map(([label, n]) => `
+            <div style="min-width:210px">
+              <div style="font-weight:800;font-size:12px;color:var(--accent);margin-bottom:7px">${label} <span style="color:var(--muted);font-weight:600">· ${n}</span></div>
+              <div style="display:flex;flex-wrap:wrap;gap:5px">
+                ${Object.entries(d.archetypes.by_team || {}).filter(([, l]) => l === label).map(([team]) => `
+                  <button class="view-pill-btn" style="padding:3px 10px;font-size:11px" onclick="$('teamName').value='${team}';activateTab('team');runTeam()">${team}</button>
+                `).join("")}
+              </div>
+            </div>
+          `).join("")}
+        </div>
+      </div>
+    ` : ""}
 
     <!-- Row 2: Divergence Waterfall Chart (Dedicated Full-Width Card) -->
     <div class="card" style="margin-top:20px">

@@ -201,7 +201,6 @@ def team_report(
         "luck_curve": luck_curve(history),
         "strength_of_schedule": strength_of_schedule(history, league_histories) if league_histories else None,
         "metric_trends": metric_trends(history, window=5),
-        "archetype": None,
         "limitations": HONEST_TEAM_LIMITATIONS,
     }
 
