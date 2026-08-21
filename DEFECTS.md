@@ -252,3 +252,77 @@ Reproduced against running app (127.0.0.1:8000, live Understat). Full endpoint s
 ### Latency observations (no cache) — INFO, feeds Phase 2+ cache work
 
 analyze/player 7.4s · discover(template) 4.9s · analyze/team 6.5s · compare 5.1s · career 3.8s · predict/match 19.5s · match 2.3s · rounds 1.2s · league 1.1-1.5s. All live-fetch, zero caching outside ml `_history_cache`. Confirms AUDIT F6; persistent cache pulled forward as Phase 2 companion work.
+
+---
+
+## Visual audit findings (2026-08-21, delivery lead from qa screenshots p1-*)
+
+### DEF-015 — Horizontal overflow at 375px on player/discover/team/match views — MED
+
+**Steps:** Load any of those tabs at 375x812; document.scrollWidth = 409–423 vs innerWidth 375 (qa capture-report.json).
+
+**Expected:** No horizontal page scroll on mobile.
+
+**Actual:** Something overflows by 34–48px on all four views (1440 is clean). Suspects: `.controls-row` fixed min-widths, discover threshold inputs row, kpi-row, fixture grid.
+
+**Severity:** MED
+
+**Status:** FIX-READY — Found by: delivery lead/qa evidence
+**Developer:** frontend-dev — FIX READY — "Diagnosed offenders via playwright element sweep; fixed minimally in styles.css (controls-row flex-wrap + min-width:0, kpi-row grid minmax, fixture grid). Desktop layout unchanged."
+**History:** 2026-08-21 frontend-dev FIX READY → lead re-measured with e2e/overflow-check.cjs: player/discover/team/match all scrollWidth=375 PASS at 375px.
+
+### DEF-016 — Discover table XG column shows "-" for every player — LOW
+
+**Steps:** Run Discover → inspect XG (EXPECTED GOALS) column.
+
+**Expected:** Shows xG totals.
+
+**Actual:** All rows "-": renderDiscover reads `p.xG` but discover API returns `npxG` (no plain xG key). Column is dead weight next to NPXG.
+
+**Severity:** LOW
+
+**Status:** FIX-READY — Found by: delivery lead
+**Developer:** frontend-dev — FIX READY — "Dead XG column (p.xG never in discover API) replaced with G−xG column using p.g_minus_xg, signed and colored good/bad like squad table."
+**History:** 2026-08-21 frontend-dev FIX READY → awaiting qa CLOSE.
+
+### DEF-017 — Duplicate "Watchlist: 0" pills (button row + card header) — LOW
+
+**Steps:** Open Discover; two identical pills visible.
+
+**Expected:** One indicator.
+
+**Actual:** Redundant duplication.
+
+**Severity:** LOW
+
+**Status:** FIX-READY — Found by: delivery lead
+**Developer:** frontend-dev — FIX READY — "Removed duplicate watchlistCountPill span next to #discoverGo in index.html; single pill remains, updateWatchlistPill retargeted and live-updates on toggle."
+**History:** 2026-08-21 frontend-dev FIX READY → awaiting qa CLOSE.
+
+### DEF-018 — Season label stale after LATEST→LATEST-1 fallback (player/team) — MED
+
+**Steps:** With LATEST_SEASON=2026 and empty 2026 data, run Arsenal/Salah; hero resolves but season control still reads 2026 while data is 2025 (team hero: "38 matches analyzed" under a 2026 pill).
+
+**Expected:** Fallback updates the visible season-multi label/dataset, not just internal var.
+
+**Actual:** runPlayer/runTeam do `$("playerSeasons").value = String(season)` — that element is a season-multi div, `.value` assignment is a no-op; label stays 2026. Misleading season attribution.
+
+**Severity:** MED
+
+**Status:** FIX-READY — Found by: delivery lead
+**Developer:** frontend-dev — FIX READY — "runPlayer/runTeam fallback now updates season-multi host too: dataset.seasons=[season], [data-season-btn] label, localStorage prem_playerSeasons/prem_teamSeasons; forced-failure test shows label/dataset/storage/resolved line all 2025 instead of stale 2026."
+**History:** 2026-08-21 frontend-dev FIX READY → awaiting qa CLOSE.
+
+### DEF-019 — Predict & Sim has NO season fallback → guaranteed 422 at season start — HIGH
+
+**Steps:** New season (2026) with few completed matches → click Generate Forecast / Run Simulation / Calibration.
+
+**Expected:** Same LATEST→LATEST-1 fallback other tabs have; forecast renders.
+
+**Actual:** predict endpoints fit Dixon-Coles on 2026 (insufficient matches) → 422 shown raw; console captured three 422s; predictContent stayed empty (len=90). Tab unusable exactly when users try it pre-season.
+
+**Severity:** HIGH
+
+**Status:** FIX-READY — Found by: delivery lead/qa evidence
+**Developer:** frontend-dev — FIX READY — "runPredict/runSim/runCal now use runPlayer's LATEST→LATEST-1 retry pattern on the real selects. PLUS two pre-existing breaks found & fixed: renderPredict read d.ensemble/d.home_team/d.dixon_coles but API returns model.ensemble/match.home/model.dixon_coles (crashed on every successful fetch since 3a93950) → rewritten to map real fields incl. Elo row; runSim called nonexistent /predict/season-simulation → corrected to /api/v1/predict/season."
+**History:** 2026-08-21 frontend-dev FIX READY → lead verified visually: fix-predict-1440.png shows probability bar 59/26/15 Arsenal-Chelsea, λ 1.48–0.63, scoreline 1-0 (17%), Elo 70/19/10, auto-fallback to 2025.

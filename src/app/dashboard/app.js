@@ -1088,7 +1088,13 @@ async function runPlayer() {
     } catch (err) {
       if (season === LATEST_SEASON) {
         season = LATEST_SEASON - 1;
-        if ($("playerSeasons")) $("playerSeasons").value = String(season);
+        if ($("playerSeasons")) {
+          $("playerSeasons").value = String(season);
+          $("playerSeasons").dataset.seasons = JSON.stringify([season]);
+          const seasonBtn = $("playerSeasons").querySelector("[data-season-btn]");
+          if (seasonBtn) seasonBtn.textContent = String(season);
+          localStorage.setItem("prem_playerSeasons", JSON.stringify([season]));
+        }
         d = await api("/api/v1/analyze/player", {
           player_name: name,
           league_name: state.league,
@@ -1532,7 +1538,13 @@ async function runTeam() {
     } catch (err) {
       if (season === LATEST_SEASON) {
         season = LATEST_SEASON - 1;
-        if ($("teamSeasons")) $("teamSeasons").value = String(season);
+        if ($("teamSeasons")) {
+          $("teamSeasons").value = String(season);
+          $("teamSeasons").dataset.seasons = JSON.stringify([season]);
+          const seasonBtn = $("teamSeasons").querySelector("[data-season-btn]");
+          if (seasonBtn) seasonBtn.textContent = String(season);
+          localStorage.setItem("prem_teamSeasons", JSON.stringify([season]));
+        }
         d = await api("/api/v1/analyze/team", {
           team_name: name, league_name: state.league, season: season,
           seasons: [season],
@@ -2873,7 +2885,7 @@ function renderDiscover(node, d) {
               <th class="num">Age</th>
               <th class="num">Min</th>
               <th class="num">${term("goals")}</th>
-              <th class="num">${term("xG")}</th>
+              <th class="num">${term("g_minus_xg", "G−xG")}</th>
               <th class="num">${term("npxg")}</th>
               <th class="num">${term("npxg", "NPxG/90")}</th>
               <th class="num">${term("assists")}</th>
@@ -2896,7 +2908,7 @@ function renderDiscover(node, d) {
               const min = p.time != null ? p.time : (p.minutes != null ? p.minutes : 0);
               const pAge = p.age;
               const pGoals = p.goals;
-              const pXg = p.xG;
+              const pGMinusXg = p.g_minus_xg;
               const pNpxG = p.npxG;
               const pAssists = p.assists;
               const pXA = p.xA;
@@ -2921,7 +2933,7 @@ function renderDiscover(node, d) {
                   <td class="num">${pAge ?? "—"}</td>
                   <td class="num">${fmt(min, 0)}</td>
                   <td class="num"><strong>${fmt(pGoals, 0)}</strong></td>
-                  <td class="num" style="color:var(--accent);font-weight:600">${fmt(pXg, 2)}</td>
+                  <td class="num" style="color:${(pGMinusXg || 0) >= 0 ? 'var(--fg-good)' : 'var(--fg-bad)'}">${(pGMinusXg || 0) >= 0 ? '+' : ''}${fmt(pGMinusXg, 2)}</td>
                   <td class="num">${npxgCell}</td>
                   <td class="num" style="font-weight:700">${fmt(npxg90, 2)}</td>
                   <td class="num"><strong>${fmt(pAssists, 0)}</strong></td>
@@ -3102,77 +3114,143 @@ async function runPredict() {
   const home = $("predHome").value.trim(), away = $("predAway").value.trim();
   if (!home || !away) return;
   const node = $("predictContent"); loading(node);
+  let season = seasonOf("predSeason");
   try {
-    const d = await api("/api/v1/predict/match", {
-      home_team: home, away_team: away, league_name: state.league,
-      season: seasonOf("predSeason"), use_xg: $("predUseXg").checked,
-    });
+    let d;
+    try {
+      d = await api("/api/v1/predict/match", {
+        home_team: home, away_team: away, league_name: state.league,
+        season: season, use_xg: $("predUseXg").checked,
+      });
+    } catch (err) {
+      if (season === LATEST_SEASON) {
+        season = LATEST_SEASON - 1;
+        if ($("predSeason")) $("predSeason").value = String(season);
+        d = await api("/api/v1/predict/match", {
+          home_team: home, away_team: away, league_name: state.league,
+          season: season, use_xg: $("predUseXg").checked,
+        });
+      } else {
+        throw err;
+      }
+    }
     renderPredict(node, d);
   } catch (e) { errored(node, e.message); }
 }
 
 function renderPredict(node, d) {
   clear(node);
-  const p = d.ensemble;
+  const m = d.model || {}, en = m.ensemble || {}, dc = m.dixon_coles || {}, elo = m.elo || {}, mt = d.match || {};
+  const homeName = mt.home || "Home", awayName = mt.away || "Away";
+  const scoreline = Array.isArray(dc.most_likely_score)
+    ? dc.most_likely_score.join("-")
+    : dc.most_likely_score;
+
+  let barHtml;
+  if (en.available === false || en.p_home == null || en.p_draw == null || en.p_away == null) {
+    barHtml = `<div class="hint" style="margin:18px 0 4px">Ensemble unavailable for this fixture — see the Dixon-Coles figures below.</div>`;
+  } else {
+    barHtml = `
+      <div class="prob-bar-container">
+        <div class="prob-bar">
+          <div class="seg home" style="width:${en.p_home*100}%"><span class="seg-pct">${pct(en.p_home)}</span><span class="seg-name">${homeName}</span></div>
+          <div class="seg draw" style="width:${en.p_draw*100}%"><span class="seg-pct">${pct(en.p_draw)}</span><span class="seg-name">Draw</span></div>
+          <div class="seg away" style="width:${en.p_away*100}%"><span class="seg-pct">${pct(en.p_away)}</span><span class="seg-name">${awayName}</span></div>
+        </div>
+      </div>
+    `;
+  }
+
   node.innerHTML = `
     <div class="card">
       <div class="card-header"><span class="card-title">Forecast Outcome Probabilities</span></div>
-      <div class="prob-bar-container">
-        <div class="prob-bar">
-          <div class="seg home" style="width:${p.p_home*100}%"><span class="seg-pct">${pct(p.p_home)}</span><span class="seg-name">${d.home_team}</span></div>
-          <div class="seg draw" style="width:${p.p_draw*100}%"><span class="seg-pct">${pct(p.p_draw)}</span><span class="seg-name">Draw</span></div>
-          <div class="seg away" style="width:${p.p_away*100}%"><span class="seg-pct">${pct(p.p_away)}</span><span class="seg-name">${d.away_team}</span></div>
-        </div>
-      </div>
+      ${barHtml}
       <div class="kv" style="margin-top:16px">
-        <span class="k">Expected Goals (Lambda)</span><span class="v">${fmt(d.dixon_coles.lambda_home)} (Home) — ${fmt(d.dixon_coles.lambda_away)} (Away)</span>
-        <span class="k">Most Probable Scorelines</span><span class="v">${d.dixon_coles.most_likely_scorelines.map((s)=>`${s.score} (${pct(s.probability)})`).join(" · ")}</span>
+        <span class="k">Expected Goals (Lambda)</span><span class="v">${fmt(dc.lambda_home)} (Home) — ${fmt(dc.lambda_away)} (Away)</span>
+        <span class="k">Most Probable Scoreline</span><span class="v">${scoreline != null ? scoreline : "—"} (${pct(dc.most_likely_score_prob)})</span>
+        ${elo.p_home != null ? `<span class="k">Elo Probabilities</span><span class="v">${pct(elo.p_home)} / ${pct(elo.p_draw)} / ${pct(elo.p_away)}</span>` : ""}
       </div>
+      ${d.interpretation ? `<div class="hint" style="margin-top:14px">${d.interpretation}</div>` : ""}
+      ${Array.isArray(d.limitations) && d.limitations.length ? `<div class="caveat"><strong>Limitations.</strong><ul>${d.limitations.map((l) => `<li>${l}</li>`).join("")}</ul></div>` : ""}
     </div>
   `;
 }
 
 async function runSim() {
   const node = $("predictContent"); loading(node);
+  let season = seasonOf("simSeason");
   try {
-    const d = await api("/api/v1/predict/season-simulation", {
-      league_name: state.league, season: seasonOf("simSeason"),
-      n_sims: parseInt($("simCount").value, 10) || 2000,
-    });
+    let d;
+    try {
+      d = await api("/api/v1/predict/season", {
+        league_name: state.league, season: season,
+        n_sims: parseInt($("simCount").value, 10) || 2000,
+      });
+    } catch (err) {
+      if (season === LATEST_SEASON) {
+        season = LATEST_SEASON - 1;
+        if ($("simSeason")) $("simSeason").value = String(season);
+        d = await api("/api/v1/predict/season", {
+          league_name: state.league, season: season,
+          n_sims: parseInt($("simCount").value, 10) || 2000,
+        });
+      } else {
+        throw err;
+      }
+    }
     renderSim(node, d);
   } catch (e) { errored(node, e.message); }
 }
 
 function renderSim(node, d) {
   clear(node);
+  const teams = Object.keys(d.expected_points || {});
   node.innerHTML = `
     <div class="card">
-      <div class="card-header"><span class="card-title">Rest-of-Season Simulation (${d.simulations} runs)</span></div>
-      <table>
-        <thead><tr><th>Team</th><th class="num">Current Pts</th><th class="num">Simulated Pts</th><th class="num">Title %</th><th class="num">Top 4 %</th><th class="num">Relegation %</th></tr></thead>
-        <tbody>
-          ${d.projections.map((p) => `
-            <tr>
-              <td><strong>${p.team}</strong></td>
-              <td class="num">${p.current_points}</td>
-              <td class="num" style="color:var(--accent);font-weight:700">${fmt(p.simulated_points, 1)}</td>
-              <td class="num">${pct(p.champion_probability)}</td>
-              <td class="num">${pct(p.top_4_probability)}</td>
-              <td class="num" style="color:${p.relegation_probability>0.5?'var(--fg-bad)':'var(--text)'}">${pct(p.relegation_probability)}</td>
-            </tr>
-          `).join("")}
-        </tbody>
-      </table>
+      <div class="card-header"><span class="card-title">Rest-of-Season Simulation (${d.n_sims ?? 0} runs)</span></div>
+      <div class="table-responsive">
+        <table>
+          <thead><tr><th>Team</th><th class="num">Current Pts</th><th class="num">Simulated Pts</th><th class="num">Title %</th><th class="num">Top 4 %</th><th class="num">Relegation %</th></tr></thead>
+          <tbody>
+            ${teams.map((t) => `
+              <tr>
+                <td><strong>${t}</strong></td>
+                <td class="num">${(d.current_points || {})[t] ?? "—"}</td>
+                <td class="num" style="color:var(--accent);font-weight:700">${fmt(d.expected_points[t], 1)}</td>
+                <td class="num">${pct((d.p_champion || {})[t])}</td>
+                <td class="num">${pct((d.p_top_4 || {})[t])}</td>
+                <td class="num" style="color:${((d.p_relegation || {})[t] || 0) > 0.5 ? 'var(--fg-bad)' : 'var(--text)'}">${pct((d.p_relegation || {})[t])}</td>
+              </tr>
+            `).join("")}
+          </tbody>
+        </table>
+      </div>
+      ${d.interpretation ? `<div class="hint" style="margin-top:14px">${d.interpretation}</div>` : ""}
+      ${Array.isArray(d.limitations) && d.limitations.length ? `<div class="caveat"><strong>Limitations.</strong><ul>${d.limitations.map((l) => `<li>${l}</li>`).join("")}</ul></div>` : ""}
     </div>
   `;
 }
 
 async function runCal() {
   const node = $("predictContent"); loading(node);
+  let season = seasonOf("calSeason");
   try {
-    const d = await api("/api/v1/predict/calibration", {
-      league_name: state.league, season: seasonOf("calSeason"),
-    });
+    let d;
+    try {
+      d = await api("/api/v1/predict/calibration", {
+        league_name: state.league, season: season,
+      });
+    } catch (err) {
+      if (season === LATEST_SEASON) {
+        season = LATEST_SEASON - 1;
+        if ($("calSeason")) $("calSeason").value = String(season);
+        d = await api("/api/v1/predict/calibration", {
+          league_name: state.league, season: season,
+        });
+      } else {
+        throw err;
+      }
+    }
     renderCal(node, d);
   } catch (e) { errored(node, e.message); }
 }

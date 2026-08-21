@@ -339,6 +339,7 @@ section.view.active { display: block; }
   display: flex;
   flex-direction: column;
   gap: 5px;
+  min-width: 0; /* allow flex children to shrink below content size (mobile overflow guard) */
 }
 .field label {
   font-size: 11px;
@@ -365,6 +366,7 @@ section.view.active { display: block; }
   font-size: 13.5px;
   font-family: var(--sans);
   min-width: 170px;
+  max-width: 100%; /* never exceed the field's width (mobile overflow guard) */
   transition: all 0.15s ease;
 }
 .field input:hover, .field select:hover { border-color: var(--border-hover); }
@@ -1258,6 +1260,16 @@ table tr:hover td.table-sticky-team {
   .nav-section-title { display: none; }
   .sidebar-footer { display: none; }
   main.main-viewport { padding: 16px; }
-  header.app-topbar { padding: 12px 16px; }
+  header.app-topbar {
+    padding: 12px 16px;
+    flex-wrap: wrap; /* league switcher wraps below the title instead of overflowing */
+    gap: 8px 14px;
+  }
+  .topbar-left { min-width: 0; } /* allow the title block to shrink inside flex */
+  .league-selector {
+    max-width: 100%;
+    overflow-x: auto; /* single-row scrollable switcher on small screens */
+  }
+  .league-btn { white-space: nowrap; flex: 0 0 auto; }
 }
 
