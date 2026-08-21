@@ -201,6 +201,7 @@ def team_report(
         "luck_curve": luck_curve(history),
         "strength_of_schedule": strength_of_schedule(history, league_histories) if league_histories else None,
         "metric_trends": metric_trends(history, window=5),
+        "archetype": None,
         "limitations": HONEST_TEAM_LIMITATIONS,
     }
 
@@ -395,5 +396,7 @@ def metric_trends(history: list[dict], window: int = 5) -> dict:
         "npxGD": roll("npxGD"),
         "xPTS": roll("xpts"),
         "PPDA": roll("ppda", transform=lambda r: ppda_ratio(r.get("ppda") or {})),
+        "deep_for": roll("deep"),
+        "deep_against": roll("deep_allowed"),
         "window": window,
     }

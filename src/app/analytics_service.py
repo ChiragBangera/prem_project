@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 from typing import Any
 
 from .analytics import career as career_engine
@@ -17,6 +18,10 @@ from .utils.utils import get_current_season
 LEAGUES = ("EPL", "La_liga", "Serie_A", "Bundesliga", "Ligue_1")
 DEFAULT_CAREER_SEASONS = 6
 DEFAULT_SEASON = get_current_season()
+
+# forecast cache: (league, season) -> (timestamp, {match_id_str: forecast_dict})
+_forecast_cache: dict[tuple[str, int], tuple[float, dict[str, dict]]] = {}
+_FORECAST_TTL = 300  # 5 minutes
 
 
 def _valid_date_range(start_date: str | None, end_date: str | None) -> tuple[str | None, str | None]:
@@ -64,8 +69,9 @@ def _find_player_in_league(name: str, players: list[dict]):
 class AnalyticsService:
     """Fetches the right Understat data and runs the pure analytics engines over it."""
 
-    def __init__(self, client: UnderstatData | None = None):
+    def __init__(self, client: UnderstatData | None = None, enrichment=None):
         self.client = client or UnderstatData()
+        self.enrichment = enrichment
 
     async def analyze_player(
         self,
@@ -193,9 +199,160 @@ class AnalyticsService:
                     "date": (s.get("date") or "")[:10],
                     "h_a": s.get("h_a"),
                     "season": s.get("season"),
+                    "player_assisted": s.get("player_assisted"),
                 }
                 for s in shots
             ]
+
+        # shot_profile_detail from groups already fetched via get_player_data
+        shot_profile_detail = None
+        try:
+            if hasattr(self.client, "get_player_data"):
+                try:
+                    p_data = await self.client.get_player_data(player_id)
+                    groups = p_data.get("groups") if isinstance(p_data, dict) else None
+                except Exception:
+                    groups = None
+                if groups:
+                    requested_season = target_seasons[-1] if target_seasons else season
+                    profile = career_engine.shot_profile_for_season(groups, requested_season)
+                    profile_season: int | None = requested_season if profile is not None else None
+                    if profile is None and len(target_seasons) > 1:
+                        # try other requested seasons in reverse
+                        for s_yr in reversed(target_seasons[:-1]):
+                            p = career_engine.shot_profile_for_season(groups, s_yr)
+                            if p is not None:
+                                profile = p
+                                profile_season = s_yr
+                                break
+                    # Fallback to any available season in groups if still missing (e.g., request 2025 but only 2024 exists)
+                    if profile is None:
+                        available: set[int] = set()
+                        for key in ("situation", "shotZones", "shotTypes", "position"):
+                            val = groups.get(key)
+                            if isinstance(val, dict):
+                                for k in val.keys():
+                                    try:
+                                        available.add(int(k))
+                                    except Exception:
+                                        continue
+                        season_list = groups.get("season")
+                        if isinstance(season_list, list):
+                            for entry in season_list:
+                                try:
+                                    if isinstance(entry, dict) and "season" in entry:
+                                        available.add(int(entry.get("season")))
+                                    else:
+                                        available.add(int(entry))
+                                except Exception:
+                                    continue
+                        # prefer seasons closest to requested (descending, fallback to previous year first)
+                        for yr in sorted(available, reverse=True):
+                            if yr == requested_season:
+                                continue
+                            p = career_engine.shot_profile_for_season(groups, yr)
+                            if p is not None:
+                                profile = p
+                                profile_season = yr
+                                break
+                    if profile is not None:
+                        situations = profile["shot_profile"]["situations"] or []
+                        zones = profile["shot_profile"]["zones"] or []
+                        types = profile["shot_profile"]["types"] or []
+                        role_split = profile.get("role_split")
+                        for r in situations:
+                            r["_source"] = "groups.situation"
+                        for r in zones:
+                            r["_source"] = "groups.shotZones"
+                        for r in types:
+                            r["_source"] = "groups.shotTypes"
+                        if role_split:
+                            for r in role_split:
+                                r["_source"] = "groups.position"
+                        is_fallback = profile_season != requested_season
+                        if is_fallback:
+                            honest_note = f"Requested season {requested_season} unavailable — showing {profile_season} (fallback)."
+                            fallback_note = honest_note
+                        else:
+                            honest_note = "Shot profile for requested season."
+                            fallback_note = honest_note
+                        shot_profile_detail = {
+                            "situations": situations,
+                            "zones": zones,
+                            "types": types,
+                            "role_split": role_split,
+                            "profile_season": profile_season,
+                            "requested_season": requested_season,
+                            "fallback": is_fallback,
+                            "honest_note": honest_note,
+                            "fallback_note": fallback_note,
+                            "note": honest_note,
+                        }
+                    else:
+                        shot_profile_detail = None
+                else:
+                    shot_profile_detail = None
+        except Exception:
+            shot_profile_detail = None
+        report["shot_profile_detail"] = shot_profile_detail
+
+        # assisted_network via player_assisted aggregation
+        if not shots:
+            report["assisted_network"] = None
+        else:
+            from collections import Counter, defaultdict
+            assister_agg: dict[str, dict] = {}
+            assisted_agg: dict[str, dict] = {}
+            for s in shots:
+                assister = s.get("player_assisted")
+                if assister and str(assister).strip() and str(assister).strip().lower() not in ("none", "null", ""):
+                    key = str(assister).strip()
+                    if key not in assister_agg:
+                        assister_agg[key] = {"assister": key, "count": 0, "assists_xG": 0.0}
+                    assister_agg[key]["count"] += 1
+                    assister_agg[key]["assists_xG"] += float(s.get("xG") or 0)
+                # top_assisted: player assisted others - not derivable from own shots; leave empty
+            top_assisters = sorted(assister_agg.values(), key=lambda x: (-x["count"], -x["assists_xG"]))[:5]
+            for entry in top_assisters:
+                entry["assists_xG"] = round(entry["assists_xG"], 2)
+            top_assisted = sorted(assisted_agg.values(), key=lambda x: (-x["count"], -x.get("xG", 0)))[:5]
+            report["assisted_network"] = {
+                "top_assisters": top_assisters,
+                "top_assisted": top_assisted,
+                "honest_note": "Aggregated from shots.player_assisted (Understat shot assists, not Opta key passes).",
+            }
+
+        # enrichment via provider (noop default)
+        try:
+            from dataclasses import asdict
+            from .analytics.enrichment import ExternalEnrichment, NoopEnrichmentProvider
+
+            provider = self.enrichment if self.enrichment is not None else NoopEnrichmentProvider()
+            enrichment_obj = await provider.enrich_player(target.get("player_name"), target.get("team_title"))
+            if hasattr(enrichment_obj, "__dataclass_fields__"):
+                enrichment_dict = asdict(enrichment_obj)
+            elif isinstance(enrichment_obj, dict):
+                enrichment_dict = dict(enrichment_obj)
+            else:
+                enrichment_dict = {
+                    "source": getattr(enrichment_obj, "source", "none"),
+                    "fetched_at": getattr(enrichment_obj, "fetched_at", None),
+                }
+            report["enrichment"] = enrichment_dict
+        except Exception:
+            report["enrichment"] = {
+                "source": "none",
+                "market_value_eur": None,
+                "contract_end": None,
+                "foot": None,
+                "height_cm": None,
+                "sofascore_rating": None,
+                "whoscored_rating": None,
+                "strengths": [],
+                "weaknesses": [],
+                "honest_note": "Enrichment not configured (Understat-only in this deploy).",
+                "fetched_at": None,
+            }
 
         report["date_window"] = {"start_date": start_date, "end_date": end_date}
         report["seasons"] = target_seasons
@@ -669,6 +826,82 @@ class AnalyticsService:
                 }
             )
 
+        # upcoming_by_round: same home nth match grouping for fixtures
+        upcoming = sorted((r for r in rows if not r["is_result"]), key=lambda r: (r["date"], r["home"]))
+        upcoming_by_round: dict[int, list[dict]] = {}
+        # continue counting from played base so round numbers continue
+        upcoming_team_played = dict(team_played)
+        for row in upcoming:
+            for team in (row["home"], row["away"]):
+                upcoming_team_played[team] = upcoming_team_played.get(team, 0) + 1
+            round_number = upcoming_team_played[row["home"]]
+            upcoming_by_round.setdefault(round_number, []).append(row)
+        upcoming_rounds = []
+        for round_number in sorted(upcoming_by_round):
+            matches = sorted(upcoming_by_round[round_number], key=lambda r: r["date"])
+            upcoming_rounds.append(
+                {
+                    "round": round_number,
+                    "matches": [
+                        {
+                            "match_id": str(row["match_id"]),
+                            "id": str(row["match_id"]),
+                            "date": row["date"],
+                            "home": row["home"],
+                            "away": row["away"],
+                            "home_goals": row["home_goals"],
+                            "away_goals": row["away_goals"],
+                            "home_xg": row["home_xg"],
+                            "away_xg": row["away_xg"],
+                            "isResult": False,
+                            **(
+                                {"forecast": {"w": float(row["forecast"]["w"]), "d": float(row["forecast"]["d"]), "l": float(row["forecast"]["l"]), "source": "understat"}}
+                                if row.get("forecast") and isinstance(row["forecast"], dict) and "w" in row["forecast"]
+                                else {}
+                            ),
+                        }
+                        for row in matches
+                    ],
+                }
+            )
+        # if no upcoming but we still need key, provide empty list with grouping fallback using only upcoming counts
+        if not upcoming_rounds and upcoming:
+            # fallback grouping when there are no played to anchor
+            by_upcoming: dict[int, list[dict]] = {}
+            tmp: dict[str, int] = {}
+            for row in upcoming:
+                for team in (row["home"], row["away"]):
+                    tmp[team] = tmp.get(team, 0) + 1
+                rn = tmp[row["home"]]
+                by_upcoming.setdefault(rn, []).append(row)
+            for rn in sorted(by_upcoming):
+                matches = sorted(by_upcoming[rn], key=lambda r: r["date"])
+                upcoming_rounds.append(
+                    {
+                        "round": rn,
+                        "matches": [
+                            {
+                                "match_id": str(row["match_id"]),
+                                "id": str(row["match_id"]),
+                                "date": row["date"],
+                                "home": row["home"],
+                                "away": row["away"],
+                                "home_goals": row["home_goals"],
+                                "away_goals": row["away_goals"],
+                                "home_xg": row["home_xg"],
+                                "away_xg": row["away_xg"],
+                                "isResult": False,
+                                **(
+                                    {"forecast": {"w": float(row["forecast"]["w"]), "d": float(row["forecast"]["d"]), "l": float(row["forecast"]["l"]), "source": "understat"}}
+                                    if row.get("forecast") and isinstance(row["forecast"], dict) and "w" in row["forecast"]
+                                    else {}
+                                ),
+                            }
+                            for row in matches
+                        ],
+                    }
+                )
+
         latest = sorted(played, key=lambda r: r["date"], reverse=True)[:18]
         latest_matches = [
             {
@@ -690,8 +923,9 @@ class AnalyticsService:
             "season": season,
             "n_played": len(played),
             "rounds": rounds,
+            "upcoming_by_round": upcoming_rounds,
             "latest_matches": latest_matches,
-            "note": "Round = the home team's nth league match of the season (Understat has no official gameweek label).",
+            "note": "Round = the home team's nth league match of the season (Understat has no official gameweek label). Forecast from Understat dates.forecast where available.",
         }
 
     async def analyze_match(self, match_id: int) -> dict:
@@ -702,7 +936,81 @@ class AnalyticsService:
             "h": (home_shots[0].get("h_team") if home_shots else "Home"),
             "a": (away_shots[0].get("a_team") if away_shots else "Away"),
         }
-        return match_engine.match_report(meta, shots)
+        report = match_engine.match_report(meta, shots)
+        # rosters straight from get_match_data
+        rosters = None
+        try:
+            if hasattr(self.client, "get_match_data"):
+                match_data = await self.client.get_match_data(match_id)
+                raw_rosters = match_data.get("rosters") if isinstance(match_data, dict) else None
+                if isinstance(raw_rosters, dict):
+                    def _normalize_side(side_data):
+                        if isinstance(side_data, dict):
+                            return list(side_data.values())
+                        if isinstance(side_data, list):
+                            return list(side_data)
+                        return []
+                    h_list = _normalize_side(raw_rosters.get("h"))
+                    a_list = _normalize_side(raw_rosters.get("a"))
+                    rosters = {"h": h_list, "a": a_list}
+                    if raw_rosters is None:
+                        rosters = None
+                elif raw_rosters is None:
+                    rosters = None
+                else:
+                    rosters = None
+        except Exception:
+            rosters = None
+        report["rosters"] = rosters
+        # forecast lookup via league dates — bounded to max 3 fetches with in-memory cache (5-min TTL)
+        forecast = None
+        try:
+            target_id_str = str(match_id)
+
+            async def _get_forecast_map(league: str, season: int) -> dict[str, dict]:
+                key = (league, season)
+                now = time.time()
+                cached = _forecast_cache.get(key)
+                if cached and now - cached[0] < _FORECAST_TTL:
+                    return cached[1]
+                ld = await self.client.get_league_data(league, season)
+                mapping: dict[str, dict] = {}
+                for item in ld.get("dates", []) or []:
+                    fid = str(item.get("id"))
+                    fc = item.get("forecast")
+                    if fc and isinstance(fc, dict) and "w" in fc and "d" in fc and "l" in fc:
+                        mapping[fid] = {"w": float(fc["w"]), "d": float(fc["d"]), "l": float(fc["l"]), "source": "understat"}
+                _forecast_cache[key] = (now, mapping)
+                return mapping
+
+            # Build bounded candidate list (max 3 attempts).
+            # Strategy: single inferred league/season where possible.
+            # Use rosters team names only to keep primary league as EPL (most common);
+            # try DEFAULT_SEASON then ±1 for primary league, then one fallback league.
+            # This satisfies AT MOST 2 fetches for inference (base then base-1) plus 1 extra = 3 total.
+            base = DEFAULT_SEASON
+            candidates: list[tuple[str, int]] = []
+            # primary league attempts: base, base-1, base+1 (truncate to leave room for other league)
+            # we keep 2 for primary + 1 for next league to bound at 3
+            candidates.append((LEAGUES[0], base))
+            candidates.append((LEAGUES[0], base - 1))
+            if len(candidates) < 3 and len(LEAGUES) > 1:
+                candidates.append((LEAGUES[1], base))
+            # dedupe and enforce max 3
+            candidates = list(dict.fromkeys(candidates))[:3]
+
+            for league, s in candidates:
+                try:
+                    mapping = await _get_forecast_map(league, s)
+                    if target_id_str in mapping:
+                        forecast = mapping[target_id_str]
+                        break
+                except Exception:
+                    continue
+        except Exception:
+            forecast = None
+        report["forecast"] = forecast
+        return report
 
     async def discover_players(
         self,

@@ -127,6 +127,48 @@ function term(key, fallback) {
   return `<span class="term" data-term="${key}">${label}</span>`;
 }
 
+function truncateLabel(str, max = 28) {
+  if (!str) return "";
+  if (str.length <= max) return str;
+  return str.slice(0, max - 1) + "…";
+}
+
+function glossaryLabelForMetric(key) {
+  if (!key) return "";
+  if (GLOSSARY[key] && GLOSSARY[key].label) return GLOSSARY[key].label;
+  const map = {
+    xGChain_per90: "xG_chain",
+    xGBuildup_per90: "xG_buildup",
+    goal_involvement_per90: "goal_involvement",
+    xG_per_shot: "xG_per_shot",
+    npxG_per_shot: "npxG",
+    xG_per90: "xG",
+    goals_per90: "goals",
+    shots_per90: "shots",
+    key_passes_per90: "key_passes",
+    npxGD: "npxgd",
+    xG_for: "xG",
+    xG_against: "xGA",
+    goals_for: "goals",
+    goals_against: "ga",
+    xPTS: "xpts",
+    PPDA: "ppda",
+    deep_for: "deep",
+    deep_against: "odc",
+    conversion: "conversion",
+  };
+  const mapped = map[key];
+  if (mapped && GLOSSARY[mapped] && GLOSSARY[mapped].label) return GLOSSARY[mapped].label;
+  if (mapped && GLOSSARY[mapped.toLowerCase()] && GLOSSARY[mapped.toLowerCase()].label) return GLOSSARY[mapped.toLowerCase()].label;
+  // fallback: humanize snake_case but do not return raw with underscores
+  const humanized = key.replace(/_/g, " ").replace(/per90/gi, "/90");
+  if (GLOSSARY[humanized] && GLOSSARY[humanized].label) return GLOSSARY[humanized].label;
+  // last resort: return humanized with capitalised words? Keep as is but not raw snake
+  // For keys like xGChain_per90 we already mapped; for any other, return humanized
+  if (humanized !== key) return humanized;
+  return key;
+}
+
 const tooltipEl = document.getElementById("tooltip");
 document.addEventListener("mouseover", (e) => {
   const t = e.target.closest(".term");
@@ -789,6 +831,42 @@ async function runMatch() {
   loadMatchById(matchId);
 }
 
+function forecastPill(forecast) {
+  if (!forecast || forecast.w == null) return "";
+  const hp = Math.round((forecast.w || 0) * 100);
+  const dp = Math.round((forecast.d || 0) * 100);
+  const ap = Math.round((forecast.l || 0) * 100);
+  return `<span class="hero-pill" style="background:var(--surface-2, #1e293b);background:color-mix(in srgb, var(--muted) 18%, transparent);border:1px solid var(--border);color:var(--muted);font-family:var(--mono);font-size:11px;padding:4px 10px;margin-top:10px;display:inline-block" title="Not our Dixon-Coles. Source: Understat forecast.">Understat model — H ${hp}% D ${dp}% A ${ap}% <span style="opacity:0.7;font-size:10px;">(not Dixon-Coles)</span></span>`;
+}
+
+function rosterTable(title, rows) {
+  if (!rows || !rows.length) return `<div class="empty" style="padding:12px">No entries.</div>`;
+  return `<table><thead><tr><th>Player</th><th class="num">G</th><th class="num">xG</th><th class="num">Shots</th><th class="num">Key passes</th></tr></thead><tbody>
+    ${rows.map((r) => {
+      const name = r.player_name || r.player || r.name || "—";
+      const goals = r.goals != null ? r.goals : (r.goal != null ? r.goal : 0);
+      const xg = r.xG != null ? r.xG : (r.xg != null ? r.xg : 0);
+      const shots = r.shots != null ? r.shots : 0;
+      const kp = r.key_passes != null ? r.key_passes : (r.keyPasses != null ? r.keyPasses : (r.key_pass != null ? r.key_pass : 0));
+      return `<tr><td><strong>${name}</strong></td><td class="num">${fmt(goals,0)}</td><td class="num">${fmt(xg)}</td><td class="num">${fmt(shots,0)}</td><td class="num">${fmt(kp,0)}</td></tr>`;
+    }).join("")}
+  </tbody></table>`;
+}
+
+function rostersBlock(rosters) {
+  if (!rosters || (!rosters.h && !rosters.a)) return `<div class="card" style="margin-top:20px"><div class="card-header"><span class="card-title">Match Rosters & Player Ledgers</span></div><div class="empty" style="padding:16px">Rosters unavailable</div></div>`;
+  const hRows = rosters.h || [];
+  const aRows = rosters.a || [];
+  if (!hRows.length && !aRows.length) return `<div class="card" style="margin-top:20px"><div class="card-header"><span class="card-title">Match Rosters & Player Ledgers</span></div><div class="empty" style="padding:16px">Rosters unavailable</div></div>`;
+  return `<div class="card" style="margin-top:20px">
+    <div class="card-header"><span class="card-title">Match Rosters & Player Ledgers</span><span style="font-size:11px;color:var(--muted)">${hRows.length + aRows.length} players</span></div>
+    <div class="grid cols-2">
+      <div><div style="font-size:12px;font-weight:700;color:var(--accent);margin-bottom:8px">Home</div>${rosterTable("Home", hRows)}</div>
+      <div><div style="font-size:12px;font-weight:700;color:var(--accent-emerald);margin-bottom:8px">Away</div>${rosterTable("Away", aRows)}</div>
+    </div>
+  </div>`;
+}
+
 function renderMatch(node, d) {
   const n = d.narrative;
   clear(node);
@@ -811,6 +889,7 @@ function renderMatch(node, d) {
           <div style="font-size:15px;color:var(--accent);font-family:var(--mono);font-weight:700">
             Expected Goals (xG): ${fmt(n.xG.h)} vs ${fmt(n.xG.a)}
           </div>
+          ${forecastPill(d.forecast)}
           <div class="hint" style="margin-top:10px;max-width:650px;margin-left:auto;margin-right:auto;font-size:13px">
             ${n.narrative}
           </div>
@@ -842,24 +921,26 @@ function renderMatch(node, d) {
       </div>
     </div>
 
-    <!-- Row 2: Big Chance Inventory vs Situations Breakdown -->
-    <div class="grid cols-2" style="margin-top:20px">
-      <div class="card">
-        <div class="card-header">
-          <span class="card-title">Big Chance Inventory (xG ≥ ${d.big_chance_inventory.xG_threshold})</span>
-        </div>
-        ${bigChances(d.big_chance_inventory)}
-      </div>
+     <!-- Row 2: Big Chance Inventory vs Situations Breakdown -->
+     <div class="grid cols-2" style="margin-top:20px">
+       <div class="card">
+         <div class="card-header">
+           <span class="card-title">Big Chance Inventory (xG ≥ ${d.big_chance_inventory.xG_threshold})</span>
+         </div>
+         ${bigChances(d.big_chance_inventory)}
+       </div>
 
-      <div class="card">
-        <div class="card-header">
-          <span class="card-title">Situations Breakdown (Open Play vs Set Pieces)</span>
-        </div>
-        ${situationBreakdown(d.situation_breakdown)}
-      </div>
-    </div>
+       <div class="card">
+         <div class="card-header">
+           <span class="card-title">Situations Breakdown (Open Play vs Set Pieces)</span>
+         </div>
+         ${situationBreakdown(d.situation_breakdown)}
+       </div>
+     </div>
 
-    <div class="caveat"><strong>Limitations.</strong><ul>${d.limitations.map((l) => `<li>${l}</li>`).join("")}</ul></div>
+     ${rostersBlock(d.rosters)}
+
+     <div class="caveat"><strong>Limitations.</strong><ul>${d.limitations.map((l) => `<li>${l}</li>`).join("")}</ul></div>
   `;
 
   renderPitchHeatmap("matchPitch", allShots);
@@ -1057,27 +1138,29 @@ function renderPlayer(node, d) {
           <span class="card-title">Finishing & Shot Quality Diagnostics</span>
         </div>
         ${finishing(d.finishing_overperformance)}
-        <div style="margin-top:16px">${shotSelection(d.shot_selection, shots)}</div>
-      </div>
+         <div style="margin-top:16px">${shotSelection(d.shot_selection, shots, d.shot_profile_detail)}</div>
+       </div>
 
-      <div class="card">
-        <div class="card-header">
-          <span class="card-title">Playmaking & Possession Involvement</span>
-        </div>
-        ${involvement(d.involvement_profile)}
-        ${d.creative_dominance ? `
-          <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border)">
-            <div class="kv">
-              <span class="k">${term("creative_dominance")}</span>
-              <span class="v" style="color:var(--accent);font-weight:700">${pct(d.creative_dominance.xA_share, 1)} of team xA</span>
-            </div>
-            <div class="hint">Generated ${fmt(d.creative_dominance.player_xA)} of ${d.creative_dominance.team_title}'s ${fmt(d.creative_dominance.team_xA)} total team xA.</div>
-          </div>
-        ` : ""}
-      </div>
-    </div>
+       <div class="card">
+         <div class="card-header">
+           <span class="card-title">Playmaking & Possession Involvement</span>
+         </div>
+         ${involvement(d.involvement_profile)}
+         ${d.creative_dominance ? `
+           <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border)">
+             <div class="kv">
+               <span class="k">${term("creative_dominance")}</span>
+               <span class="v" style="color:var(--accent);font-weight:700">${pct(d.creative_dominance.xA_share, 1)} of team xA</span>
+             </div>
+             <div class="hint">Generated ${fmt(d.creative_dominance.player_xA)} of ${d.creative_dominance.team_title}'s ${fmt(d.creative_dominance.team_xA)} total team xA.</div>
+           </div>
+         ` : ""}
+       </div>
+     </div>
 
-    <!-- Row 3: Similar Players Cluster -->
+     ${assistedNetworkBlock(d.assisted_network)}
+
+     <!-- Row 3: Similar Players Cluster -->
     <div class="card" style="margin-top:20px">
       <div class="card-header">
         <span class="card-title">Similar Player Profiles (Euclidean Peer Clustered)</span>
@@ -1268,13 +1351,17 @@ function drawCareerChart(container, rows, metricKey) {
   const path = vals.map((v, i) => `${i ? "L" : "M"}${x(i)},${y(v)}`).join(" ");
   const dots = vals.map((v, i) => hoverDot(x(i), y(v), `${rows[i].season}: ${fmt(v, 3)}\n${rows[i].team || ""}\n${fmt(rows[i].minutes, 0)} min`, "#38bdf8")).join("");
   const labels = rows.map((r, i) => `<text x="${x(i)}" y="${y1 + 16}" fill="#94a3b8" font-size="10" text-anchor="middle">${r.season}</text>`).join("");
-  const entry = GLOSSARY[metricKey] || {};
+  const yTitleRaw = glossaryLabelForMetric(metricKey);
+  const yTitle = truncateLabel(yTitleRaw, 28);
+  const topLabel = truncateLabel(yTitleRaw, 28);
   el.innerHTML = `<svg class="timeline-svg" viewBox="0 0 ${w} ${h}">
     <line x1="${x0}" y1="${y1}" x2="${x1}" y2="${y1}" stroke="#1e293b"/>
     <line x1="${x0}" y1="${y1}" x2="${x0}" y2="${y0}" stroke="#1e293b"/>
     <path d="${path}" fill="none" stroke="#38bdf8" stroke-width="2.5"/>${dots}
     ${labels}
-    <text x="${x0}" y="${y0}" fill="#94a3b8" font-size="11">${entry.label || metricKey} by Season</text>
+    <text x="${x0}" y="${y0}" fill="#94a3b8" font-size="11">${topLabel} by Season</text>
+    <text x="${(x0+x1)/2}" y="${h - 6}" fill="#94a3b8" font-size="10" text-anchor="middle">Season</text>
+    <text x="14" y="${(y0+y1)/2}" fill="#94a3b8" font-size="10" text-anchor="middle" transform="rotate(-90 14 ${(y0+y1)/2})">${yTitle}</text>
   </svg>`;
 }
 
@@ -1312,6 +1399,8 @@ function drawCareerGoalsVsXg(container, rows) {
     <line x1="${x0}" y1="${y1}" x2="${x0}" y2="${y0}" stroke="#1e293b"/>
     ${bars}${xgLine}${dots}${labels}
     <text x="${x0}" y="${y0 - 6}" fill="#94a3b8" font-size="10.5"><tspan fill="#38bdf8">■ Goals Scored</tspan>   <tspan fill="#10b981">- - Expected Goals (xG)</tspan></text>
+    <text x="${(x0+x1)/2}" y="${h - 6}" fill="#94a3b8" font-size="10" text-anchor="middle">Season</text>
+    <text x="14" y="${(y0+y1)/2}" fill="#94a3b8" font-size="10" text-anchor="middle" transform="rotate(-90 14 ${(y0+y1)/2})">Goals / xG</text>
   </svg>`;
 }
 
@@ -1338,6 +1427,8 @@ function drawCareerInvolvementEvolution(container, rows) {
     <path d="${buildPts}" fill="none" stroke="#f59e0b" stroke-width="2.5"/>
     ${chainDots}${buildDots}${labels}
     <text x="${x0}" y="${y0 - 6}" fill="#94a3b8" font-size="10.5"><tspan fill="#38bdf8">— xGChain /90</tspan>   <tspan fill="#f59e0b">— xGBuildup /90</tspan></text>
+    <text x="${(x0+x1)/2}" y="${h - 6}" fill="#94a3b8" font-size="10" text-anchor="middle">Season</text>
+    <text x="14" y="${(y0+y1)/2}" fill="#94a3b8" font-size="10" text-anchor="middle" transform="rotate(-90 14 ${(y0+y1)/2})">Per 90</text>
   </svg>`;
 }
 
@@ -1482,14 +1573,16 @@ function renderTeam(node, d) {
       <div class="controls-row">
         <div class="field"><label>Metric</label>
           <select id="trendMetric">
-            <option value="npxGD">${term("npxgd")}</option>
-            <option value="xG_for">${term("xG")} For</option>
-            <option value="xG_against">${term("xGA")} Against</option>
-            <option value="goals_for">${term("goals")} For</option>
-            <option value="goals_against">Goals Against</option>
-            <option value="xPTS">${term("xpts")}</option>
-            <option value="PPDA">${term("ppda")}</option>
-          </select>
+             <option value="npxGD">${term("npxgd")}</option>
+             <option value="xG_for">${term("xG")} For</option>
+             <option value="xG_against">${term("xGA")} Against</option>
+             <option value="goals_for">${term("goals")} For</option>
+             <option value="goals_against">Goals Against</option>
+             <option value="xPTS">${term("xpts")}</option>
+             <option value="PPDA">${term("ppda")}</option>
+             <option value="deep_for">Deep completions for</option>
+             <option value="deep_against">Deep completions against</option>
+           </select>
         </div>
       </div>
       <div id="trendChart"></div>
@@ -1773,13 +1866,15 @@ function drawSeasonLines(container, trends, metric, opts) {
     }
   }
 
-  const axisLabel = opts.invert ? "Table Rank (1 = Top)" : "Points";
+  const axisLabelRaw = opts.invert ? "Rank (1 = top)" : "Points";
+  const axisLabel = truncateLabel(axisLabelRaw, 28);
   el.innerHTML = `<svg class="timeline-svg" viewBox="0 0 ${w} ${h}">
     <line x1="${x0}" y1="${y1}" x2="${x1}" y2="${y1}" stroke="#1e293b"/>
     <line x1="${x0}" y1="${y1}" x2="${x0}" y2="${y0}" stroke="#1e293b"/>
     ${lines}${dots}
+    <text x="14" y="${(y0+y1)/2}" fill="#94a3b8" font-size="10" text-anchor="middle" transform="rotate(-90 14 ${(y0+y1)/2})">${axisLabel}</text>
+    <text x="${(x0+x1)/2}" y="${h - 6}" fill="#94a3b8" font-size="10" text-anchor="middle">Matchday →</text>
     <text x="${x0}" y="${y0}" fill="#94a3b8" font-size="10">${axisLabel}</text>
-    <text x="${x0 + (x1 - x0) / 2}" y="${h - 6}" fill="#94a3b8" font-size="10" text-anchor="middle">Matchday →</text>
   </svg>`;
 }
 
@@ -1795,12 +1890,15 @@ function drawLuckChart(container, lc) {
   const dots = lc.points.map((p, i) => hoverDot(x(i), y(p.cumulative_g_minus_xg), `${p.date}\nCumulative G − xG: ${fmt(p.cumulative_g_minus_xg, 2)}`, lc.final >= 0 ? "#10b981" : "#f43f5e", 3.5)).join("");
   const zero = y(0);
 
+  const luckYTitle = truncateLabel("Cumulative G − xG", 28);
   el.innerHTML = `<svg class="timeline-svg" viewBox="0 0 ${w} ${h}">
     <line x1="${x0}" y1="${y1}" x2="${x1}" y2="${y1}" stroke="#1e293b"/>
     <line x1="${x0}" y1="${y1}" x2="${x0}" y2="${y0}" stroke="#1e293b"/>
     <line x1="${x0}" y1="${zero}" x2="${x1}" y2="${zero}" stroke="#1e293b" stroke-dasharray="3 4"/>
     <path d="${path}" fill="none" stroke="${lc.final >= 0 ? '#10b981' : '#f43f5e'}" stroke-width="2.5"/>${dots}
     <text x="${x0}" y="${y0}" fill="#94a3b8" font-size="9.5">Cumulative Goals − xG Overperformance</text>
+    <text x="${(x0+x1)/2}" y="${h - 6}" fill="#94a3b8" font-size="10" text-anchor="middle">Match (chronological)</text>
+    <text x="14" y="${(y0+y1)/2}" fill="#94a3b8" font-size="10" text-anchor="middle" transform="rotate(-90 14 ${(y0+y1)/2})">${luckYTitle}</text>
   </svg>`;
 }
 
@@ -1815,14 +1913,19 @@ function drawTrendChart(container, mt, key) {
   const path = vals.map((v, i) => `${i ? "L" : "M"}${x(i)},${y(v)}`).join(" ");
   const dots = vals.map((v, i) => hoverDot(x(i), y(v), `${mt.dates[i]}\n${key}: ${fmt(v, 2)}`, "#38bdf8", 3.5)).join("");
   const zero = y(0);
-  const entry = GLOSSARY[key] || {};
-
+  const baseLabelRaw = glossaryLabelForMetric(key);
+  const baseLabel = truncateLabel(baseLabelRaw, 28);
+  const yLabelRaw = `${baseLabelRaw} (5-match avg)`;
+  const yLabel = truncateLabel(yLabelRaw, 28);
+  const xLabel = "Match date (5-match rolling avg)";
   el.innerHTML = `<svg class="timeline-svg" viewBox="0 0 ${w} ${h}">
     <line x1="${x0}" y1="${y1}" x2="${x1}" y2="${y1}" stroke="#1e293b"/>
     <line x1="${x0}" y1="${y1}" x2="${x0}" y2="${y0}" stroke="#1e293b"/>
     <line x1="${x0}" y1="${zero}" x2="${x1}" y2="${zero}" stroke="#1e293b" stroke-dasharray="3 4"/>
     <path d="${path}" fill="none" stroke="#38bdf8" stroke-width="2.5"/>${dots}
-    <text x="${x0}" y="${y0}" fill="#94a3b8" font-size="10.5">Rolling 5-Match ${entry.label || key}</text>
+    <text x="${x0}" y="${y0}" fill="#94a3b8" font-size="10.5">Rolling 5-Match ${baseLabel}</text>
+    <text x="${(x0+x1)/2}" y="${h - 6}" fill="#94a3b8" font-size="10" text-anchor="middle">${xLabel}</text>
+    <text x="14" y="${(y0+y1)/2}" fill="#94a3b8" font-size="10" text-anchor="middle" transform="rotate(-90 14 ${(y0+y1)/2})">${yLabel}</text>
   </svg>`;
 }
 
@@ -1845,14 +1948,101 @@ function finishing(f) {
   </div><div class="hint">${f.interpretation}</div>`;
 }
 
-function shotSelection(s, shots = []) {
+function shotSelection(s, shots = [], detail = null) {
   return `<div class="kv">
     <span class="k">${term("shots")}</span><span class="v">${fmt(s.shots, 0)} · ${fmt(s.shots_per90, 2)}/90</span>
     <span class="k">${term("xG_per_shot")}</span><span class="v">${s.xG_per_shot == null ? "N/A" : fmt(s.xG_per_shot, 3)}</span>
     <span class="k">Non-Penalty xG / Shot</span><span class="v">${s.npxG_per_shot == null ? "N/A" : fmt(s.npxG_per_shot, 3)}</span>
   </div>
   ${playerShotMixBars(shots)}
+  ${playerZoneTypeBars(detail)}
   <div class="hint" style="margin-top:10px">${s.interpretation}</div>`;
+}
+
+function playerZoneTypeBars(detail) {
+  const emptyHtml = `<div class="empty" style="padding:12px">Zone/type breakdown unavailable for this season — Understat groups missing</div>`;
+  if (!detail || (detail.zones == null && detail.types == null && detail.role_split == null)) return emptyHtml;
+  const colors = ["#38bdf8", "#10b981", "#f59e0b", "#a855f7", "#ec4899", "#64748b"];
+  function barBlock(title, items, labelKey = "name") {
+    if (!items || !items.length) return "";
+    const total = items.reduce((a, b) => a + (Number(b.shots) || 0), 0) || 1;
+    const sitItems = items.map((r) => {
+      const name = r[labelKey] || r.name || r.shotZones || r.shotTypes || "—";
+      return [name, Number(r.shots) || 0, r.xG_share];
+    });
+    const filtered = sitItems.filter(([, c]) => c > 0);
+    if (!filtered.length) return "";
+    return `
+      <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border)">
+        <div style="font-size:11.5px;font-weight:700;color:var(--text);margin-bottom:6px">${title}</div>
+        <div style="display:flex;gap:3px;margin-bottom:8px;height:9px;border-radius:var(--radius-full);overflow:hidden;background:var(--bg)">
+          ${filtered.map(([name, count], idx) => {
+            const p = (count / total) * 100;
+            return `<div style="width:${p}%;background:${colors[idx % colors.length]};height:100%" title="${name}: ${count} (${fmt(p, 1)}%)"></div>`;
+          }).join("")}
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:10px;font-size:11px;color:var(--muted)">
+          ${filtered.map(([name, count, xG_share], idx) => {
+            const share = xG_share != null ? ` · xG share ${pct(xG_share, 0)}` : "";
+            return `<span style="display:flex;align-items:center;gap:4px"><span style="display:inline-block;width:7px;height:7px;border-radius:2px;background:${colors[idx % colors.length]}"></span>${name}: <strong>${fmt((count / total) * 100, 0)}%</strong> (${count})${share}</span>`;
+          }).join("")}
+        </div>
+      </div>
+    `;
+  }
+  const zonesHtml = barBlock("Shot Zones (InsideBox / OutsideBox)", detail.zones);
+  const typesHtml = barBlock("Shot Types (Foot / Head)", detail.types);
+  let roleHtml = "";
+  if (detail.role_split && detail.role_split.length) {
+    roleHtml = `<div style="margin-top:12px;font-size:11px;color:var(--muted)"><strong style="color:var(--text)">Role split:</strong> ${detail.role_split.map((r) => `${r.role || r.position || "—"}: ${r.games || 0}g · ${r.minutes || r.time || 0} min`).join(" · ")}</div>`;
+  }
+  if (!zonesHtml && !typesHtml && !roleHtml) return emptyHtml;
+  return zonesHtml + typesHtml + roleHtml;
+}
+
+function assistedNetworkBlock(an) {
+  if (!an || ((!an.top_assisters || !an.top_assisters.length) && (!an.top_assisted || !an.top_assisted.length))) {
+    return `<div class="card" style="margin-top:20px">
+      <div class="card-header"><span class="card-title">Assisted Network (Understat shot assists)</span></div>
+      <div class="empty" style="padding:16px">No assist data</div>
+      ${an && an.honest_note ? `<div class="hint" style="margin-top:8px">${an.honest_note}</div>` : `<div class="hint" style="margin-top:8px">Aggregated from shots.player_assisted (Understat shot assists, not Opta key passes).</div>`}
+    </div>`;
+  }
+  const assisters = an.top_assisters || [];
+  const assisted = an.top_assisted || [];
+  const honest = an.honest_note || "Aggregated from shots.player_assisted (Understat shot assists, not Opta key passes).";
+  function rowsFor(list, keyName) {
+    if (!list.length) return `<tr><td colspan="3" style="color:var(--muted);text-align:center;padding:10px">—</td></tr>`;
+    return list.map((r) => {
+      const name = r.assister || r.assisted || r[keyName] || r.player || "—";
+      const cnt = r.count != null ? r.count : 0;
+      const xg = r.assists_xG != null ? r.assists_xG : (r.xG != null ? r.xG : 0);
+      return `<tr><td><strong>${name}</strong></td><td class="num">${fmt(cnt,0)}</td><td class="num">${fmt(xg)}</td></tr>`;
+    }).join("");
+  }
+  let badgeText = "";
+  if (!assisted.length && assisters.length) {
+    badgeText = `${assisters.length} inbound`;
+  } else if (!assisters.length && assisted.length) {
+    badgeText = `${assisted.length} outbound`;
+  } else {
+    const total = assisters.length + assisted.length;
+    badgeText = `${total} ${total === 1 ? "link" : "links"}`;
+  }
+  return `<div class="card" style="margin-top:20px">
+    <div class="card-header"><span class="card-title">Assisted Network</span><span style="font-size:11px;color:var(--muted)">${badgeText}</span></div>
+    <div class="grid cols-2">
+      <div>
+        <div style="font-size:11.5px;font-weight:700;color:var(--text);margin-bottom:8px">Top assisters → you</div>
+        <table><thead><tr><th>Assister</th><th class="num">Count</th><th class="num">Assists xG</th></tr></thead><tbody>${rowsFor(assisters, "assister")}</tbody></table>
+      </div>
+      <div>
+        <div style="font-size:11.5px;font-weight:700;color:var(--text);margin-bottom:8px">You assisted → teammates</div>
+        <table><thead><tr><th>Assisted</th><th class="num">Count</th><th class="num">xG</th></tr></thead><tbody>${rowsFor(assisted, "assisted")}</tbody></table>
+      </div>
+    </div>
+    <div class="hint" style="margin-top:10px">${honest}</div>
+  </div>`;
 }
 
 function playerShotMixBars(shots) {
@@ -2246,6 +2436,8 @@ function drawLeagueDivergenceChart(container, rows) {
 
     <!-- Bars & Labels -->
     ${bars}${labels}
+    <text x="${(x0+x1)/2}" y="${h - 6}" fill="#94a3b8" font-size="10" text-anchor="middle">Points gap (PTS − xPTS)</text>
+    <text x="14" y="${h/2}" fill="#94a3b8" font-size="10" text-anchor="middle" transform="rotate(-90 14 ${h/2})">Team (sorted by gap)</text>
   </svg>`;
 }
 
@@ -2337,6 +2529,8 @@ function drawLeagueTacticalQuadrant(container, rows) {
     <text x="28" y="${y0 + (y1 - y0)/2}" fill="#e2e8f0" font-size="13" font-weight="800" text-anchor="middle" transform="rotate(-90 28 ${y0 + (y1 - y0)/2})">
       Deep Box Completions (DC) ↑
     </text>
+    <text x="${(x0+x1)/2}" y="${h - 6}" fill="#94a3b8" font-size="10" text-anchor="middle">PPDA (lower = higher press, inverted →)</text>
+    <text x="14" y="${(y0+y1)/2}" fill="#94a3b8" font-size="10" text-anchor="middle" transform="rotate(-90 14 ${(y0+y1)/2})">Deep completions / game</text>
   </svg>`;
 }
 
