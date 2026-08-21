@@ -102,7 +102,9 @@ async def lifespan(app: FastAPI):
     app.state.client = client
     app.state.runner = EndpointRunner(client=client)
     app.state.answerer = FootballQuestionAnswerer(client=client)
-    app.state.analytics = AnalyticsService(client=client)
+    from .analytics.enrichment import provider_from_env
+
+    app.state.analytics = AnalyticsService(client=client, enrichment=provider_from_env())
     app.state.predictions = PredictionService(client=client)
     yield
     await client.close()

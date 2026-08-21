@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="theme-color" content="#07090e" />
   <title>Football Analytics Lab · Pro Intelligence Hub</title>
-  <link rel="stylesheet" href="/dashboard/styles.css?v=21" />
+  <link rel="stylesheet" href="/dashboard/styles.css?v=26" />
 </head>
 <body>
   <div class="app-container">
@@ -77,12 +77,23 @@
           </div>
         </div>
 
-        <div class="league-selector" id="leaguePicker">
-          <button class="league-btn active" data-league="EPL">EPL</button>
-          <button class="league-btn" data-league="La_liga">La Liga</button>
-          <button class="league-btn" data-league="Serie_A">Serie A</button>
-          <button class="league-btn" data-league="Bundesliga">Bundesliga</button>
-          <button class="league-btn" data-league="Ligue_1">Ligue 1</button>
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+          <div class="league-selector" id="leaguePicker">
+            <button class="league-btn active" data-league="EPL">EPL</button>
+            <button class="league-btn" data-league="La_liga">La Liga</button>
+            <button class="league-btn" data-league="Serie_A">Serie A</button>
+            <button class="league-btn" data-league="Bundesliga">Bundesliga</button>
+            <button class="league-btn" data-league="Ligue_1">Ligue 1</button>
+          </div>
+          <div class="theme-picker" id="themePicker" style="margin-top:0;padding:8px 10px">
+            <select id="themeSelect" aria-label="Theme" style="background:var(--panel-2);color:var(--text);border:1px solid var(--border);padding:5px 8px;border-radius:6px;font-size:12px">
+              <option value="midnight">Midnight</option>
+              <option value="nord">Nord</option>
+              <option value="gruvbox">Gruvbox</option>
+              <option value="studio">Studio</option>
+            </select>
+            <button id="modeToggle" class="theme-mode-btn" aria-label="Toggle light/dark">🌙 Dark</button>
+          </div>
         </div>
       </header>
 
@@ -507,6 +518,6 @@
   <div id="tooltip" class="tooltip"></div>
   <div id="chartTip" class="tooltip"></div>
 
-  <script src="/dashboard/app.js?v=24"></script>
+  <script src="/dashboard/app.js?v=25"></script>
 </body>
 </html>

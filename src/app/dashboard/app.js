@@ -163,6 +163,28 @@ function windowBadge(d) {
   return `<span class="hero-pill">${label}</span>`;
 }
 
+function formatEur(value) {
+  if (value == null) return null;
+  const n = Number(value);
+  if (n >= 1_000_000) return `€${(n / 1_000_000).toFixed(n >= 10_000_000 ? 0 : 1)}m`;
+  if (n >= 1000) return `€${Math.round(n / 1000)}k`;
+  return `€${n.toLocaleString()}`;
+}
+
+function enrichmentPills(enrichment) {
+  if (!enrichment || enrichment.source === "none") return "";
+  const parts = [];
+  const tip = (enrichment.honest_note || "").replace(/"/g, "&quot;");
+  const mv = formatEur(enrichment.market_value_eur);
+  if (mv) parts.push(`<span class="hero-pill" style="background:rgba(16,185,129,0.12);border:1px solid rgba(16,185,129,0.35);color:#6ee7b7" title="${tip}">💶 ${mv}</span>`);
+  if (enrichment.contract_end) {
+    const year = String(enrichment.contract_end).slice(0, 4);
+    parts.push(`<span class="hero-pill" style="background:rgba(99,102,241,0.12);border:1px solid rgba(99,102,241,0.35);color:#a5b4fc" title="${tip}">📅 ${year}</span>`);
+  }
+  if (enrichment.foot) parts.push(`<span class="hero-pill" title="${tip}">🦶 ${enrichment.foot}</span>`);
+  return parts.join(" ");
+}
+
 // Persist Inputs
 const PERSIST_IDS = [
   "playerName", "teamName", "leagueSeason",
@@ -184,6 +206,44 @@ if (savedLeague) {
   document.querySelectorAll("#leaguePicker button").forEach((b) => b.classList.toggle("active", b.dataset.league === savedLeague));
   state.league = savedLeague || state.league;
 }
+
+// Theme System (Midnight/Nord/Gruvbox/Studio × light/dark)
+function applyTheme(theme, mode) {
+  document.documentElement.setAttribute("data-theme", theme);
+  document.documentElement.setAttribute("data-mode", mode);
+  localStorage.setItem("prem_theme", theme);
+  localStorage.setItem("prem_mode", mode);
+  const sel = document.getElementById("themeSelect");
+  if (sel) sel.value = theme;
+  const btn = document.getElementById("modeToggle");
+  if (btn) btn.textContent = mode === "dark" ? "🌙 Dark" : "☀️ Light";
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) {
+    try {
+      const bg = getComputedStyle(document.documentElement).getPropertyValue("--bg-darkest").trim();
+      if (bg) meta.setAttribute("content", bg);
+    } catch (_) {}
+  }
+}
+function getThemeColor(varName) {
+  try { return getComputedStyle(document.documentElement).getPropertyValue(varName).trim() || null; } catch (_) { return null; }
+}
+(function initTheme() {
+  const savedTheme = localStorage.getItem("prem_theme") || "midnight";
+  const savedMode = localStorage.getItem("prem_mode") || "dark";
+  applyTheme(savedTheme, savedMode);
+  const sel = document.getElementById("themeSelect");
+  if (sel) sel.addEventListener("change", (e) => {
+    const mode = localStorage.getItem("prem_mode") || "dark";
+    applyTheme(e.target.value, mode);
+  });
+  const btn = document.getElementById("modeToggle");
+  if (btn) btn.addEventListener("click", () => {
+    const curTheme = localStorage.getItem("prem_theme") || "midnight";
+    const curMode = localStorage.getItem("prem_mode") || "dark";
+    applyTheme(curTheme, curMode === "dark" ? "light" : "dark");
+  });
+})();
 
 // Glossary Management
 let GLOSSARY = {};
@@ -1253,6 +1313,7 @@ function renderPlayer(node, d) {
               <span class="hero-pill">${p.position_group || p.position || "Forward"}</span>
               ${p.age ? `<span class="hero-pill">${p.age} years old</span>` : ""}
               <span class="hero-pill">${LEAGUE_LABEL[state.league] || state.league}</span>
+              ${enrichmentPills(d.enrichment)}
               ${windowBadge(d)}
             </div>
           </div>
