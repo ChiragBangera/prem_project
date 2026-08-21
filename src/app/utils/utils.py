@@ -184,3 +184,10 @@ class Utils:
             "date_start": f"{start_value} 00:00:00" if start_value else "",
             "date_end": f"{end_value} 23:59:59" if end_value else "",
         }
+
+
+def get_current_season() -> int:
+    """Returns the current European football season start year (e.g. 2026 in Aug 2026)."""
+    now = datetime.now()
+    return now.year if now.month >= 7 else now.year - 1
+

@@ -31,7 +31,7 @@ MAX_WALKFORWARD_FITS = 120
 SEASON_SIM_SIMS = 2000
 VENUE_DAMPING = 0.5
 FORM_DAMPING = 0.5
-POOL_LEAGUES = ("EPL", "La_liga", "Serie_A", "Ligue_1")
+POOL_LEAGUES = ("EPL", "La_liga", "Serie_A", "Bundesliga", "Ligue_1")
 
 _history_cache: dict[tuple, dict] = {}
 _creator_cache: dict[tuple, dict] = {}

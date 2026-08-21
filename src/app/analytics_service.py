@@ -11,10 +11,12 @@ from .analytics import match as match_engine
 from .analytics._shared import as_list_matches
 from .ml.engine import build_match_rows
 from .stat_data import UnderstatData
+from .utils.utils import get_current_season
 
 
-LEAGUES = ("EPL", "La_liga", "Serie_A", "Ligue_1")
+LEAGUES = ("EPL", "La_liga", "Serie_A", "Bundesliga", "Ligue_1")
 DEFAULT_CAREER_SEASONS = 6
+DEFAULT_SEASON = get_current_season()
 
 
 def _valid_date_range(start_date: str | None, end_date: str | None) -> tuple[str | None, str | None]:
@@ -70,7 +72,7 @@ class AnalyticsService:
         player_id: int | None = None,
         player_name: str | None = None,
         league_name: str = "EPL",
-        season: int = 2025,
+        season: int = DEFAULT_SEASON,
         start_date: str | None = None,
         end_date: str | None = None,
         seasons: list[int] | str | None = None,
@@ -112,6 +114,30 @@ class AnalyticsService:
 
         target = merged_by_id.get(player_id)
         if target is None:
+            # Fallback: discover the player's most recent active season in this league
+            if hasattr(self.client, "get_player_data"):
+                try:
+                    p_data = await self.client.get_player_data(player_id)
+                    groups = p_data.get("groups", {}) if isinstance(p_data, dict) else {}
+                    seasons_list = groups.get("season", [])
+                    if isinstance(seasons_list, list) and seasons_list:
+                        for s_entry in seasons_list:
+                            s_yr = int(s_entry.get("season", 0))
+                            if s_yr and s_yr not in target_seasons:
+                                fallback_stats = await self.client.get_league_player_stats(
+                                    league_name, s_yr, start_date=start_date, end_date=end_date
+                                )
+                                if isinstance(fallback_stats, list) and fallback_stats:
+                                    fallback_merged = _merge_league_players([fallback_stats])
+                                    if player_id in fallback_merged:
+                                        merged_by_id = fallback_merged
+                                        target = merged_by_id[player_id]
+                                        target_seasons = [s_yr]
+                                        break
+                except Exception:
+                    pass
+
+        if target is None:
             window = _window_label(start_date, end_date)
             raise ValueError(
                 f"Player id {player_id} is not in {league_name} {target_seasons}{window} per the league player stats tables."
@@ -152,6 +178,25 @@ class AnalyticsService:
             report["player"]["favorite_position"] = favorite
             report["player"]["position_group"] = group_from_favorite(favorite)
 
+        if shots:
+            report["shots"] = [
+                {
+                    "minute": s.get("minute"),
+                    "xG": round(float(s.get("xG") or 0), 4),
+                    "result": s.get("result"),
+                    "situation": s.get("situation"),
+                    "shotType": s.get("shotType"),
+                    "lastAction": s.get("lastAction"),
+                    "player": s.get("player") or target.get("player_name"),
+                    "X": float(s.get("X") or 0),
+                    "Y": float(s.get("Y") or 0),
+                    "date": (s.get("date") or "")[:10],
+                    "h_a": s.get("h_a"),
+                    "season": s.get("season"),
+                }
+                for s in shots
+            ]
+
         report["date_window"] = {"start_date": start_date, "end_date": end_date}
         report["seasons"] = target_seasons
         return report
@@ -170,7 +215,7 @@ class AnalyticsService:
         if seasons:
             target_seasons = sorted(int(s) for s in seasons)
         else:
-            end = season_end or 2025
+            end = season_end or DEFAULT_SEASON
             target_seasons = list(range(end - DEFAULT_CAREER_SEASONS + 1, end + 1))
 
         import asyncio
@@ -229,7 +274,7 @@ class AnalyticsService:
         if seasons:
             target_seasons = sorted(int(s) for s in seasons)
         else:
-            end = season_end or 2025
+            end = season_end or DEFAULT_SEASON
             target_seasons = [end - 1, end]
 
         import asyncio
@@ -249,7 +294,7 @@ class AnalyticsService:
         player_2: str | None = None,
         players: list[str] | None = None,
         league_name: str = "EPL",
-        season: int = 2025,
+        season: int = DEFAULT_SEASON,
         start_date: str | None = None,
         end_date: str | None = None,
     ) -> dict:
@@ -343,7 +388,7 @@ class AnalyticsService:
         team_1: str,
         team_2: str,
         league_name: str = "EPL",
-        season: int = 2025,
+        season: int = DEFAULT_SEASON,
         start_date: str | None = None,
         end_date: str | None = None,
     ) -> dict:
@@ -431,7 +476,7 @@ class AnalyticsService:
         self,
         team_name: str,
         league_name: str = "EPL",
-        season: int = 2025,
+        season: int = DEFAULT_SEASON,
         with_shots: bool = False,
         start_date: str | None = None,
         end_date: str | None = None,
@@ -536,12 +581,42 @@ class AnalyticsService:
         report["season_trends"] = {str(s): t for s, t in sorted(season_trends.items())} if season_trends else None
         report["date_window"] = {"start_date": start_date, "end_date": end_date}
         report["seasons"] = target_seasons
+
+        try:
+            raw_squad = await self.client.get_team_player_stats(
+                team_name, str(target_seasons[-1]), start_date=start_date, end_date=end_date
+            )
+            report["squad"] = [
+                {
+                    "player_name": p.get("player_name"),
+                    "games": int(float(p.get("games", 0))),
+                    "minutes": int(float(p.get("time", 0))),
+                    "goals": int(float(p.get("goals", 0))),
+                    "xG": round_value(float(p.get("xG", 0))),
+                    "npxG": round_value(float(p.get("npxG", 0))),
+                    "assists": int(float(p.get("assists", 0))),
+                    "xA": round_value(float(p.get("xA", 0))),
+                    "shots": int(float(p.get("shots", 0))),
+                    "key_passes": int(float(p.get("key_passes", 0))),
+                    "yellow_cards": int(float(p.get("yellow_cards", 0))),
+                    "red_cards": int(float(p.get("red_cards", 0))),
+                    "position": p.get("position"),
+                    "team_title": p.get("team_title"),
+                    "npg": int(float(p.get("npg", 0))),
+                    "xGChain": round_value(float(p.get("xGChain", 0))),
+                    "xGBuildup": round_value(float(p.get("xGBuildup", 0))),
+                }
+                for p in raw_squad if isinstance(p, dict)
+            ]
+        except Exception:
+            report["squad"] = []
+
         return report
 
     async def analyze_league(
         self,
         league_name: str = "EPL",
-        season: int = 2025,
+        season: int = DEFAULT_SEASON,
         start_date: str | None = None,
         end_date: str | None = None,
     ) -> dict:
@@ -553,7 +628,7 @@ class AnalyticsService:
         report["date_window"] = {"start_date": start_date, "end_date": end_date}
         return report
 
-    async def match_rounds(self, league_name: str = "EPL", season: int = 2025) -> dict:
+    async def match_rounds(self, league_name: str = "EPL", season: int = DEFAULT_SEASON) -> dict:
         """League matches grouped by derived round (home team's nth league match).
 
         Understat does not label gameweeks, so a match's round is the count of
@@ -579,22 +654,43 @@ class AnalyticsService:
                     "round": round_number,
                     "matches": [
                         {
-                            "match_id": row["match_id"],
+                            "match_id": str(row["match_id"]),
+                            "id": str(row["match_id"]),
                             "date": row["date"],
                             "home": row["home"],
                             "away": row["away"],
                             "home_goals": row["home_goals"],
                             "away_goals": row["away_goals"],
+                            "home_xg": row["home_xg"],
+                            "away_xg": row["away_xg"],
                         }
                         for row in matches
                     ],
                 }
             )
+
+        latest = sorted(played, key=lambda r: r["date"], reverse=True)[:18]
+        latest_matches = [
+            {
+                "match_id": str(r["match_id"]),
+                "id": str(r["match_id"]),
+                "date": r["date"],
+                "home": r["home"],
+                "away": r["away"],
+                "home_goals": r["home_goals"],
+                "away_goals": r["away_goals"],
+                "home_xg": r["home_xg"],
+                "away_xg": r["away_xg"],
+            }
+            for r in latest
+        ]
+
         return {
             "league_name": league_name,
             "season": season,
             "n_played": len(played),
             "rounds": rounds,
+            "latest_matches": latest_matches,
             "note": "Round = the home team's nth league match of the season (Understat has no official gameweek label).",
         }
 
@@ -611,7 +707,7 @@ class AnalyticsService:
     async def discover_players(
         self,
         league_name: str = "EPL",
-        season: int = 2025,
+        season: int = DEFAULT_SEASON,
         position_group: str | None = None,
         minimum_minutes: float = 900,
         order_by: str = "npxG",
@@ -742,6 +838,160 @@ class AnalyticsService:
                 "Team PPDA is the full-season team value (not date-windowed per player).",
                 "Multi-season discovery merges counting stats and keeps the latest team; team PPDA is from the latest season only.",
             ],
+        }
+
+    async def player_shot_map(
+        self,
+        player_id: int | None = None,
+        player_name: str | None = None,
+        league_name: str = "EPL",
+        season: int = DEFAULT_SEASON,
+        start_date: str | None = None,
+        end_date: str | None = None,
+        seasons: list[int] | str | None = None,
+    ) -> dict:
+        if player_id is None and player_name is None:
+            raise ValueError("Either player_id or player_name is required.")
+
+        start_date, end_date = _valid_date_range(start_date, end_date)
+        target_seasons = parse_seasons(seasons) or [season]
+
+        if player_id is None:
+            matches = await self.client.search_players(player_name)
+            if not matches:
+                raise ValueError(f"Player '{player_name}' was not found via Understat search.")
+            player_id = int(matches[0]["id"])
+            player_name = matches[0].get("player") or matches[0].get("player_name") or player_name
+
+        raw_shots = await self.client.get_player_shots(player_id)
+        shots = _filter_shots_to_seasons(raw_shots, target_seasons, start_date, end_date)
+
+        shot_points = []
+        for s in shots:
+            shot_points.append(
+                {
+                    "minute": s.get("minute"),
+                    "xG": round(float(s.get("xG") or 0), 4),
+                    "result": s.get("result"),
+                    "situation": s.get("situation"),
+                    "shotType": s.get("shotType"),
+                    "lastAction": s.get("lastAction"),
+                    "player": s.get("player") or player_name,
+                    "X": float(s.get("X") or 0),
+                    "Y": float(s.get("Y") or 0),
+                    "date": (s.get("date") or "")[:10],
+                    "h_a": s.get("h_a"),
+                    "h_team": s.get("h_team"),
+                    "a_team": s.get("a_team"),
+                    "season": s.get("season"),
+                }
+            )
+
+        goals = sum(1 for s in shot_points if s["result"] == "Goal")
+        total_xg = sum(s["xG"] for s in shot_points)
+
+        return {
+            "player_id": player_id,
+            "player_name": player_name,
+            "seasons": target_seasons,
+            "total_shots": len(shot_points),
+            "goals": goals,
+            "total_xG": round(total_xg, 2),
+            "shots": shot_points,
+            "date_window": {"start_date": start_date, "end_date": end_date},
+        }
+
+    async def team_shot_map(
+        self,
+        team_name: str,
+        league_name: str = "EPL",
+        season: int = DEFAULT_SEASON,
+        start_date: str | None = None,
+        end_date: str | None = None,
+        seasons: list[int] | str | None = None,
+    ) -> dict:
+        start_date, end_date = _valid_date_range(start_date, end_date)
+        target_seasons = parse_seasons(seasons) or [season]
+
+        import asyncio
+
+        all_results = []
+        for s in target_seasons:
+            try:
+                results = await self.client.get_team_results(team_name, s)
+                all_results.extend(as_list_matches(results))
+            except Exception:
+                pass
+
+        if start_date or end_date:
+            all_results = _filter_rows_by_date(all_results, start_date, end_date)
+
+        match_ids = [int(m["id"]) for m in all_results if m.get("id")]
+        target_match_ids = match_ids[:76]
+
+        all_match_shots = await asyncio.gather(
+            *(self.client.get_match_shots(mid) for mid in target_match_ids),
+            return_exceptions=True,
+        )
+
+        for_shots = []
+        against_shots = []
+
+        for match_info, batch in zip(all_results[:len(target_match_ids)], all_match_shots):
+            if isinstance(batch, BaseException) or not isinstance(batch, dict):
+                continue
+            h_team = (match_info.get("h") or {}).get("title") or match_info.get("side")
+            is_home = (h_team == team_name) if h_team else (match_info.get("h_a") == "h")
+
+            for_side = "h" if is_home else "a"
+            against_side = "a" if is_home else "h"
+
+            for s in batch.get(for_side, []):
+                for_shots.append(
+                    {
+                        "minute": s.get("minute"),
+                        "xG": round(float(s.get("xG") or 0), 4),
+                        "result": s.get("result"),
+                        "situation": s.get("situation"),
+                        "shotType": s.get("shotType"),
+                        "lastAction": s.get("lastAction"),
+                        "player": s.get("player"),
+                        "X": float(s.get("X") or 0),
+                        "Y": float(s.get("Y") or 0),
+                        "date": (s.get("date") or "")[:10],
+                        "season": s.get("season"),
+                    }
+                )
+
+            for s in batch.get(against_side, []):
+                against_shots.append(
+                    {
+                        "minute": s.get("minute"),
+                        "xG": round(float(s.get("xG") or 0), 4),
+                        "result": s.get("result"),
+                        "situation": s.get("situation"),
+                        "shotType": s.get("shotType"),
+                        "lastAction": s.get("lastAction"),
+                        "player": s.get("player"),
+                        "X": float(s.get("X") or 0),
+                        "Y": float(s.get("Y") or 0),
+                        "date": (s.get("date") or "")[:10],
+                        "season": s.get("season"),
+                    }
+                )
+
+        return {
+            "team_name": team_name,
+            "league_name": league_name,
+            "seasons": target_seasons,
+            "matches_analyzed": len(target_match_ids),
+            "for_shots": for_shots,
+            "against_shots": against_shots,
+            "for_xG": round(sum(s["xG"] for s in for_shots), 2),
+            "against_xG": round(sum(s["xG"] for s in against_shots), 2),
+            "for_goals": sum(1 for s in for_shots if s["result"] == "Goal"),
+            "against_goals": sum(1 for s in against_shots if s["result"] == "Goal"),
+            "date_window": {"start_date": start_date, "end_date": end_date},
         }
 
     _favorite_cache: dict[int, str] = {}

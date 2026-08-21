@@ -158,25 +158,39 @@ class UnderstatData:
 
     async def get_teams(self, league_name: str, season, options=None, **kwargs):
         league_data = await self.get_league_data(league_name=league_name, season=season)
-        teams = list(league_data.get("teams", {}).values())
+        raw_teams = league_data.get("teams", {})
+        if isinstance(raw_teams, dict):
+            teams = list(raw_teams.values())
+        elif isinstance(raw_teams, list):
+            teams = raw_teams
+        else:
+            teams = []
         filters = self._merge_filters(options=options, **kwargs)
         return self.utils.filter_data(teams, filters)
 
     async def get_league_players(self, league_name: str, season, options=None, **kwargs):
         league_data = await self.get_league_data(league_name=league_name, season=season)
         players = league_data.get("players", [])
+        if not isinstance(players, list):
+            players = []
         filters = self._merge_filters(options=options, **kwargs)
         return self.utils.filter_data(players, filters)
 
     async def get_league_results(self, league_name: str, season, options=None, **kwargs):
         league_data = await self.get_league_data(league_name=league_name, season=season)
-        results = [match for match in league_data.get("dates", []) if match.get("isResult")]
+        dates = league_data.get("dates", [])
+        if not isinstance(dates, list):
+            dates = []
+        results = [match for match in dates if match.get("isResult")]
         filters = self._merge_filters(options=options, **kwargs)
         return self.utils.filter_data(results, filters)
 
     async def get_league_fixtures(self, league_name: str, season, options=None, **kwargs):
         league_data = await self.get_league_data(league_name=league_name, season=season)
-        fixtures = [match for match in league_data.get("dates", []) if not match.get("isResult")]
+        dates = league_data.get("dates", [])
+        if not isinstance(dates, list):
+            dates = []
+        fixtures = [match for match in dates if not match.get("isResult")]
         filters = self._merge_filters(options=options, **kwargs)
         return self.utils.filter_data(fixtures, filters)
 
@@ -190,7 +204,8 @@ class UnderstatData:
         end_date: str = None,
     ):
         league_data = await self.get_league_data(league_name=league_name, season=season)
-        teams = league_data.get("teams", {})
+        raw_teams = league_data.get("teams", {})
+        teams = raw_teams if isinstance(raw_teams, dict) else {}
         table_rows = []
         stat_keys = [
             "wins",

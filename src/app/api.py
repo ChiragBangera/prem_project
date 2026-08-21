@@ -19,6 +19,7 @@ from app.errors import UnderstatRequestError
 from app.prediction_service import PredictionService
 from app.question_answering import FootballQuestionAnswerer
 from app.stat_data import UnderstatData
+from app.utils.utils import get_current_season
 
 
 PROJECT_SUMMARY = "Evidence-backed football analytics powered by Understat data."
@@ -28,14 +29,14 @@ class QuestionRequest(BaseModel):
     question: str = Field(
         min_length=3,
         max_length=500,
-        examples=["Compare Arsenal vs Liverpool in 2025"],
+        examples=["Compare Arsenal vs Liverpool"],
     )
 
 
 class EndpointRequest(BaseModel):
     params: dict[str, Any] = Field(
         default_factory=dict,
-        examples=[{"league_name": "EPL", "season": 2025}],
+        examples=[{"league_name": "EPL", "season": 2026}],
     )
 
 
@@ -142,7 +143,7 @@ async def understat_error_handler(_: Request, exc: UnderstatRequestError):
     return JSONResponse(
         status_code=502,
         content={
-            "error": "upstream_data_error",
+            "error": "upstream_service_error",
             "detail": str(exc),
             "upstream_status": exc.status_code,
         },
@@ -241,7 +242,7 @@ class AnalyzePlayerRequest(BaseModel):
     player_id: int | None = None
     player_name: str | None = None
     league_name: str = "EPL"
-    season: int = 2025
+    season: int = Field(default_factory=get_current_season)
     start_date: str | None = None
     end_date: str | None = None
     seasons: list[int] | str | None = None
@@ -260,7 +261,7 @@ class ComparePlayersRequest(BaseModel):
     player_2: str | None = None
     players: list[str] | None = None
     league_name: str = "EPL"
-    season: int = 2025
+    season: int = Field(default_factory=get_current_season)
     start_date: str | None = None
     end_date: str | None = None
 
@@ -269,7 +270,7 @@ class CompareTeamsRequest(BaseModel):
     team_1: str
     team_2: str
     league_name: str = "EPL"
-    season: int = 2025
+    season: int = Field(default_factory=get_current_season)
     start_date: str | None = None
     end_date: str | None = None
 
@@ -277,7 +278,7 @@ class CompareTeamsRequest(BaseModel):
 class AnalyzeTeamRequest(BaseModel):
     team_name: str
     league_name: str = "EPL"
-    season: int = 2025
+    season: int = Field(default_factory=get_current_season)
     with_shots: bool = False
     start_date: str | None = None
     end_date: str | None = None
@@ -293,14 +294,14 @@ class TeamTimelineRequest(BaseModel):
 
 class AnalyzeLeagueRequest(BaseModel):
     league_name: str = "EPL"
-    season: int = 2025
+    season: int = Field(default_factory=get_current_season)
     start_date: str | None = None
     end_date: str | None = None
 
 
 class DiscoverPlayersRequest(BaseModel):
     league_name: str = "EPL"
-    season: int = 2025
+    season: int = Field(default_factory=get_current_season)
     position_group: str | None = None
     positions: list[str] | None = None
     minimum_minutes: float = 900
@@ -324,6 +325,32 @@ class DiscoverPlayersRequest(BaseModel):
 async def analyze_player(payload: AnalyzePlayerRequest, request: Request):
     try:
         return await request.app.state.analytics.analyze_player(
+            player_id=payload.player_id,
+            player_name=payload.player_name,
+            league_name=payload.league_name,
+            season=payload.season,
+            start_date=payload.start_date,
+            end_date=payload.end_date,
+            seasons=payload.seasons,
+        )
+    except ValueError as exc:
+        return JSONResponse(
+            status_code=422,
+            content={"error": "invalid_parameters", "detail": str(exc)},
+        )
+
+
+@app.post(
+    "/api/v1/analyze/player/shots",
+    tags=["Analytics"],
+    responses={
+        422: {"model": ErrorResponse},
+        502: {"model": ErrorResponse},
+    },
+)
+async def player_shots(payload: AnalyzePlayerRequest, request: Request):
+    try:
+        return await request.app.state.analytics.player_shot_map(
             player_id=payload.player_id,
             player_name=payload.player_name,
             league_name=payload.league_name,
@@ -464,6 +491,31 @@ async def analyze_team(payload: AnalyzeTeamRequest, request: Request):
 
 
 @app.post(
+    "/api/v1/analyze/team/shots",
+    tags=["Analytics"],
+    responses={
+        422: {"model": ErrorResponse},
+        502: {"model": ErrorResponse},
+    },
+)
+async def team_shots(payload: AnalyzeTeamRequest, request: Request):
+    try:
+        return await request.app.state.analytics.team_shot_map(
+            team_name=payload.team_name,
+            league_name=payload.league_name,
+            season=payload.season,
+            start_date=payload.start_date,
+            end_date=payload.end_date,
+            seasons=payload.seasons,
+        )
+    except ValueError as exc:
+        return JSONResponse(
+            status_code=422,
+            content={"error": "invalid_parameters", "detail": str(exc)},
+        )
+
+
+@app.post(
     "/api/v1/analyze/league",
     tags=["Analytics"],
     responses={
@@ -540,7 +592,7 @@ async def discover_players(payload: DiscoverPlayersRequest, request: Request):
 
 class PredictMatchRequest(BaseModel):
     league_name: str = "EPL"
-    season: int = 2025
+    season: int = Field(default_factory=get_current_season)
     home: str
     away: str
     use_xg: bool = True
@@ -549,14 +601,14 @@ class PredictMatchRequest(BaseModel):
 
 class SimulateSeasonRequest(BaseModel):
     league_name: str = "EPL"
-    season: int = 2025
+    season: int = Field(default_factory=get_current_season)
     n_sims: int = 2000
     use_xg: bool = True
 
 
 class CalibrateRequest(BaseModel):
     league_name: str = "EPL"
-    season: int = 2025
+    season: int = Field(default_factory=get_current_season)
     use_xg: bool = True
     min_train: int = 30
     step: int = 5

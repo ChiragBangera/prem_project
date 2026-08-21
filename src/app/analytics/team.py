@@ -19,8 +19,16 @@ def style_profile(team_row: list) -> dict:
       [Team, M, W, D, L, G, GA, PTS, xG, NPxG, xGA, NPxGA, NPxGD, PPDA, OPPDA, DC, ODC, xPTS]
     """
     matches = to_float(team_row[1])
+    wins = to_float(team_row[2])
+    draws = to_float(team_row[3])
+    losses = to_float(team_row[4])
+    goals = to_float(team_row[5])
+    goals_against = to_float(team_row[6])
+    points = to_float(team_row[7])
     xg = to_float(team_row[8])
+    npxg = to_float(team_row[9])
     xga = to_float(team_row[10])
+    npxga = to_float(team_row[11])
     npxgd = to_float(team_row[12])
     ppda = to_float(team_row[13])
     oppda = to_float(team_row[14])
@@ -31,6 +39,16 @@ def style_profile(team_row: list) -> dict:
     return {
         "team": team_row[0],
         "matches": int(matches),
+        "wins": int(wins),
+        "draws": int(draws),
+        "losses": int(losses),
+        "goals": int(goals),
+        "goals_against": int(goals_against),
+        "points": int(points),
+        "xG": round_value(xg),
+        "npxG": round_value(npxg),
+        "xGA": round_value(xga),
+        "npxGA": round_value(npxga),
         "xG_per_game": round_value(xg / matches if matches else 0),
         "xGA_per_game": round_value(xga / matches if matches else 0),
         "xG_diff_per_game": round_value((xg - xga) / matches if matches else 0),
@@ -40,6 +58,10 @@ def style_profile(team_row: list) -> dict:
         "deep_completions": int(deep),
         "deep_completions_allowed": int(deep_allowed),
         "xPTS": round_value(xpts),
+        "xPTS_gap": round_value(points - xpts),
+        "g_minus_xg": round_value(goals - xg),
+        "xga_minus_ga": round_value(xga - goals_against),
+        "goal_difference": int(goals - goals_against),
         "interpretation": (
             "PPDA/OPPDA: passes per defensive action for and against — lower PPDA = more intense "
             "press. xG/xGA per game are the canonical attacking/defending process. deep_completions "

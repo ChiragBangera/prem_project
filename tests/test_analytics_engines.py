@@ -287,6 +287,16 @@ class TeamEnginesTestCase(unittest.TestCase):
 
         self.assertEqual(style["team"], "Liverpool")
         self.assertEqual(style["matches"], 30)
+        self.assertEqual(style["wins"], 20)
+        self.assertEqual(style["draws"], 5)
+        self.assertEqual(style["losses"], 5)
+        self.assertEqual(style["goals"], 60)
+        self.assertEqual(style["goals_against"], 25)
+        self.assertEqual(style["points"], 65)
+        self.assertEqual(style["xG"], 58.2)
+        self.assertEqual(style["npxG"], 55.0)
+        self.assertEqual(style["xGA"], 26.1)
+        self.assertEqual(style["npxGA"], 25.0)
         self.assertEqual(style["xG_per_game"], 1.94)
         self.assertEqual(style["xGA_per_game"], 0.87)
         self.assertEqual(style["xG_diff_per_game"], 1.07)
@@ -296,6 +306,10 @@ class TeamEnginesTestCase(unittest.TestCase):
         self.assertEqual(style["deep_completions"], 300)
         self.assertEqual(style["deep_completions_allowed"], 200)
         self.assertEqual(style["xPTS"], 58.3)
+        self.assertEqual(style["xPTS_gap"], 6.7)
+        self.assertEqual(style["g_minus_xg"], 1.8)
+        self.assertEqual(style["xga_minus_ga"], 1.1)
+        self.assertEqual(style["goal_difference"], 35)
 
     def test_ppda_home_away_splits_by_side(self):
         history = [
@@ -417,10 +431,39 @@ class LeagueEnginesTestCase(unittest.TestCase):
         self.assertAlmostEqual(result["xG_per_game"], 1.78, places=2)
         self.assertAlmostEqual(result["xGA_per_game"], 1.02, places=2)
 
+    def test_league_table_full_extracts_all_19_columns_and_derived_metrics(self):
+        full_table = league_engine.league_table_full(self.TABLE)
+        self.assertEqual(len(full_table), 4)
+        alpha = full_table[0]
+        self.assertEqual(alpha["rank"], 1)
+        self.assertEqual(alpha["team"], "Alpha")
+        self.assertEqual(alpha["matches"], 30)
+        self.assertEqual(alpha["wins"], 20)
+        self.assertEqual(alpha["draws"], 5)
+        self.assertEqual(alpha["losses"], 5)
+        self.assertEqual(alpha["goals"], 60)
+        self.assertEqual(alpha["goals_against"], 25)
+        self.assertEqual(alpha["gd"], 35)
+        self.assertEqual(alpha["points"], 65)
+        self.assertEqual(alpha["xG"], 58.0)
+        self.assertEqual(alpha["npxG"], 55.0)
+        self.assertEqual(alpha["xGA"], 25.0)
+        self.assertEqual(alpha["npxGA"], 24.0)
+        self.assertEqual(alpha["npxGD"], 30.0)
+        self.assertEqual(alpha["PPDA"], 10.2)
+        self.assertEqual(alpha["OPPDA"], 12.4)
+        self.assertEqual(alpha["deep_completions"], 300)
+        self.assertEqual(alpha["deep_completions_allowed"], 200)
+        self.assertEqual(alpha["xPTS"], 58.3)
+        self.assertEqual(alpha["xPTS_gap"], 6.7)
+        self.assertEqual(alpha["g_minus_xg"], 2.0)
+        self.assertEqual(alpha["xga_minus_ga"], 0.0)
+
     def test_league_report_smoke(self):
         report = league_engine.league_report(self.TABLE)
-        for key in ("is_lying", "variance", "ppda_ranking", "pace", "limitations"):
+        for key in ("table", "is_lying", "variance", "ppda_ranking", "pace", "limitations"):
             self.assertIn(key, report)
+        self.assertEqual(len(report["table"]), 4)
 
 
 # ---------------------------------------------------------------------- match

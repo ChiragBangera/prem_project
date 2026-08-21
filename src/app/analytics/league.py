@@ -8,35 +8,76 @@ def _rows(table: list) -> list[list]:
     return table[1:] if len(table) > 1 else []
 
 
-def league_is_lying(table: list) -> dict:
-    """xPTS gap for every team — the canonical 'table is lying' dashboard."""
-    enrich = []
-    for row in _rows(table):
+def league_table_full(table: list) -> list[dict]:
+    """Complete 18-metric Understat team league table with rank (№) and derived diagnostic metrics."""
+    rows = []
+    for i, row in enumerate(_rows(table)):
         try:
             team = row[0]
-            pts = float(row[7])
-            xpts = float(row[17])
+            m = int(float(row[1]))
+            w = int(float(row[2]))
+            d = int(float(row[3]))
+            l = int(float(row[4]))
+            g = int(float(row[5]))
+            ga = int(float(row[6]))
+            pts = int(float(row[7]))
             xg = float(row[8])
+            npxg = float(row[9])
             xga = float(row[10])
-            goals = float(row[5])
-            goals_against = float(row[6])
+            npxga = float(row[11])
+            npxgd = float(row[12])
+            ppda = float(row[13])
+            oppda = float(row[14])
+            dc = int(float(row[15]))
+            odc = int(float(row[16]))
+            xpts = float(row[17])
         except (IndexError, TypeError, ValueError):
             continue
-        enrich.append(
+
+        rows.append(
             {
+                "rank": i + 1,
                 "team": team,
-                "points": int(pts),
+                "matches": m,
+                "wins": w,
+                "draws": d,
+                "losses": l,
+                "goals": g,
+                "goals_against": ga,
+                "points": pts,
+                "xG": round_value(xg),
+                "npxG": round_value(npxg),
+                "xGA": round_value(xga),
+                "npxGA": round_value(npxga),
+                "npxGD": round_value(npxgd),
+                "PPDA": round_value(ppda),
+                "OPPDA": round_value(oppda),
+                "deep_completions": dc,
+                "deep_completions_allowed": odc,
                 "xPTS": round_value(xpts),
                 "xPTS_gap": round_value(pts - xpts),
-                "g_minus_xg": round_value(goals - xg),
-                "xga_minus_ga": round_value(xga - goals_against),
+                "g_minus_xg": round_value(g - xg),
+                "xga_minus_ga": round_value(xga - ga),
+                "gd": g - ga,
+                "xgd": round_value(xg - xga),
+                "xg_per_game": round_value(xg / m if m else 0),
+                "xga_per_game": round_value(xga / m if m else 0),
+                "pts_per_game": round_value(pts / m if m else 0),
+                "xpts_per_game": round_value(xpts / m if m else 0),
             }
         )
-    enrich.sort(key=lambda item: item["xPTS_gap"], reverse=True)
-    overperformer = enrich[0] if enrich else None
-    underperformer = enrich[-1] if enrich else None
+    return rows
+
+
+def league_is_lying(table: list) -> dict:
+    """xPTS gap for every team — the canonical 'table is lying' dashboard."""
+    full_table = league_table_full(table)
+    sorted_rows = sorted(full_table, key=lambda item: item["xPTS_gap"], reverse=True)
+    overperformer = sorted_rows[0] if sorted_rows else None
+    underperformer = sorted_rows[-1] if sorted_rows else None
     return {
-        "rows": enrich,
+        "rows": sorted_rows,
+        "table_order_rows": full_table,
         "biggest_overperformer": overperformer,
         "biggest_underperformer": underperformer,
         "interpretation": (
@@ -129,6 +170,7 @@ def process_pace(table: list) -> dict:
 
 def league_report(table: list) -> dict:
     return {
+        "table": league_table_full(table),
         "is_lying": league_is_lying(table),
         "variance": finishing_and_defensive_variance(table),
         "ppda_ranking": ppda_ranking(table),
