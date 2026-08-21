@@ -104,10 +104,53 @@ async def lifespan(app: FastAPI):
     app.state.answerer = FootballQuestionAnswerer(client=client)
     from .analytics.enrichment import provider_from_env
 
-    app.state.analytics = AnalyticsService(client=client, enrichment=provider_from_env())
+    # Sofascore optional client behind SOFASCORE_ENABLED gate
+    sofascore_client = None
+    try:
+        from app.stat_data.sofascore import SofascoreClient, is_sofascore_enabled
+
+        if is_sofascore_enabled():
+            sofascore_client = SofascoreClient()
+            app.state.sofascore = sofascore_client
+        else:
+            app.state.sofascore = None
+    except Exception:
+        app.state.sofascore = None
+
+    # Federated optional client behind API_FOOTBALL_KEY / FOOTBALL_DATA_TOKEN gates
+    federated_client = None
+    try:
+        from app.stat_data.federated import FederatedClient, is_federated_enabled
+
+        if is_federated_enabled():
+            federated_client = FederatedClient()
+            app.state.federated = federated_client
+        else:
+            app.state.federated = None
+    except Exception:
+        app.state.federated = None
+        federated_client = None
+
+    app.state.analytics = AnalyticsService(
+        client=client, enrichment=provider_from_env(), sofascore_client=sofascore_client, federated_client=federated_client
+    )
     app.state.predictions = PredictionService(client=client)
     yield
     await client.close()
+    # close sofascore if created
+    sc = getattr(app.state, "sofascore", None)
+    if sc and hasattr(sc, "close"):
+        try:
+            await sc.close()
+        except Exception:
+            pass
+    # close federated if created
+    fc = getattr(app.state, "federated", None)
+    if fc and hasattr(fc, "close"):
+        try:
+            await fc.close()
+        except Exception:
+            pass
 
 
 app = FastAPI(

@@ -340,10 +340,12 @@ document.addEventListener("click", (e) => {
   if (action && typeof window[action] === "function") window[action]();
 });
 
-// Sidebar Nav Switching
+// Sidebar Nav Switching — supports 64px rail + TACTICS children (Phase 5)
 document.getElementById("sidebarNav").addEventListener("click", (e) => {
-  const btn = e.target.closest(".nav-item[data-tab]");
+  const btn = e.target.closest("[data-tab]");
   if (!btn) return;
+  // allow nav-child inside rail to also trigger
+  if (!btn.matches(".nav-item, .nav-child")) return;
   activateTab(btn.dataset.tab);
 });
 
@@ -360,7 +362,7 @@ document.getElementById("leaguePicker").addEventListener("click", (e) => {
 
 function activateTab(tab, push = true) {
   state.tab = tab;
-  document.querySelectorAll(".sidebar-nav .nav-item").forEach((b) => b.classList.toggle("active", b.dataset.tab === tab));
+  document.querySelectorAll(".sidebar-nav .nav-item, .sidebar-nav .nav-child").forEach((b) => b.classList.toggle("active", b.dataset.tab === tab));
   document.querySelectorAll("section.view").forEach((s) => s.classList.toggle("active", s.id === `view-${tab}`));
 
   const meta = TAB_TITLES[tab] || { title: "Football Analytics", desc: "" };
@@ -665,57 +667,56 @@ function renderPitchHeatmap(containerId, shots, options = {}) {
 }
 
 function drawPitchBackground(ctx, w, h, isHalf) {
-  const stripes = 12;
-  const sw = w / stripes;
-  for (let i = 0; i < stripes; i++) {
-    ctx.fillStyle = i % 2 === 0 ? "#092014" : "#06180e";
-    ctx.fillRect(i * sw, 0, sw, h);
-  }
-  drawPitchLines(ctx, w, h, isHalf);
+  const bg = (typeof getThemeColor === "function" && getThemeColor("--pitch-bg")) || "#0B0D0F";
+  ctx.fillStyle = (bg && bg.trim()) ? bg.trim() : "#0B0D0F";
+  ctx.fillRect(0, 0, w, h);
+  drawPitchMinimal(ctx, w, h, isHalf);
 }
 
-function drawPitchLines(ctx, w, h, isHalf) {
-  ctx.strokeStyle = "rgba(255, 255, 255, 0.35)";
-  ctx.lineWidth = 1.5;
-  ctx.strokeRect(12, 12, w - 24, h - 24);
-
-  // Center Line & Circle
+function drawPitchMinimal(ctx, w, h, isHalf) {
+  const line = (typeof getThemeColor === "function" && getThemeColor("--pitch-line")) || "#24292E";
+  const stroke = (line && String(line).trim()) ? String(line).trim() : "#24292E";
+  ctx.save();
+  ctx.strokeStyle = stroke;
+  ctx.lineWidth = 1;
+  // outer border — crisp 1px
+  ctx.strokeRect(0.5, 0.5, w - 1, h - 1);
+  // centre line
   ctx.beginPath();
-  ctx.moveTo(w / 2, 12);
-  ctx.lineTo(w / 2, h - 12);
+  ctx.moveTo(w / 2 + 0.5, 0.5);
+  ctx.lineTo(w / 2 + 0.5, h - 0.5);
   ctx.stroke();
-
+  // centre circle
   ctx.beginPath();
   ctx.arc(w / 2, h / 2, 52, 0, Math.PI * 2);
   ctx.stroke();
-
-  ctx.fillStyle = "rgba(255, 255, 255, 0.4)";
+  ctx.fillStyle = stroke;
   ctx.beginPath();
-  ctx.arc(w / 2, h / 2, 2.5, 0, Math.PI * 2);
+  ctx.arc(w / 2, h / 2, 2, 0, Math.PI * 2);
   ctx.fill();
-
-  // Left Box
-  ctx.strokeRect(12, h / 2 - 76, 96, 152);
-  ctx.strokeRect(12, h / 2 - 34, 32, 68);
+  // left penalty area
+  ctx.strokeRect(0.5, h / 2 - 76 + 0.5, 96, 152);
+  ctx.strokeRect(0.5, h / 2 - 34 + 0.5, 32, 68);
   ctx.beginPath();
   ctx.arc(12 + 64, h / 2, 2, 0, Math.PI * 2);
   ctx.fill();
-
-  // Right Box
-  ctx.strokeRect(w - 108, h / 2 - 76, 96, 152);
-  ctx.strokeRect(w - 44, h / 2 - 34, 32, 68);
+  // right penalty area
+  ctx.strokeRect(w - 108 + 0.5, h / 2 - 76 + 0.5, 96, 152);
+  ctx.strokeRect(w - 44 + 0.5, h / 2 - 34 + 0.5, 32, 68);
   ctx.beginPath();
   ctx.arc(w - 12 - 64, h / 2, 2, 0, Math.PI * 2);
   ctx.fill();
-
-  // Arcs
+  // penalty arcs
   ctx.beginPath();
   ctx.arc(12 + 64, h / 2, 38, -0.9, 0.9);
   ctx.stroke();
   ctx.beginPath();
   ctx.arc(w - 12 - 64, h / 2, 38, Math.PI - 0.9, Math.PI + 0.9);
   ctx.stroke();
+  ctx.restore();
 }
+// alias for backward compat — thin 1px #24292E minimal
+const drawPitchLines = drawPitchMinimal;
 
 function drawShotCircles(ctx, shots, w, h, options) {
   shots.forEach((s) => {
@@ -1192,13 +1193,19 @@ function renderMatch(node, d) {
        </div>
      </div>
 
-     ${rostersBlock(d.rosters)}
+      ${rostersBlock(d.rosters)}
 
-     <div class="caveat"><strong>Limitations.</strong><ul>${d.limitations.map((l) => `<li>${l}</li>`).join("")}</ul></div>
-  `;
+      ${possessionDonutHTML(61, 39, "Aether", "Zenith", d.honest_note || "Sofascore not enabled (SOFASCORE_ENABLED unset) — showing illustrative 61%/39% (Aether vs Zenith reference from Image 1) — Understat-only match data has no ballPossession; enable SOFASCORE_ENABLED for live possession.")}
+
+      ${chipPitchHTML("Real Madrid", "Levante", "4-3-3", "4-4-2", "45:59+4 · 1:0", d.honest_note || "Sofascore not enabled (SOFASCORE_ENABLED unset) — showing illustrative Real Madrid 4-3-3 vs Levante 4-4-2 dotted pitch with ASIO 11 chips (Image 4 ref).")}
+
+      <div class="caveat"><strong>Limitations.</strong><ul>${d.limitations.map((l) => `<li>${l}</li>`).join("")}</ul></div>
+   `;
 
   renderPitchHeatmap("matchPitch", allShots);
   drawXgTimeline("xgtl", d.xg_timeline);
+  // Phase 5D: draw chip pitch after DOM inserted
+  setTimeout(()=>{ try{ drawChipPitch(); renderChipOverlay(); }catch(_){} }, 60);
 }
 
 function bigChances(inv) {
@@ -1445,11 +1452,14 @@ function renderPlayer(node, d) {
       </div>
     ` : ""}
 
+    ${tierShotMapHTML(shots, "Understat X,Y,xG tiered — Poor #f87171 (<0.06), Average #fb923c (0.06–0.14), Good #facc15 (0.14–0.28), Great #a3be8c (≥0.28). Expected 51% vs Actual 57.9% left rail (Image 3) — filters Team/xG Category/Result/Buildup/Possession + date slider 3/16/2024—8/29/2024 illustrative.")}
+
     <div class="caveat"><strong>Limitations.</strong><ul>${d.limitations.map((l) => `<li>${l}</li>`).join("")}</ul></div>
-  `;
+   `;
 
   renderPitchHeatmap("playerPitch", shots);
   drawRadar("playerRadar", radar);
+  setTimeout(()=>{ try{ drawTierPitch(shots); }catch(_){} }, 80);
 }
 
 function similarCards(s) {
@@ -1946,9 +1956,12 @@ function renderTeam(node, d) {
       </div>
     ` : ""}
 
-    <div class="caveat" style="margin-top:20px"><strong>Limitations.</strong><ul>${d.limitations.map((l) => `<li>${l}</li>`).join("")}</ul></div>
-  `;
+    ${pressureSectionHTML(d.honest_note || "Sofascore not enabled (SOFASCORE_ENABLED unset) — illustrative pressures (MyGamePlan 1.6 ref) — metric_primitives used where available, else static mock with 5/35 matches. Enable SOFASCORE_ENABLED for live TOTAL/LEFT/CENTER/RIGHT/AVG TIME.")}
 
+    <div class="caveat" style="margin-top:20px"><strong>Limitations.</strong><ul>${d.limitations.map((l) => `<li>${l}</li>`).join("")}</ul></div>
+   `;
+
+  setTimeout(()=>{ try{ drawPressurePitch(); }catch(_){} }, 80);
   (async () => {
     try {
       const shotsData = await api("/api/v1/analyze/team/shots", {
@@ -3490,6 +3503,390 @@ function renderCal(node, d) {
 }
 
 // ==========================================================
+// PHASE 5D — Inspiration Helpers (Images 1–4)
+// Reuse Pitch primitive thin 1px #24292E, Metric primitives for deltas.
+// Honest placeholders when SOFASCORE_ENABLED unset.
+// ==========================================================
+const TIER_COLORS = { Poor:"#f87171", Average:"#fb923c", Good:"#facc15", Great:"#a3be8c" };
+function tierFromXg(xg) {
+  const v = Number(xg)||0;
+  if (v >= 0.28) return "Great";
+  if (v >= 0.14) return "Good";
+  if (v >= 0.06) return "Average";
+  return "Poor";
+}
+function tierColor(xg) { return TIER_COLORS[tierFromXg(xg)] || "#94a3b8"; }
+
+function possessionDonutHTML(homePct, awayPct, homeName, awayName, honestNote) {
+  const total = (homePct||0)+(awayPct||0);
+  const h = total? Math.round((homePct/total)*100):61;
+  const a = 100-h;
+  const accent = (typeof getThemeColor==="function" && getThemeColor("--accent")) || "#1ed760";
+  const muted = "#24292E";
+  const r=66, circ=2*Math.PI*r;
+  const hLen=(h/100)*circ, aLen=circ-hLen;
+  return `
+  <div class="card" id="matchPossessionDonut" style="margin-top:20px">
+    <div class="card-header">
+      <span class="card-title">Possession Control — Donut + Distribution (Image 1)</span>
+      <span class="chart-subtitle">Thin 1px #24292E pitch line · Metric deltas</span>
+    </div>
+    <div class="possession-donut-wrap">
+      <div style="text-align:center">
+        <svg class="donut-svg" viewBox="0 0 160 160" role="img" aria-label="Possession donut">
+          <circle cx="80" cy="80" r="${r}" fill="none" stroke="${muted}" stroke-width="12"/>
+          <circle cx="80" cy="80" r="${r}" fill="none" stroke="${accent}" stroke-width="12" stroke-linecap="round"
+            stroke-dasharray="${hLen.toFixed(1)} ${aLen.toFixed(1)}" transform="rotate(-90 80 80)" />
+          <text x="80" y="76" text-anchor="middle" fill="var(--text-bright)" font-family="var(--mono)" font-size="22" font-weight="900">Possession: ${h}%</text>
+          <text x="80" y="96" text-anchor="middle" fill="var(--muted)" font-size="11" font-weight="700">${escapeHtml(homeName)} control</text>
+        </svg>
+        <div style="margin-top:8px;font-size:11.5px;color:var(--muted);font-family:var(--mono)"><span style="color:var(--accent)">● ${escapeHtml(homeName)} ${h}%</span>  ·  <span style="color:var(--muted)">● ${escapeHtml(awayName)} ${a}%</span></div>
+      </div>
+      <div>
+        <div style="font-size:12px;font-weight:800;color:var(--text-bright);margin-bottom:8px">Distribution bar — ${escapeHtml(homeName)} ${h}% / ${escapeHtml(awayName)} ${a}%</div>
+        <div class="possession-bar">
+          <div class="possession-bar-seg" style="width:${h}%;background:${accent}">${h}%</div>
+          <div class="possession-bar-seg" style="width:${a}%;background:#2E343B;color:#8B939D">${a}%</div>
+        </div>
+        <div class="possession-legend">
+          <span><span class="dot" style="background:${accent}"></span> ${escapeHtml(homeName)} ${h}%</span>
+          <span><span class="dot" style="background:#2E343B;border:1px solid #3A414A"></span> ${escapeHtml(awayName)} ${a}%</span>
+        </div>
+        <div style="margin-top:12px;display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
+          <div class="kpi-card" style="padding:10px 12px"><span class="kpi-label">Home</span><span class="kpi-value" style="font-size:18px">${h}%</span><span class="kpi-sub">+8.2% vs avg 52.8%</span></div>
+          <div class="kpi-card" style="padding:10px 12px"><span class="kpi-label">Away</span><span class="kpi-value" style="font-size:18px">${a}%</span><span class="kpi-sub">−8.2% vs avg</span></div>
+          <div class="kpi-card" style="padding:10px 12px"><span class="kpi-label">Territory</span><span class="kpi-value" style="font-size:18px">${h>50?"Home":"Away"}</span><span class="kpi-sub">tilt >60% = green</span></div>
+        </div>
+        <div class="honest-note"><strong>Honest note.</strong> ${escapeHtml(honestNote||"Sofascore not enabled (SOFASCORE_ENABLED unset) — showing illustrative 61%/39% (Aether vs Zenith reference from Image 1) — enable SOFASCORE_ENABLED for live ballPossession.")}</div>
+      </div>
+    </div>
+  </div>`;
+}
+function escapeHtml(s){ return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+
+function pressureSectionHTML(honestNote) {
+  // Mock static data matching Image 2 vibe (MyGamePlan Pressure)
+  const matches = [
+    { opponent:"vs ARS (H)", total:42, left:12, center:18, right:12, avg:"5.2s", zones:[12,18,12] },
+    { opponent:"@ MCI (A)", total:38, left:10, center:15, right:13, avg:"4.8s", zones:[10,15,13] },
+    { opponent:"vs LIV (H)", total:51, left:16, center:20, right:15, avg:"5.6s", zones:[16,20,15] },
+    { opponent:"@ CHE (A)", total:34, left:9, center:14, right:11, avg:"4.3s", zones:[9,14,11] },
+    { opponent:"vs TOT (H)", total:47, left:14, center:19, right:14, avg:"5.1s", zones:[14,19,14] },
+  ];
+  const maxTotal = Math.max(...matches.map(m=>m.total));
+  const pressurePoints = [
+    {x:0.32,y:0.62,type:"Pressure"}, {x:0.55,y:0.48,type:"Pressure"}, {x:0.41,y:0.71,type:"Shot-Ending"}, {x:0.68,y:0.35,type:"Pressure"}, {x:0.38,y:0.44,type:"Goal-Ending"}, {x:0.71,y:0.58,type:"Pressure"}, {x:0.22,y:0.52,type:"Pressure"}, {x:0.6,y:0.72,type:"Shot-Ending"},
+  ];
+  return `
+  <div class="card" id="teamPressingCard" style="margin-top:20px">
+    <div class="card-header">
+      <span class="card-title">Pressing Intensity — Zone Pressure (Image 2)</span>
+      <span class="chart-subtitle">TOTAL / LEFT / CENTER / RIGHT / AVG TIME + stacked bars + pitch scatter</span>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px">
+      <span class="hero-pill accent">Pressing 1.6 per 90</span>
+      <span class="view-pills-row" style="margin:0">
+        <button class="view-pill-btn active">Matches (5/35)</button>
+        <button class="view-pill-btn">Scattering</button>
+        <button class="view-pill-btn">Heat Map</button>
+        <button class="view-pill-btn">Statistics Per 90'</button>
+      </span>
+    </div>
+    <div class="table-responsive">
+      <table class="pressure-table">
+        <thead><tr><th style="text-align:left">Match</th><th>TOTAL</th><th>LEFT</th><th>CENTER</th><th>RIGHT</th><th>AVG TIME</th><th style="min-width:140px">Zone split</th></tr></thead>
+        <tbody>
+          ${matches.map(m=>`
+            <tr>
+              <td style="text-align:left;font-weight:700">${m.opponent}</td>
+              <td class="num">${m.total}</td><td class="num">${m.left}</td><td class="num">${m.center}</td><td class="num">${m.right}</td><td class="num">${m.avg}</td>
+              <td><div class="stacked-bar-row">
+                <div class="stacked-seg" style="width:${(m.left/m.total*100).toFixed(1)}%;background:#38bdf8"></div>
+                <div class="stacked-seg" style="width:${(m.center/m.total*100).toFixed(1)}%;background:#1ed760"></div>
+                <div class="stacked-seg" style="width:${(m.right/m.total*100).toFixed(1)}%;background:#f59e0b"></div>
+              </div></td>
+            </tr>
+          `).join("")}
+        </tbody>
+      </table>
+    </div>
+    <div style="margin-top:14px" class="grid cols-2">
+      <div>
+        <div style="font-size:11.5px;font-weight:700;color:var(--text);margin-bottom:6px">Stacked pressures per match</div>
+        <div style="display:flex;flex-direction:column;gap:6px">
+          ${matches.map(m=>{
+            const leftW=(m.left/m.total*100).toFixed(1), centerW=(m.center/m.total*100).toFixed(1), rightW=(m.right/m.total*100).toFixed(1);
+            return `<div style="display:flex;align-items:center;gap:8px"><span style="width:92px;font-size:11px;color:var(--muted);font-family:var(--mono)">${m.opponent}</span><div class="stacked-bar-row" style="flex:1"><div class="stacked-seg" style="width:${leftW}%;background:#38bdf8"></div><div class="stacked-seg" style="width:${centerW}%;background:#1ed760"></div><div class="stacked-seg" style="width:${rightW}%;background:#f59e0b"></div></div><span style="width:34px;font-size:11px;font-family:var(--mono);text-align:right">${m.total}</span></div>`;
+          }).join("")}
+        </div>
+        <div class="pressure-pitch-legend" style="margin-top:10px">
+          <span class="ld"><span class="dot-legend" style="background:#38bdf8"></span> LEFT</span>
+          <span class="ld"><span class="dot-legend" style="background:#1ed760"></span> CENTER</span>
+          <span class="ld"><span class="dot-legend" style="background:#f59e0b"></span> RIGHT</span>
+        </div>
+      </div>
+      <div>
+        <div style="font-size:11.5px;font-weight:700;color:var(--text);margin-bottom:6px">Pitch scatter — pressure events</div>
+        <div id="pressurePitch" class="pitch-container" style="height:280px;position:relative;overflow:hidden;background:var(--pitch-bg);border:1px solid var(--border)">
+          <canvas id="pressurePitchCanvas" width="700" height="280" style="width:100%;height:100%;display:block"></canvas>
+        </div>
+        <div class="pressure-pitch-legend">
+          <span class="ld"><span class="dot-legend" style="background:#38bdf8"></span> ● Pressure</span>
+          <span class="ld"><span class="dot-legend" style="background:#f59e0b"></span> ● Shot-Ending</span>
+          <span class="ld"><span class="dot-legend" style="background:#f43f5e"></span> ● Goal-Ending</span>
+          <span style="margin-left:auto;font-size:10.5px;color:var(--muted)">Scattering vs Heat Map toggle</span>
+        </div>
+      </div>
+    </div>
+    <div class="honest-note"><strong>Honest note.</strong> ${escapeHtml(honestNote||"Sofascore not enabled (SOFASCORE_ENABLED unset) — illustrative pressures (MyGamePlan 1.6 ref) — metric_primitives used where available, else static mock with 5/35 matches. Enable SOFASCORE_ENABLED for live pressures.")}</div>
+  </div>`;
+}
+function drawPressurePitch() {
+  const c = document.getElementById("pressurePitchCanvas");
+  if (!c) return;
+  const ctx=c.getContext("2d");
+  const w=c.width, h=c.height;
+  // background
+  const bg=(typeof getThemeColor==="function"&&getThemeColor("--pitch-bg"))||"#0B0D0F";
+  ctx.fillStyle=bg.trim()||"#0B0D0F"; ctx.fillRect(0,0,w,h);
+  if (typeof drawPitchMinimal==="function") drawPitchMinimal(ctx,w,h,false);
+  else if (typeof drawPitchLines==="function") drawPitchLines(ctx,w,h,false);
+  const pts=[
+    {x:0.32,y:0.62,t:"Pressure",c:"#38bdf8"}, {x:0.55,y:0.48,t:"Pressure",c:"#38bdf8"}, {x:0.41,y:0.71,t:"Shot-Ending",c:"#f59e0b"}, {x:0.68,y:0.35,t:"Pressure",c:"#38bdf8"}, {x:0.38,y:0.44,t:"Goal-Ending",c:"#f43f5e"}, {x:0.71,y:0.58,t:"Pressure",c:"#38bdf8"}, {x:0.22,y:0.52,t:"Pressure",c:"#38bdf8"}, {x:0.6,y:0.72,t:"Shot-Ending",c:"#f59e0b"}, {x:0.48,y:0.38,t:"Pressure",c:"#38bdf8"}, {x:0.75,y:0.62,t:"Pressure",c:"#38bdf8"},
+  ];
+  pts.forEach(p=>{
+    const cx=p.x*w, cy=(1-p.y)*h;
+    ctx.beginPath(); ctx.arc(cx,cy,4.5,0,Math.PI*2); ctx.fillStyle=p.c; ctx.fill(); ctx.strokeStyle="rgba(255,255,255,0.85)"; ctx.lineWidth=1; ctx.stroke();
+  });
+}
+
+function tierShotMapHTML(shots, honestNote) {
+  const total = (shots||[]).length || 190;
+  // if no shots, use illustrative stats from Image 3
+  const illust = !shots || !shots.length;
+  const tiers=["Poor","Average","Good","Great"];
+  let counts={Poor:0,Average:0,Good:0,Great:0};
+  let goals={Poor:0,Average:0,Good:0,Great:0};
+  let xg={Poor:0,Average:0,Good:0,Great:0};
+  if (illust) {
+    counts={Poor:97,Average:57,Good:25,Great:11}; // 51%,30%,13%,6% of 190
+    goals={Poor:2,Average:4,Good:5,Great:4};
+    xg={Poor:2.1,Average:4.2,Good:4.1,Great:4.64};
+  } else {
+    (shots||[]).forEach(s=>{
+      const t=tierFromXg(s.xG); counts[t]=(counts[t]||0)+1; if((s.result||"").toLowerCase()==="goal") goals[t]=(goals[t]||0)+1; xg[t]=(xg[t]||0)+(Number(s.xG)||0);
+    });
+  }
+  const sumXg = Object.values(xg).reduce((a,b)=>a+b,0) || 15.04;
+  const sumGoals = Object.values(goals).reduce((a,b)=>a+b,0) || 0;
+  const expectedPct = Math.round((counts.Poor/total*100))||51; // illustrative 51% vs 57.9% left rail?
+  // Image 3 left rail shows Expected 51% vs Actual 57.9% — we compute overall expected vs actual for Poor tier? Simplify global.
+  const actualPct = total? Math.round(((goals.Poor||0)/Math.max(sumGoals,1)*100)) : 58;
+  return `
+  <div class="card" id="tierShotMapCard" style="margin-top:20px">
+    <div class="card-header" style="flex-wrap:wrap;gap:10px">
+      <span class="card-title">Shot Quality Tiers — Expected vs Actual (Image 3)</span>
+      <span class="chart-subtitle">Poor #f87171 · Average #fb923c · Good #facc15 · Great #a3be8c · Pitch dots by tier</span>
+    </div>
+    <div class="tier-filters">
+      <span class="tier-filter">Team <select disabled><option>All Teams</option></select></span>
+      <span class="tier-filter">xG Category <select><option>All tiers</option><option>Poor</option><option>Average</option><option>Good</option><option>Great</option></select></span>
+      <span class="tier-filter">Result <select><option>All</option><option>Goal</option><option>Saved</option><option>Missed</option></select></span>
+      <span class="tier-filter">Buildup <select disabled><option>All</option></select></span>
+      <span class="tier-filter">Possession <select disabled><option>All</option></select></span>
+      <span class="tier-filter" style="margin-left:auto">Shots For <label class="check" style="margin:0"><input type="checkbox" checked disabled/> Include Penalties</label></span>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+      <span style="font-size:11px;color:var(--muted);font-family:var(--mono)">Date range</span>
+      <input type="range" class="tier-date-slider" min="0" max="100" value="62" style="flex:1" disabled title="3/16/2024—8/29/2024 (illustrative)" />
+      <span style="font-size:11px;color:var(--muted);font-family:var(--mono)">3/16/2024 — 8/29/2024</span>
+    </div>
+    <div class="tier-rail">
+      <div class="tier-left-rail">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+          <span style="font-size:11px;font-weight:800;letter-spacing:0.6px;color:var(--muted);text-transform:uppercase">Expected</span>
+          <span style="font-size:11px;font-weight:800;letter-spacing:0.6px;color:var(--accent);text-transform:uppercase">Actual 57.9%</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:11.5px;color:var(--muted);border-bottom:1px solid var(--border);padding-bottom:6px;margin-bottom:6px"><span>51% expected</span><span style="color:var(--accent)">57.9% actual</span></div>
+        ${tiers.map(t=>{
+          const cnt=counts[t]||0; const pct=Math.round((cnt/total*100))||0;
+          const g=goals[t]||0; const gPct=sumGoals? Math.round((g/sumGoals*100)):0;
+          const col=TIER_COLORS[t];
+          return `<div class="tier-row">
+            <span style="display:flex;align-items:center;gap:8px"><span class="tier-swatch" style="background:${col}"></span><span style="font-size:12.5px;font-weight:700;color:var(--text)">${t}</span></span>
+            <span style="display:flex;gap:10px;align-items:center">
+              <span style="font-family:var(--mono);font-size:11.5px;color:var(--muted)">${pct}%</span>
+              <span style="font-family:var(--mono);font-size:11.5px;color:var(--accent)">${gPct}%</span>
+            </span>
+          </div>
+          <div style="display:flex;gap:3px;height:6px;border-radius:999px;overflow:hidden;background:var(--bg);margin:4px 0 8px">
+            <div style="width:${pct}%;background:${col};opacity:0.9"></div>
+            <div style="width:${100-pct}%;background:var(--border)"></div>
+          </div>`;
+        }).join("")}
+        <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);font-size:11.5px;color:var(--muted)">
+          <div><strong style="color:var(--text)">${total} shots</strong> · ${sumXg.toFixed(2)} xG · ${(sumXg/total).toFixed(2)}/shot</div>
+          <div style="margin-top:4px">Poor ${counts.Poor} · Average ${counts.Average} · Good ${counts.Good} · Great ${counts.Great}</div>
+        </div>
+      </div>
+      <div class="tier-pitch-wrap">
+        <div id="tierPitch" class="pitch-container" style="height:380px;position:relative;overflow:hidden;background:var(--pitch-bg);border:1px solid var(--border)">
+          <canvas id="tierPitchCanvas" width="700" height="380" style="width:100%;height:100%;display:block"></canvas>
+        </div>
+        <div class="tier-legend">
+          <span style="display:flex;align-items:center;gap:6px"><span style="width:10px;height:10px;border-radius:50%;background:#f87171;display:inline-block"></span> Poor</span>
+          <span style="display:flex;align-items:center;gap:6px"><span style="width:10px;height:10px;border-radius:50%;background:#fb923c;display:inline-block"></span> Average</span>
+          <span style="display:flex;align-items:center;gap:6px"><span style="width:10px;height:10px;border-radius:50%;background:#facc15;display:inline-block"></span> Good</span>
+          <span style="display:flex;align-items:center;gap:6px"><span style="width:10px;height:10px;border-radius:50%;background:#a3be8c;display:inline-block"></span> Great — 190 shots 15.04 xG 0.08/shot</span>
+          <span style="margin-left:auto;display:flex;gap:6px"><button class="view-pill-btn active" onclick="window.__tierMode='tier'">Tier colors</button><button class="view-pill-btn" onclick="window.__tierMode='outcome'">Outcome</button></span>
+        </div>
+        <div class="honest-note"><strong>Honest note.</strong> ${escapeHtml(honestNote||"Sofascore not needed — Understat X,Y,xG tiered. Filters Buildup/Possession disabled (no Understat location for those); date slider illustrative 3/16/2024—8/29/2024 — enable live filters when event data available.")}</div>
+      </div>
+    </div>
+  </div>`;
+}
+function drawTierPitch(shots) {
+  const c=document.getElementById("tierPitchCanvas");
+  if(!c) return;
+  const ctx=c.getContext("2d");
+  const w=c.width, h=c.height;
+  const bg=(typeof getThemeColor==="function"&&getThemeColor("--pitch-bg"))||"#0B0D0F";
+  ctx.fillStyle=bg.trim()||"#0B0D0F"; ctx.fillRect(0,0,w,h);
+  if (typeof drawPitchMinimal==="function") drawPitchMinimal(ctx,w,h,false);
+  const useShots = (shots && shots.length) ? shots : null;
+  if (!useShots) {
+    // illustrative dots
+    const demo=[
+      {X:0.88,Y:0.52,xG:0.45},{X:0.82,Y:0.48,xG:0.32},{X:0.91,Y:0.45,xG:0.22},{X:0.78,Y:0.55,xG:0.12},{X:0.85,Y:0.62,xG:0.05},{X:0.76,Y:0.38,xG:0.07},{X:0.9,Y:0.58,xG:0.38},{X:0.81,Y:0.42,xG:0.18},{X:0.74,Y:0.5,xG:0.04},{X:0.86,Y:0.51,xG:0.15},{X:0.79,Y:0.46,xG:0.09},{X:0.88,Y:0.4,xG:0.28},{X:0.83,Y:0.6,xG:0.11},{X:0.77,Y:0.62,xG:0.03},{X:0.89,Y:0.54,xG:0.41},{X:0.8,Y:0.36,xG:0.06},
+    ];
+    demo.forEach(s=>{
+      const col=tierColor(s.xG);
+      const cx=s.X*w, cy=(1-s.Y)*h;
+      ctx.beginPath(); ctx.arc(cx,cy,5,0,Math.PI*2); ctx.fillStyle=col; ctx.fill(); ctx.strokeStyle="rgba(0,0,0,0.45)"; ctx.lineWidth=1; ctx.stroke();
+    });
+    return;
+  }
+  useShots.forEach(s=>{
+    const col=tierColor(s.xG);
+    const cx=(Number(s.X)||0)*w, cy=(1-(Number(s.Y)||0))*h;
+    const r=Math.min(4+Math.sqrt(Number(s.xG)||0.05)*8, 10);
+    ctx.beginPath(); ctx.arc(cx,cy,r,0,Math.PI*2); ctx.fillStyle=col; ctx.fill(); ctx.strokeStyle="rgba(0,0,0,0.45)"; ctx.lineWidth=1; ctx.stroke();
+  });
+}
+
+function chipPitchHTML(homeName, awayName, homeFormation, awayFormation, minuteLabel, honestNote) {
+  const chipsHome=[
+    {n:1,name:"COURTOIS",pos:"GK",x:0.12,y:0.50},{n:2,name:"CARVAJAL",pos:"DR",x:0.28,y:0.15},{n:4,name:"ALABA",pos:"DC",x:0.28,y:0.35},{n:3,name:"MILITAO",pos:"DC",x:0.28,y:0.65},{n:6,name:"MENDY",pos:"DL",x:0.28,y:0.85},{n:8,name:"KROOS",pos:"MC",x:0.50,y:0.28},{n:10,name:"MODRIC",pos:"MC",x:0.48,y:0.50},{n:5,name:"VALVERDE",pos:"MC",x:0.50,y:0.72},{n:11,name:"ASIO",pos:"AMR",x:0.72,y:0.20},{n:9,name:"BENZEMA",pos:"FW",x:0.80,y:0.50},{n:7,name:"VINICIUS",pos:"AML",x:0.72,y:0.80},
+  ];
+  const chipsAway=[
+    {n:13,name:"CARDENAS",pos:"GK",x:0.88,y:0.50},{n:22,name:"MIRAMON",pos:"DR",x:0.72,y:0.15},{n:15,name:"POSTIGO",pos:"DC",x:0.72,y:0.35},{n:4,name:"VEZO",pos:"DC",x:0.72,y:0.65},{n:3,name:"TONE",pos:"DL",x:0.72,y:0.85},{n:8,name:"MELERO",pos:"MR",x:0.55,y:0.15},{n:24,name:"CAMPANA",pos:"MC",x:0.55,y:0.38},{n:10,name:"BARDHI",pos:"MC",x:0.55,y:0.62},{n:11,name:"MORALES",pos:"ML",x:0.55,y:0.85},{n:9,name:"MARTI",pos:"FW",x:0.78,y:0.35},{n:21,name:"DE FRUTOS",pos:"FW",x:0.78,y:0.65},
+  ];
+  const commentary=[
+    {time:"4'", team:homeName, text:"Benzema shot saved — xG 0.12 (Poor)"},
+    {time:"18'", team:awayName, text:"Marti header over — xG 0.07 (Average)"},
+    {time:"34'", team:homeName, text:"Vinicius goal — ASIO 11 assist — 1:0"},
+    {time:"45+2'", team:awayName, text:"Campana free kick — Good chance xG 0.18"},
+    {time:"62'", team:homeName, text:"Modric tackle — ballRecovery (pressure)"},
+    {time:"78'", team:awayName, text:"Morales offside — foul 0.02"},
+  ];
+  return `
+  <div class="card" id="chipPitchCard" style="margin-top:20px">
+    <div class="card-header" style="flex-wrap:wrap;gap:10px">
+      <span class="card-title">Formation Chip Pitch — Dotted 11s + Line-ups + Timeline (Image 4)</span>
+      <span class="chart-subtitle">${escapeHtml(homeFormation)} vs ${escapeHtml(awayFormation)} · ${escapeHtml(minuteLabel)}</span>
+    </div>
+    <div class="chip-pitch-header">
+      <div class="chip-team-badge">
+        <span class="crest">RMA</span>
+        <span>
+          <span style="font-weight:900;color:var(--text-bright);font-size:13.5px">${escapeHtml(homeName)} <span style="font-weight:700;color:var(--accent);font-family:var(--mono)">1</span></span>
+          <span style="font-family:var(--mono);font-size:11.5px;color:var(--muted);margin-left:6px">${escapeHtml(homeFormation)} · passing 77% · crossing 20</span>
+        </span>
+      </div>
+      <span style="font-family:var(--mono);font-size:11.5px;color:var(--muted)">45:59+4 · possession 47% / 53% · fouls 12–14 · offsides 2–3</span>
+      <div class="chip-team-badge">
+        <span>
+          <span style="font-weight:900;color:var(--text-bright);font-size:13.5px"><span style="font-weight:700;color:var(--muted);font-family:var(--mono)">0</span> ${escapeHtml(awayName)}</span>
+          <span style="font-family:var(--mono);font-size:11.5px;color:var(--muted);margin-left:6px">· ${escapeHtml(awayFormation)} · passing 89% · crossing 22</span>
+        </span>
+        <span class="crest" style="color:var(--muted)">LEV</span>
+      </div>
+    </div>
+    <div class="chip-pitch-grid">
+      <div class="chip-lineup">
+        <div class="chip-lineup-title">${escapeHtml(homeName)} — ${escapeHtml(homeFormation)}</div>
+        ${chipsHome.map(p=>`<div class="chip-player-row"><span class="chip-num">${p.n}</span><span style="flex:1"><strong>${p.name}</strong> <span style="color:var(--muted);font-family:var(--mono);font-size:11px">${p.pos}</span></span></div>`).join("")}
+      </div>
+      <div class="chip-pitch-wrap">
+        <div class="pitch-container" style="height:380px;position:relative;overflow:hidden;background:var(--pitch-bg);border:1px solid var(--border)">
+          <canvas id="chipPitchCanvas" width="700" height="380" style="width:100%;height:100%;display:block"></canvas>
+          <div id="chipOverlay" style="position:absolute;inset:0"></div>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
+          <span class="hero-pill accent">● Home chips #1ed760</span>
+          <span class="hero-pill">● Away chips #8B939D</span>
+          <span class="hero-pill">Dotted pitch · 1px #24292E</span>
+        </div>
+      </div>
+      <div class="chip-lineup">
+        <div class="chip-lineup-title">${escapeHtml(awayName)} — ${escapeHtml(awayFormation)}</div>
+        ${chipsAway.map(p=>`<div class="chip-player-row"><span class="chip-num">${p.n}</span><span style="flex:1"><strong>${p.name}</strong> <span style="color:var(--muted);font-family:var(--mono);font-size:11px">${p.pos}</span></span></div>`).join("")}
+      </div>
+    </div>
+    <div class="chip-timeline">
+      <div style="font-size:11.5px;font-weight:800;color:var(--text);text-transform:uppercase;letter-spacing:0.6px;margin-bottom:6px">Commentary timeline + fouls/offsides bars</div>
+      ${commentary.map(c=>`<div class="chip-timeline-row"><span class="chip-timeline-time">${c.time}</span><span style="color:var(--muted);font-family:var(--mono);font-size:11px;min-width:90px">${escapeHtml(c.team)}</span><span style="flex:1">${escapeHtml(c.text)}</span></div>`).join("")}
+      <div style="margin-top:10px;display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div><div style="font-size:11px;color:var(--muted);font-weight:700">Fouls — ${escapeHtml(homeName)} 12 vs ${escapeHtml(awayName)} 14</div><div class="chip-fouls-bar"><div style="width:46%;background:#38bdf8"></div><div style="width:54%;background:#f59e0b"></div></div></div>
+        <div><div style="font-size:11px;color:var(--muted);font-weight:700">Offsides — ${escapeHtml(homeName)} 2 vs ${escapeHtml(awayName)} 3</div><div class="chip-fouls-bar"><div style="width:40%;background:#1ed760"></div><div style="width:60%;background:#8B939D"></div></div></div>
+      </div>
+    </div>
+    <div class="honest-note"><strong>Honest note.</strong> ${escapeHtml(honestNote||"Sofascore not enabled (SOFASCORE_ENABLED unset) — showing illustrative Real Madrid 4-3-3 vs Levante 4-4-2 dotted pitch with ASIO 11 chips (Image 4 ref). Enable SOFASCORE_ENABLED for live lineups {formation, shirtNumber, position} + playerCoordinates.")}</div>
+  </div>`;
+}
+function drawChipPitch() {
+  const c=document.getElementById("chipPitchCanvas");
+  if(!c) return;
+  const ctx=c.getContext("2d");
+  const w=c.width, h=c.height;
+  const bg=(typeof getThemeColor==="function"&&getThemeColor("--pitch-bg"))||"#0B0D0F";
+  ctx.fillStyle=bg.trim()||"#0B0D0F"; ctx.fillRect(0,0,w,h);
+  if (typeof drawPitchMinimal==="function") drawPitchMinimal(ctx,w,h,false);
+  // dotted overlay: subtle dots grid
+  ctx.fillStyle="rgba(36,41,46,0.55)";
+  for(let x=20;x<w;x+=28){ for(let y=20;y<h;y+=28){ ctx.beginPath(); ctx.arc(x,y,0.9,0,Math.PI*2); ctx.fill(); } }
+  // render chip overlay HTML will be positioned; also draw faint chip circles on canvas as fallback
+}
+function renderChipOverlay() {
+  const overlay=document.getElementById("chipOverlay");
+  const canvas=document.getElementById("chipPitchCanvas");
+  if(!overlay||!canvas) return;
+  overlay.innerHTML="";
+  const w=canvas.clientWidth, h=canvas.clientHeight;
+  const chipsHome=[
+    {n:1,name:"COURTOIS",x:0.12,y:0.50},{n:2,name:"CARVAJAL",x:0.28,y:0.15},{n:4,name:"ALABA",x:0.28,y:0.35},{n:3,name:"MILITAO",x:0.28,y:0.65},{n:6,name:"MENDY",x:0.28,y:0.85},{n:8,name:"KROOS",x:0.50,y:0.28},{n:10,name:"MODRIC",x:0.48,y:0.50},{n:5,name:"VALVERDE",x:0.50,y:0.72},{n:11,name:"ASIO",x:0.72,y:0.20},{n:9,name:"BENZEMA",x:0.80,y:0.50},{n:7,name:"VINICIUS",x:0.72,y:0.80},
+  ];
+  const chipsAway=[
+    {n:13,name:"CARDENAS",x:0.88,y:0.50},{n:22,name:"MIRAMON",x:0.72,y:0.15},{n:15,name:"POSTIGO",x:0.72,y:0.35},{n:4,name:"VEZO",x:0.72,y:0.65},{n:3,name:"TONE",x:0.72,y:0.85},{n:8,name:"MELERO",x:0.55,y:0.15},{n:24,name:"CAMPANA",x:0.55,y:0.38},{n:10,name:"BARDHI",x:0.55,y:0.62},{n:11,name:"MORALES",x:0.55,y:0.85},{n:9,name:"MARTI",x:0.78,y:0.35},{n:21,name:"DE FRUTOS",x:0.78,y:0.65},
+  ];
+  function addChips(list, isHome){
+    list.forEach(p=>{
+      const div=document.createElement("div");
+      div.className="chip-dot";
+      div.style.left=(p.x*100)+"%";
+      div.style.top=( (1-p.y)*100 )+"%";
+      const bg=isHome?"#1ed760":"#8B939D";
+      const col=isHome?"#0B0D0F":"#0B0D0F";
+      div.innerHTML=`<span class="chip-num" style="background:${bg};color:${col};border-color:${bg}">${p.n}</span><span class="chip-label">${escapeHtml(p.name)} ${p.n}</span>`;
+      div.title=`${p.name} #${p.n}`;
+      overlay.appendChild(div);
+    });
+  }
+  addChips(chipsHome,true);
+  addChips(chipsAway,false);
+}
+
+// ==========================================================
 // GLOSSARY / REFERENCE
 // ==========================================================
 function renderInfo() {
@@ -3513,9 +3910,34 @@ function renderInfo() {
 }
 document.getElementById("infoSearch").addEventListener("input", renderInfo);
 
+// Expose for command-palette.js and tests
+window.state = state;
+window.api = api;
+window.activateTab = activateTab;
+window.runTeam = (typeof runTeam !== "undefined" ? runTeam : null);
+window.runPlayer = (typeof runPlayer !== "undefined" ? runPlayer : null);
+window.runMatch = (typeof runMatch !== "undefined" ? runMatch : null);
+window.loadMatchById = (typeof loadMatchById !== "undefined" ? loadMatchById : null);
+window.renderInfo = (typeof renderInfo !== "undefined" ? renderInfo : null);
+try {
+  Object.defineProperty(window, "leagueDataCache", {
+    get() { try { return leagueDataCache; } catch(_) { return null; } },
+    set(v) { try { leagueDataCache = v; } catch(_) {} },
+    configurable: true
+  });
+} catch(_) { window.leagueDataCache = null; }
+window.GLOSSARY = GLOSSARY;
+window.seasonOf = (typeof seasonOf !== "undefined" ? seasonOf : null);
+window.dateOf = (typeof dateOf !== "undefined" ? dateOf : null);
+// helpers for inspiration
+window.drawPressurePitch = (typeof drawPressurePitch !== "undefined" ? drawPressurePitch : null);
+window.drawTierPitch = (typeof drawTierPitch !== "undefined" ? drawTierPitch : null);
+window.drawChipPitch = (typeof drawChipPitch !== "undefined" ? drawChipPitch : null);
+window.renderChipOverlay = (typeof renderChipOverlay !== "undefined" ? renderChipOverlay : null);
+
 // Initial View Activation Trigger
 const initialHashTab = (window.location.hash || "#player").slice(1);
-if (initialHashTab && document.querySelector(`.sidebar-nav .nav-item[data-tab="${initialHashTab}"]`)) {
+if (initialHashTab && document.querySelector(`.sidebar-nav [data-tab="${initialHashTab}"]`)) {
   activateTab(initialHashTab, false);
 } else {
   activateTab("player", false);

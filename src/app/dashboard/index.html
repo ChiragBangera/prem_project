@@ -3,9 +3,12 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="theme-color" content="#07090e" />
+  <meta name="theme-color" content="#0B0D0F" />
   <title>Football Analytics Lab · Pro Intelligence Hub</title>
-  <link rel="stylesheet" href="/dashboard/styles.css?v=26" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700;800;900&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/dashboard/styles.css?v=28" />
 </head>
 <body>
   <div class="app-container">
@@ -20,45 +23,42 @@
       </div>
 
       <nav class="sidebar-nav" id="sidebarNav">
-        <div class="nav-section-title">Matches & Fixtures</div>
-        <button class="nav-item" data-tab="match">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>
-          Match Deep-Dive
+        <button class="nav-item" data-tab="league" title="Home">
+          <span class="nav-icon">◉</span><span class="nav-label">HOME</span>
         </button>
-        <button class="nav-item" data-tab="predict">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
-          Predict & Sim
+        <button class="nav-item" data-tab="match" title="Matches — Recent & Gameweek Board">
+          <span class="nav-icon">▣</span><span class="nav-label">MATCHES</span>
         </button>
-
-        <div class="nav-section-title">Scouting & Players</div>
-        <button class="nav-item active" data-tab="player">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
-          Player Profile
+        <button class="nav-item" data-tab="team" title="Teams — Overview / Performance / Possession / Chance / Defence">
+          <span class="nav-icon">◈</span><span class="nav-label">TEAMS</span>
         </button>
-        <button class="nav-item" data-tab="discover">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-          Discover & Scout
+        <div class="nav-group">
+          <button class="nav-item active" data-tab="player" title="Players — Profile & Scouting">
+            <span class="nav-icon">◎</span><span class="nav-label">PLAYERS</span>
+          </button>
+          <div class="nav-children">
+            <button class="nav-child" data-tab="player" title="Player Profile">Profile</button>
+            <button class="nav-child" data-tab="discover" title="Scouting — Discover">Scouting</button>
+          </div>
+        </div>
+        <div class="nav-group">
+          <button class="nav-item" data-tab="team" data-tactic-root title="Tactics — Shots / Possession / Pressing">
+            <span class="nav-icon">⌁</span><span class="nav-label">TACTICS</span>
+          </button>
+          <div class="nav-children">
+            <button class="nav-child" data-tab="team" data-tactic="shots">SHOTS</button>
+            <button class="nav-child" data-tab="team" data-tactic="possession">POSSESSION</button>
+            <button class="nav-child" data-tab="team" data-tactic="pressing">PRESSING</button>
+          </div>
+        </div>
+        <button class="nav-item" data-tab="predict" title="Models — Dixon-Coles / Elo">
+          <span class="nav-icon">▤</span><span class="nav-label">MODELS</span>
         </button>
-        <button class="nav-item" data-tab="compare">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>
-          Compare & Basket
+        <button class="nav-item" data-tab="info" title="Data — Glossary & Sources">
+          <span class="nav-icon">⚙</span><span class="nav-label">DATA</span>
         </button>
-
-        <div class="nav-section-title">Team & League Intel</div>
-        <button class="nav-item" data-tab="team">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-          Team Analytics
-        </button>
-        <button class="nav-item" data-tab="league">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
-          League & xPTS Table
-        </button>
-
-        <div class="nav-section-title">Reference</div>
-        <button class="nav-item" data-tab="info">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
-          Metrics Glossary
-        </button>
+        <!-- keep legacy data-tab for compare to preserve JS selector; hidden but present -->
+        <button class="nav-item" data-tab="compare" title="Compare & Basket" style="position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden;opacity:0;pointer-events:none;" tabindex="-1" aria-hidden="true">Compare</button>
       </nav>
 
       <div class="sidebar-footer">
@@ -78,6 +78,7 @@
         </div>
 
         <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+          <button id="cmdPaletteBtn" class="cmd-trigger-btn" aria-label="Open command palette (⌘K)" title="⌘K — Search teams, metrics, matches, players · also '/' to focus">⌘K</button>
           <div class="league-selector" id="leaguePicker">
             <button class="league-btn active" data-league="EPL">EPL</button>
             <button class="league-btn" data-league="La_liga">La Liga</button>
@@ -518,6 +519,19 @@
   <div id="tooltip" class="tooltip"></div>
   <div id="chartTip" class="tooltip"></div>
 
-  <script src="/dashboard/app.js?v=25"></script>
+  <div id="cmdPaletteOverlay" class="cmd-palette-overlay hidden" aria-hidden="true" role="dialog" aria-label="Command palette">
+    <div class="cmd-palette-panel" role="combobox" aria-expanded="true">
+      <div class="cmd-palette-input-row">
+        <span class="cmd-palette-kbd">⌘K</span>
+        <input id="cmdPaletteInput" type="text" placeholder="Search teams, metrics, matches, players — try “Arsenal pressing”" autocomplete="off" spellcheck="false" aria-label="Search" />
+        <span id="cmdPaletteHint" class="cmd-palette-hint">ESC to close · ↑↓ navigate · ↵ select · / focus</span>
+      </div>
+      <div id="cmdPaletteResults" class="cmd-palette-results" role="listbox" aria-label="Results"></div>
+      <div class="cmd-palette-footer"><span>Teams from league table · Metrics from glossary (xG, PPDA, Field Tilt, Progressive, Shot Quality) · Matches from rounds · Players via search</span></div>
+    </div>
+  </div>
+
+  <script src="/dashboard/app.js?v=28"></script>
+  <script src="/dashboard/command-palette.js?v=28"></script>
 </body>
 </html>

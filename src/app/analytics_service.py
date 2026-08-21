@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import time
 from typing import Any
 
@@ -73,9 +74,295 @@ def _find_player_in_league(name: str, players: list[dict]):
 class AnalyticsService:
     """Fetches the right Understat data and runs the pure analytics engines over it."""
 
-    def __init__(self, client: UnderstatData | None = None, enrichment=None):
+    def __init__(
+        self,
+        client: UnderstatData | None = None,
+        enrichment=None,
+        sofascore_client=None,
+        federated_client=None,
+    ):
         self.client = client or UnderstatData()
         self.enrichment = enrichment
+        self.sofascore = sofascore_client
+        self.federated = federated_client
+
+    def _is_sofascore_enabled(self) -> bool:
+        # Env gate per sofascore.py — truthy: 1/true/yes/on . Lazy to avoid circular import.
+        try:
+            from .stat_data.sofascore import is_sofascore_enabled
+
+            return is_sofascore_enabled()
+        except Exception:
+            val = os.getenv("SOFASCORE_ENABLED", "").strip().lower()
+            return val in {"1", "true", "yes", "on", "enabled"}
+
+    async def get_sofascore_event_statistics(self, event_id: int | str) -> dict:
+        """Optionally fetch Sofascore statistics when SOFASCORE_ENABLED, else fallback with honest_note.
+
+        Honest fallback shape: {"enabled": False, "honest_note": "...Understat...", "fallback": "understat"}
+        Success shape: {"enabled": True, "data": <filtered>, "honest_note": "Sofascore data ..."}
+        """
+        if not self._is_sofascore_enabled():
+            return {
+                "enabled": False,
+                "honest_note": "Sofascore not enabled (SOFASCORE_ENABLED unset) — showing Understat-only data.",
+                "fallback": "understat",
+                "statistics": None,
+            }
+        client = self.sofascore
+        if client is None:
+            try:
+                from .stat_data.sofascore import SofascoreClient as _SC
+
+                client = _SC()
+            except Exception as exc:
+                return {
+                    "enabled": False,
+                    "honest_note": f"Sofascore unavailable ({exc}) — fallback to Understat.",
+                    "fallback": "understat",
+                    "error": str(exc),
+                }
+        try:
+            data = await client.get_event_statistics(event_id)
+            return {
+                "enabled": True,
+                "data": data,
+                "honest_note": f"Sofascore data from https://www.sofascore.com/api/v1/event/{event_id}/statistics, rate-limited 1 req/s.",
+            }
+        except Exception as exc:
+            return {
+                "enabled": False,
+                "honest_note": f"Sofascore unavailable ({exc}) — fallback to Understat.",
+                "fallback": "understat",
+                "error": str(exc),
+            }
+
+    async def get_sofascore_lineups(self, event_id: int | str) -> dict:
+        if not self._is_sofascore_enabled():
+            return {
+                "enabled": False,
+                "honest_note": "Sofascore not enabled (SOFASCORE_ENABLED unset) — showing Understat-only data.",
+                "fallback": "understat",
+                "lineups": None,
+            }
+        client = self.sofascore
+        if client is None:
+            try:
+                from .stat_data.sofascore import SofascoreClient as _SC
+
+                client = _SC()
+            except Exception as exc:
+                return {
+                    "enabled": False,
+                    "honest_note": f"Sofascore unavailable ({exc}) — fallback to Understat.",
+                    "fallback": "understat",
+                    "error": str(exc),
+                }
+        try:
+            data = await client.get_lineups(event_id)
+            return {"enabled": True, "data": data, "honest_note": "Sofascore lineups fetched."}
+        except Exception as exc:
+            return {
+                "enabled": False,
+                "honest_note": f"Sofascore unavailable ({exc}) — fallback to Understat.",
+                "fallback": "understat",
+                "error": str(exc),
+            }
+
+    async def get_sofascore_shotmap(self, event_id: int | str, player_id: int | str | None = None) -> dict:
+        if not self._is_sofascore_enabled():
+            return {
+                "enabled": False,
+                "honest_note": "Sofascore not enabled (SOFASCORE_ENABLED unset) — showing Understat-only data.",
+                "fallback": "understat",
+            }
+        client = self.sofascore
+        if client is None:
+            try:
+                from .stat_data.sofascore import SofascoreClient as _SC
+
+                client = _SC()
+            except Exception as exc:
+                return {
+                    "enabled": False,
+                    "honest_note": f"Sofascore unavailable ({exc}) — fallback to Understat.",
+                    "fallback": "understat",
+                    "error": str(exc),
+                }
+        try:
+            data = await client.get_shotmap(event_id, player_id)
+            return {"enabled": True, "data": data, "honest_note": "Sofascore shotmap fetched."}
+        except Exception as exc:
+            return {
+                "enabled": False,
+                "honest_note": f"Sofascore unavailable ({exc}) — fallback to Understat.",
+                "fallback": "understat",
+                "error": str(exc),
+            }
+
+    # ── Federated fallback helpers (Phase 5C) ───────────────────────────────
+    def _is_federated_enabled(self) -> bool:
+        try:
+            from .stat_data.federated import is_federated_enabled
+
+            return is_federated_enabled()
+        except Exception:
+            return bool(os.getenv("API_FOOTBALL_KEY") or os.getenv("FOOTBALL_DATA_TOKEN"))
+
+    async def get_federated_fixtures(self, league: str = "EPL", season: int = DEFAULT_SEASON, **kwargs) -> dict:
+        """Fetch fixtures via FederatedClient when keys present, else fallback to Understat with honest_note.
+
+        Honest fallback shape: {"enabled": False, "honest_note": "...Understat...", "fallback": "understat"}
+        Never crashes.
+        """
+        # support league_name alias
+        if "league_name" in kwargs and league == "EPL":
+            league = kwargs.get("league_name") or league
+        if "season" in kwargs and season == DEFAULT_SEASON and kwargs.get("season") is not None:
+            season = kwargs.get("season")
+        federated = getattr(self, "federated", None)
+        # If no federated client or not enabled, honest fallback to Understat
+        if federated is None or not self._is_federated_enabled():
+            # try Understat fallback
+            understat_data = None
+            try:
+                ld = await self.client.get_league_data(league, season)
+                dates = ld.get("dates", []) if isinstance(ld, dict) else []
+                understat_data = {"dates": dates[:5], "source": "understat", "note": "Understat fallback"}
+            except Exception as exc:
+                understat_data = {"error": str(exc), "source": "understat"}
+            return {
+                "enabled": False,
+                "honest_note": "No federated keys (API_FOOTBALL_KEY/FOOTBALL_DATA_TOKEN absent) — showing Understat-only data.",
+                "fallback": "understat",
+                "league": league,
+                "season": season,
+                "data": understat_data,
+                "fixtures": understat_data.get("dates", []) if isinstance(understat_data, dict) else [],
+            }
+        try:
+            # Prefer injected federated client
+            data = await federated.get_fixtures(league, season)
+            # If federated itself returned honest fallback (enabled False), preserve its honest_note but also try Understat
+            if isinstance(data, dict) and data.get("enabled") is False and data.get("fallback") == "understat":
+                # enrich with Understat data if possible
+                try:
+                    ld = await self.client.get_league_data(league, season)
+                    data["understat"] = {"dates": (ld.get("dates", [])[:3] if isinstance(ld, dict) else []), "source": "understat"}
+                except Exception:
+                    pass
+                return data
+            # ensure honest_note present
+            if isinstance(data, dict) and "honest_note" not in data:
+                data["honest_note"] = "Federated fixtures via api-football/football-data; fallback Understat on failure."
+            return data
+        except Exception as exc:
+            # never crash — fallback to Understat
+            fallback_data = None
+            try:
+                ld = await self.client.get_league_data(league, season)
+                fallback_data = ld
+            except Exception as exc2:
+                fallback_data = {"error": str(exc2)}
+            return {
+                "enabled": False,
+                "honest_note": f"Federated unavailable ({exc}) — fallback to Understat.",
+                "fallback": "understat",
+                "error": str(exc),
+                "league": league,
+                "season": season,
+                "data": fallback_data,
+            }
+
+    async def get_federated_standings(self, league: str = "EPL", season: int = DEFAULT_SEASON, **kwargs) -> dict:
+        """Fetch standings via FederatedClient when keys present, else Understat league table."""
+        if "league_name" in kwargs and league == "EPL":
+            league = kwargs.get("league_name") or league
+        if "season" in kwargs and season == DEFAULT_SEASON and kwargs.get("season") is not None:
+            season = kwargs.get("season")
+        federated = getattr(self, "federated", None)
+        if federated is None or not self._is_federated_enabled():
+            understat_table = None
+            try:
+                understat_table = await self.client.get_league_table(league, season)
+            except Exception as exc:
+                understat_table = {"error": str(exc)}
+            return {
+                "enabled": False,
+                "honest_note": "No federated keys (API_FOOTBALL_KEY/FOOTBALL_DATA_TOKEN absent) — showing Understat-only data.",
+                "fallback": "understat",
+                "league": league,
+                "season": season,
+                "data": understat_table,
+                "standings": understat_table,
+            }
+        try:
+            data = await federated.get_standings(league, season)
+            if isinstance(data, dict) and data.get("enabled") is False and data.get("fallback") == "understat":
+                try:
+                    tbl = await self.client.get_league_table(league, season)
+                    data["understat"] = tbl
+                except Exception:
+                    pass
+                return data
+            if isinstance(data, dict) and "honest_note" not in data:
+                data["honest_note"] = "Federated standings via football-data/api-football; fallback Understat."
+            return data
+        except Exception as exc:
+            fallback = None
+            try:
+                fallback = await self.client.get_league_table(league, season)
+            except Exception as exc2:
+                fallback = {"error": str(exc2)}
+            return {
+                "enabled": False,
+                "honest_note": f"Federated unavailable ({exc}) — fallback to Understat.",
+                "fallback": "understat",
+                "error": str(exc),
+                "league": league,
+                "season": season,
+                "data": fallback,
+            }
+
+    async def get_federated_team(self, team_id: int | str | None = None, **kwargs) -> dict:
+        """Fetch team via FederatedClient when keys present, else Understat team lookup with honest_note."""
+        if team_id is None:
+            team_id = kwargs.get("team_id") or kwargs.get("id") or kwargs.get("teamId")
+        if team_id is None:
+            return {
+                "enabled": False,
+                "honest_note": "get_federated_team requires team_id/id — showing Understat-only data.",
+                "fallback": "understat",
+                "team_id": None,
+                "data": None,
+            }
+        federated = getattr(self, "federated", None)
+        if federated is None or not self._is_federated_enabled():
+            return {
+                "enabled": False,
+                "honest_note": "No federated keys (API_FOOTBALL_KEY/FOOTBALL_DATA_TOKEN absent) — showing Understat-only data.",
+                "fallback": "understat",
+                "team_id": str(team_id),
+                "data": None,
+            }
+        try:
+            data = await federated.get_team(team_id)
+            if isinstance(data, dict) and "honest_note" not in data:
+                data["honest_note"] = "Federated team via football-data/api-football."
+            return data
+        except Exception as exc:
+            return {
+                "enabled": False,
+                "honest_note": f"Federated unavailable ({exc}) — fallback to Understat.",
+                "fallback": "understat",
+                "error": str(exc),
+                "team_id": str(team_id),
+                "data": None,
+            }
+
+    # alias for task spec "etc."
+    async def get_federated_fixtures_etc(self, *args, **kwargs) -> dict:  # pragma: no cover
+        return await self.get_federated_fixtures(*args, **kwargs)
 
     async def analyze_player(
         self,
