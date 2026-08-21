@@ -193,3 +193,62 @@ Axis scale guard literals confirmed byte-identical before/after. All 8+ charts r
 
 
 
+
+---
+
+## Live-API audit findings (2026-08-21, delivery lead — user reported "backend data fetching issues")
+
+Reproduced against running app (127.0.0.1:8000, live Understat). Full endpoint sweep with timings.
+
+### DEF-012 — Team squad table ALWAYS empty in live deploys: `round_value` NameError swallowed — HIGH
+
+**Steps:**
+1. `curl -X POST /api/v1/analyze/team -d '{"team_name":"Arsenal","league_name":"EPL","season":2025}'`
+2. Inspect `squad` in response → `[]`.
+3. Direct client check: `UnderstatData().get_team_player_stats('Arsenal','2025')` returns 25 rows; parsing rows standalone succeeds.
+
+**Expected:** Squad Performance & Creation Contributions table renders ~25 Arsenal players with xG/xA/Chain per90.
+
+**Actual:** `analytics_service.py:752` calls `round_value(...)` which is **never imported** (`hasattr(analytics_service,'round_value') == False`; line 12 imports only `as_list_matches`). First dict row raises `NameError`, swallowed by bare `except Exception: report["squad"] = []`. Fetch traced OK (25 rows) yet final squad 0. Feature has been dead in every live run; mock tests missed it because no test asserted populated squad through `analyze_team`.
+
+**Evidence:** trace log "team_player_stats called with ('2025',) -> 25 rows / FINAL squad: 0".
+
+**Severity:** HIGH — core Team Analytics feature silently dead.
+
+**Status:** FIX-READY — Found by: delivery lead (live audit)
+**Developer:** backend-dev — FIX READY — "round_value was never imported in analytics_service.py; NameError on first squad row swallowed by bare except. Fix: added round_value to `from .analytics._shared import` + logging.warning(exc_info=True) in the except so future silent deaths are visible. Squad row shape unchanged."
+**History:** 2026-08-21 backend-dev FIX READY → live retest by lead: analyze/team Arsenal 2025 squad=25 (Gyokeres xG 13.87 top). Awaiting qa CLOSE.
+
+### DEF-013 — Predict tab broken from UI: frontend sends `home_team/away_team`, API expects `home/away` — HIGH
+
+**Steps:**
+1. Open Predict & Sim → Home=Arsenal, Away=Liverpool → Generate Forecast.
+2. Server log: `POST /api/v1/predict/match → 422`.
+
+**Expected:** 200 with Dixon-Coles + Elo forecast.
+
+**Actual:** `app.js:3106-3108` sends `{home_team, away_team, ...}` but `PredictMatchRequest` (api.py:617-623) requires `home: str, away: str`. Pydantic 422 "Field required". Direct curl with correct fields returns 200 in ~19.5s. Every UI predict click fails.
+
+**Evidence:** uvicorn log 422 on user click; curl repro both ways.
+
+**Severity:** HIGH — Predict & Sim tab unusable from the dashboard.
+
+**Status:** FIX-READY — Found by: delivery lead (live audit)
+**Developer:** backend-dev — FIX READY — "Backend-side backward-compat fix: PredictMatchRequest now accepts home OR home_team, away OR away_team via before-validator; original home/away unchanged so existing tests/clients keep working."
+**History:** 2026-08-21 backend-dev FIX READY → live retest by lead: UI-shaped payload {home_team,away_team} → 200 in 18.4s with model+match keys. Awaiting qa CLOSE.
+
+### DEF-014 — Transient upstream 502 on analyze/league, no retry — LOW
+
+**Steps:** Server log shows one `POST /api/v1/analyze/league → 502 Bad Gateway` followed by user/app retry → 200.
+
+**Expected:** Transient Understat hiccup retried once server-side (or surfaced as retryable), not a raw 502 to the browser.
+
+**Actual:** Single upstream failure surfaces as 502; frontend league fallback only handles empty-season, not 502.
+
+**Severity:** LOW — self-healed on manual retry; add single server-side retry or client hint later.
+
+**Status:** OPEN — Found by: delivery lead (live audit)
+
+### Latency observations (no cache) — INFO, feeds Phase 2+ cache work
+
+analyze/player 7.4s · discover(template) 4.9s · analyze/team 6.5s · compare 5.1s · career 3.8s · predict/match 19.5s · match 2.3s · rounds 1.2s · league 1.1-1.5s. All live-fetch, zero caching outside ml `_history_cache`. Confirms AUDIT F6; persistent cache pulled forward as Phase 2 companion work.

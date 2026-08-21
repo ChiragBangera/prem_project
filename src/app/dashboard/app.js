@@ -16,7 +16,83 @@ const state = {
   roundsLoadedFor: null,
 };
 
+// Watchlist helpers (prem_watchlist_v1)
+const WATCHLIST_KEY = "prem_watchlist_v1";
+function getWatchlist() {
+  try { const raw = localStorage.getItem(WATCHLIST_KEY); return raw ? JSON.parse(raw) : []; } catch (_) { return []; }
+}
+function setWatchlist(list) { localStorage.setItem(WATCHLIST_KEY, JSON.stringify(list)); updateWatchlistPill(); }
+function isWatched(id) { return getWatchlist().some((w) => String(w.id) === String(id)); }
+function toggleWatchlist(player) {
+  const list = getWatchlist();
+  const idx = list.findIndex((w) => String(w.id) === String(player.id));
+  if (idx >= 0) { list.splice(idx, 1); }
+  else {
+    const entry = {
+      id: player.id,
+      name: player.player_name || player.name || "",
+      team: player.team_title || player.team || "",
+      position: player.position || "",
+      age: player.age != null ? player.age : null,
+      minutes: player.time != null ? player.time : (player.minutes != null ? player.minutes : null),
+      npxG: player.npxG != null ? player.npxG : null,
+      xA: player.xA != null ? player.xA : null,
+      npxG_per90: player.npxG_per90 != null ? player.npxG_per90 : (player.time ? (player.npxG||0)*90/player.time : 0),
+      xA_per90: player.xA_per90 != null ? player.xA_per90 : (player.time ? (player.xA||0)*90/player.time : 0),
+      similarity: player.similarity != null ? player.similarity : null,
+      added_at: new Date().toISOString(),
+    };
+    list.push(entry);
+  }
+  setWatchlist(list);
+  // re-render pill and toggle button states without full fetch if discover is open
+  document.querySelectorAll("[data-watch-toggle]").forEach((btn) => {
+    const pid = btn.getAttribute("data-watch-toggle");
+    btn.textContent = isWatched(pid) ? "★ Watched" : "☆ Watch";
+    btn.style.color = isWatched(pid) ? "#f59e0b" : "";
+  });
+}
+function updateWatchlistPill() {
+  const count = getWatchlist().length;
+  const els = [document.getElementById("watchlistCount"), document.getElementById("watchlistCountPill")].filter(Boolean);
+  els.forEach((el) => { el.textContent = `Watchlist: ${count}`; });
+}
+function exportWatchlistCSV() {
+  const list = getWatchlist();
+  const header = "id,name,team,position,age,minutes,npxG,xA,npxG_per90,xA_per90,similarity";
+  const rows = list.map((r) => {
+    const qName = '"' + String(r.name || "").replace(/"/g, '""') + '"';
+    const qTeam = '"' + String(r.team || "").replace(/"/g, '""') + '"';
+    return [r.id, qName, qTeam, r.position, r.age ?? "", r.minutes ?? "", r.npxG ?? "", r.xA ?? "", r.npxG_per90 ?? "", r.xA_per90 ?? "", r.similarity ?? ""].join(",");
+  });
+  const csv = [header, ...rows].join("\n");
+  const blob = new Blob([csv], { type: "text/csv" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = "watchlist.csv"; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+}
+function clearWatchlist() { localStorage.removeItem(WATCHLIST_KEY); updateWatchlistPill(); document.querySelectorAll("[data-watch-toggle]").forEach((btn)=>{ btn.textContent="☆ Watch"; btn.style.color="";}); }
+let _lastDiscoverPlayers = [];
+function toggleWatchlistById(id) {
+  const player = _lastDiscoverPlayers.find((p) => String(p.id) === String(id));
+  if (player) {
+    const pName = player.player_name || player.name || "";
+    const pTeam = player.team_title || player.team || "";
+    const pPos = player.position || player.favorite_position || "";
+    const min = player.time != null ? player.time : (player.minutes != null ? player.minutes : 0);
+    const npxg90 = player.npxG_per90 != null ? player.npxG_per90 : (min > 0 ? ((player.npxG || 0) / min) * 90 : 0);
+    const xa90 = player.xA_per90 != null ? player.xA_per90 : (min > 0 ? ((player.xA || 0) / min) * 90 : 0);
+    const enriched = { id: player.id, player_name: pName, team_title: pTeam, team: pTeam, position: pPos, age: player.age, time: min, minutes: min, npxG: player.npxG, xA: player.xA, npxG_per90: npxg90, xA_per90: xa90, similarity: player.similarity };
+    toggleWatchlist(enriched);
+  }
+}
+window.toggleWatchlistById = toggleWatchlistById;
+window.exportWatchlistCSV = exportWatchlistCSV;
+window.clearWatchlist = clearWatchlist;
+window.toggleWatchlist = toggleWatchlist;
+
 const $ = (id) => document.getElementById(id);
+window.$ = $;
 
 const TAB_TITLES = {
   match: { title: "Match Intelligence Deep-Dive", desc: "Full pitch tactical shot maps, cumulative xG timelines, big chance audits, and process diagnostics." },
@@ -2672,23 +2748,98 @@ function renderLeagueTableHTML(rows, viewMode, sortKey, sortDir) {
 // ==========================================================
 $("discoverGo").addEventListener("click", runDiscover);
 
+// keep Rank By disabled when template active
+function syncTemplateRankByState() {
+  const tpl = document.getElementById("templatePlayer");
+  const sel = document.getElementById("discoverOrderBy");
+  if (!tpl || !sel) return;
+  const hasTpl = tpl.value && tpl.value.trim().length > 0;
+  sel.disabled = !!hasTpl;
+  sel.style.opacity = hasTpl ? "0.45" : "1";
+  sel.title = hasTpl ? "Ranking by similarity to template, not by npxG" : "";
+}
+document.addEventListener("DOMContentLoaded", () => {
+  const tpl = document.getElementById("templatePlayer");
+  if (tpl) { tpl.addEventListener("input", syncTemplateRankByState); syncTemplateRankByState(); }
+  updateWatchlistPill();
+});
+setTimeout(() => { const tpl = document.getElementById("templatePlayer"); if (tpl) { tpl.addEventListener("input", syncTemplateRankByState); syncTemplateRankByState(); } updateWatchlistPill(); }, 300);
+
 async function runDiscover() {
-  const node = $("discoverContent"); loading(node);
+  const dollar = window.$ || ((id) => document.getElementById(id));
+  const node = dollar("discoverContent"); if (!node) return; loading(node);
   try {
-    const d = await api("/api/v1/discover/players", {
+    const per90 = document.getElementById("per90_tgl") ? document.getElementById("per90_tgl").checked : false;
+    const npxG_thr_raw = document.getElementById("thresh_npxG") ? document.getElementById("thresh_npxG").value : "";
+    const xA_thr_raw = document.getElementById("thresh_xA") ? document.getElementById("thresh_xA").value : "";
+    const tpl_raw = document.getElementById("templatePlayer") ? document.getElementById("templatePlayer").value.trim() : "";
+    const body = {
       league_name: state.league, season: seasonOf("discoverSeasons"),
       seasons: seasonsOf("discoverSeasons"),
       positions: selectedPositionValues("discoverPositions"),
-      minimum_minutes: parseFloat($("discoverMinutes").value) || 900,
-      order_by: $("discoverOrderBy").value,
-      limit: parseInt($("discoverLimit").value, 10) || 20,
-      min_age: $("discoverMinAge").value ? parseInt($("discoverMinAge").value, 10) : null,
-      max_age: $("discoverMaxAge").value ? parseInt($("discoverMaxAge").value, 10) : null,
+      minimum_minutes: parseFloat(document.getElementById("discoverMinutes").value) || 900,
+      order_by: document.getElementById("discoverOrderBy").value,
+      limit: parseInt(document.getElementById("discoverLimit").value, 10) || 20,
+      min_age: document.getElementById("discoverMinAge").value ? parseInt(document.getElementById("discoverMinAge").value, 10) : null,
+      max_age: document.getElementById("discoverMaxAge").value ? parseInt(document.getElementById("discoverMaxAge").value, 10) : null,
       start_date: dateOf("discoverFrom"), end_date: dateOf("discoverTo"),
-    });
+      per90_sort: per90,
+    };
+    if (npxG_thr_raw !== "" && !isNaN(parseFloat(npxG_thr_raw))) body.min_npxG_per90 = parseFloat(npxG_thr_raw);
+    if (xA_thr_raw !== "" && !isNaN(parseFloat(xA_thr_raw))) body.min_xA_per90 = parseFloat(xA_thr_raw);
+    // optional chain/buildup thresholds if inputs present
+    const chainEl = document.getElementById("thresh_xGChain");
+    const buildEl = document.getElementById("thresh_xGBuildup");
+    if (chainEl && chainEl.value !== "" && !isNaN(parseFloat(chainEl.value))) body.min_xGChain_per90 = parseFloat(chainEl.value);
+    if (buildEl && buildEl.value !== "" && !isNaN(parseFloat(buildEl.value))) body.min_xGBuildup_per90 = parseFloat(buildEl.value);
+    if (tpl_raw) body.template_player_name = tpl_raw;
+    const d = await api("/api/v1/discover/players", body);
     renderDiscover(node, d);
   } catch (e) { errored(node, e.message); }
 }
+window.runDiscover = runDiscover;
+
+function sparklineHTML(sparkline) {
+  if (!sparkline) return `<span style="color:var(--muted);font-size:11px">Sparkline unavailable — player_data missing</span>`;
+  if (!Array.isArray(sparkline) || !sparkline.length) return `<span style="color:var(--muted);font-size:11px">Sparkline unavailable — player_data missing</span>`;
+  const maxXg = Math.max(...sparkline.map((s) => Number(s.xG) || 0), 0.05);
+  return `<div style="display:flex;gap:2px;height:18px;align-items:flex-end">${sparkline.map((s) => {
+    const h = Math.max(3, (Number(s.xG) || 0) / maxXg * 18);
+    const gold = (s.goals || 0) > 0 ? "border:1px solid #f59e0b;" : "border:1px solid transparent;";
+    const tip = `${s.date || ""} — ${fmt(s.xG,2)} xG ${s.goals||0} goals`;
+    return `<div data-tip="${tip}" style="width:6px;height:${h}px;background:#38bdf8;${gold}border-radius:2px"></div>`;
+  }).join("")}</div>`;
+}
+
+function drawAgeScatter(containerId, ageScatter) {
+  const el = document.getElementById(containerId);
+  if (!el) return;
+  if (!ageScatter || !Array.isArray(ageScatter) || !ageScatter.length) {
+    el.innerHTML = `<div class="empty" style="padding:16px">Age data unavailable for scatter — add min age filter?</div><div style="color:var(--muted);font-size:11px">Age data unavailable</div>`;
+    return;
+  }
+  const w = 1100, h = 320, padL = 56, padR = 30, padT = 24, padB = 40;
+  const x0 = padL, x1 = w - padR, y0 = padT, y1 = h - padB;
+  const maxPer90 = Math.max(...ageScatter.map((d) => Number(d.npxG_per90) || 0), 0.1);
+  const x = (age) => x0 + (Number(age) - 15) / (35 - 15) * (x1 - x0);
+  const y = (v) => y1 - (Number(v) / maxPer90) * (y1 - y0);
+  const colorFor = (pg) => pg === "F" ? "#38bdf8" : pg === "M" ? "#10b981" : pg === "D" ? "#f59e0b" : "#94a3b8";
+  const dots = ageScatter.map((d) => {
+    const cx = x(d.age);
+    const cy = y(d.npxG_per90);
+    const col = colorFor(d.position_group);
+    const tip = `${d.name || d.player_name || "—"} — ${d.age}y — ${fmt(d.npxG_per90,2)}/90`;
+    return `<circle cx="${cx}" cy="${cy}" r="12" fill="transparent" data-tip="${tip}"/><circle cx="${cx}" cy="${cy}" r="4" fill="${col}" stroke="#0f172a" stroke-width="1"/>`;
+  }).join("");
+  el.innerHTML = `<svg role="img" aria-label="Age vs npxG per 90 scatter" viewBox="0 0 ${w} ${h}" class="timeline-svg">
+    <line x1="${x0}" y1="${y1}" x2="${x1}" y2="${y1}" stroke="#1e293b"/>
+    <line x1="${x0}" y1="${y1}" x2="${x0}" y2="${y0}" stroke="#1e293b"/>
+    ${dots}
+    <text x="${(x0+x1)/2}" y="${h - 6}" fill="#94a3b8" font-size="10" text-anchor="middle">Age (years)</text>
+    <text x="14" y="${(y0+y1)/2}" fill="#94a3b8" font-size="10" text-anchor="middle" transform="rotate(-90 14 ${(y0+y1)/2})">npxG /90</text>
+  </svg>`;
+}
+window.drawAgeScatter = drawAgeScatter;
 
 function renderDiscover(node, d) {
   clear(node);
@@ -2698,13 +2849,20 @@ function renderDiscover(node, d) {
         <div class="empty-title">No Players Match Current Filters</div>
         <div class="empty-sub">If this season has just started or has low minutes, try reducing the Min Minutes filter or switching to the previous season.</div>
       </div>
+      <div class="card" style="margin-top:16px"><div class="card-header"><span class="card-title">Age vs npxG/90</span></div><div id="discoverAgeScatter" role="img" aria-label="Age vs npxG per 90 scatter"></div></div>
+      <div style="margin-top:12px;display:flex;gap:8px"><button class="ghost" id="exportWatchlistBtn" onclick="exportWatchlistCSV()">Export CSV</button><button class="ghost" id="clearWatchlistBtn" onclick="clearWatchlist()">Clear watchlist</button></div>
     `;
+    drawAgeScatter("discoverAgeScatter", d.age_scatter);
     return;
   }
 
+  const isPer90 = !!(d.per90_sort || (document.getElementById("per90_tgl") && document.getElementById("per90_tgl").checked));
+  const hasTemplate = !!(d.template && d.template.name) || d.players.some((p) => p.similarity != null);
+  _lastDiscoverPlayers = d.players || [];
+
   node.innerHTML = `
     <div class="card">
-      <div class="card-header"><span class="card-title">Ranked Discovery Pool (${d.players.length} players found)</span></div>
+      <div class="card-header"><span class="card-title">Ranked Discovery Pool (${d.players.length} players found)</span><span class="hero-pill" style="font-size:11px">Watchlist: ${getWatchlist().length}</span></div>
       <div class="table-responsive">
         <table class="dense-table">
           <thead>
@@ -2725,37 +2883,60 @@ function renderDiscover(node, d) {
               <th class="num">${term("xG_chain", "Chain/90")}</th>
               <th class="num">${term("xG_buildup")}</th>
               <th class="num">${term("xG_buildup", "Buildup/90")}</th>
+              <th>Sparkline</th>
               <th>Scout</th>
             </tr>
           </thead>
           <tbody>
             ${d.players.map((p) => {
-              const min = p.time || 0;
-              const npxg90 = min > 0 ? ((p.npxG || 0) / min) * 90 : 0;
-              const xa90 = min > 0 ? ((p.xA || 0) / min) * 90 : 0;
-              const chain90 = min > 0 ? ((p.xGChain || 0) / min) * 90 : 0;
-              const build90 = min > 0 ? ((p.xGBuildup || 0) / min) * 90 : 0;
-
+              const pid = p.id;
+              const pName = p.player_name || p.name || "—";
+              const pTeam = p.team_title || p.team || "—";
+              const pPos = p.position || p.favorite_position || "—";
+              const min = p.time != null ? p.time : (p.minutes != null ? p.minutes : 0);
+              const pAge = p.age;
+              const pGoals = p.goals;
+              const pXg = p.xG;
+              const pNpxG = p.npxG;
+              const pAssists = p.assists;
+              const pXA = p.xA;
+              const pChain = p.xGChain;
+              const pBuild = p.xGBuildup;
+              const npxg90 = p.npxG_per90 != null ? p.npxG_per90 : (min > 0 ? ((pNpxG || 0) / min) * 90 : 0);
+              const xa90 = p.xA_per90 != null ? p.xA_per90 : (min > 0 ? ((pXA || 0) / min) * 90 : 0);
+              const chain90 = p.xGChain_per90 != null ? p.xGChain_per90 : (min > 0 ? ((pChain || 0) / min) * 90 : 0);
+              const build90 = p.xGBuildup_per90 != null ? p.xGBuildup_per90 : (min > 0 ? ((pBuild || 0) / min) * 90 : 0);
+              const npxgCell = isPer90 ? `${fmt(pNpxG,1)} · ${fmt(npxg90,2)}/90` : fmt(pNpxG, 2);
+              const simBadge = p.similarity != null ? `<span class="similar-badge" style="margin-left:6px">${Math.round(p.similarity*100)}% match</span>` : "";
+              const watched = isWatched(pid);
+              const wColor = watched ? "#f59e0b" : "";
+              const wLabel = watched ? "★ Watched" : "☆ Watch";
+              const starBtn = `<button class="ghost" data-watch-toggle="${pid}" style="padding:3px 8px;font-size:11px;color:${wColor}" onclick="toggleWatchlistById(${pid})">${wLabel}</button>`;
+              const safeName = String(pName).replace(/'/g,"\\'");
               return `
                 <tr>
-                  <td><strong style="cursor:pointer;color:var(--text-bright)" onclick="$('playerName').value='${p.player_name}';activateTab('player');runPlayer()">${p.player_name}</strong></td>
-                  <td>${p.team_title || "—"}</td>
-                  <td><span class="badge">${p.position || "—"}</span></td>
-                  <td class="num">${p.age ?? "—"}</td>
-                  <td class="num">${fmt(p.time, 0)}</td>
-                  <td class="num"><strong>${fmt(p.goals, 0)}</strong></td>
-                  <td class="num" style="color:var(--accent);font-weight:600">${fmt(p.xG, 2)}</td>
-                  <td class="num">${fmt(p.npxG, 2)}</td>
+                  <td><strong style="cursor:pointer;color:var(--text-bright)" onclick="$('playerName').value='${safeName}';activateTab('player');runPlayer()">${pName}</strong>${simBadge}${isPer90 ? `<div style="font-size:11px;color:var(--muted)">${fmt(pNpxG,1)} · ${fmt(npxg90,2)}/90</div>` : ""}</td>
+                  <td>${pTeam}</td>
+                  <td><span class="badge">${pPos}</span></td>
+                  <td class="num">${pAge ?? "—"}</td>
+                  <td class="num">${fmt(min, 0)}</td>
+                  <td class="num"><strong>${fmt(pGoals, 0)}</strong></td>
+                  <td class="num" style="color:var(--accent);font-weight:600">${fmt(pXg, 2)}</td>
+                  <td class="num">${npxgCell}</td>
                   <td class="num" style="font-weight:700">${fmt(npxg90, 2)}</td>
-                  <td class="num"><strong>${fmt(p.assists, 0)}</strong></td>
-                  <td class="num">${fmt(p.xA, 2)}</td>
+                  <td class="num"><strong>${fmt(pAssists, 0)}</strong></td>
+                  <td class="num">${fmt(pXA, 2)}</td>
                   <td class="num" style="font-weight:700">${fmt(xa90, 2)}</td>
-                  <td class="num" style="color:var(--accent);font-weight:600">${fmt(p.xGChain, 2)}</td>
+                  <td class="num" style="color:var(--accent);font-weight:600">${fmt(pChain, 2)}</td>
                   <td class="num">${fmt(chain90, 2)}</td>
-                  <td class="num">${fmt(p.xGBuildup, 2)}</td>
+                  <td class="num">${fmt(pBuild, 2)}</td>
                   <td class="num">${fmt(build90, 2)}</td>
+                  <td>${sparklineHTML(p.sparkline)}</td>
                   <td>
-                    <button class="ghost" style="padding:3px 10px;font-size:11.5px" onclick="$('playerName').value='${p.player_name}';activateTab('player');runPlayer()">Profile →</button>
+                    <div style="display:flex;gap:6px;flex-wrap:wrap">
+                      <button class="ghost" style="padding:3px 10px;font-size:11.5px" onclick="$('playerName').value='${safeName}';activateTab('player');runPlayer()">Profile →</button>
+                      ${starBtn}
+                    </div>
                   </td>
                 </tr>
               `;
@@ -2764,7 +2945,18 @@ function renderDiscover(node, d) {
         </table>
       </div>
     </div>
+    <div class="card" style="margin-top:16px">
+      <div class="card-header"><span class="card-title">Age vs npxG/90</span><span style="font-size:11px;color:var(--muted)">${(d.age_scatter||[]).length} points</span></div>
+      <div id="discoverAgeScatter" role="img" aria-label="Age vs npxG per 90 scatter"></div>
+    </div>
+    <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
+      <button class="ghost" id="exportWatchlistBtn" onclick="exportWatchlistCSV()">Export CSV</button>
+      <button class="ghost" id="clearWatchlistBtn" onclick="clearWatchlist()">Clear watchlist</button>
+    </div>
   `;
+  drawAgeScatter("discoverAgeScatter", d.age_scatter);
+  updateWatchlistPill();
+  syncTemplateRankByState();
 }
 
 // ==========================================================

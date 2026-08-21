@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import time
 from typing import Any
 
@@ -9,7 +10,7 @@ from .analytics import player as player_engine
 from .analytics import team as team_engine
 from .analytics import league as league_engine
 from .analytics import match as match_engine
-from .analytics._shared import as_list_matches
+from .analytics._shared import as_list_matches, round_value
 from .ml.engine import build_match_rows
 from .stat_data import UnderstatData
 from .utils.utils import get_current_season
@@ -18,6 +19,8 @@ from .utils.utils import get_current_season
 LEAGUES = ("EPL", "La_liga", "Serie_A", "Bundesliga", "Ligue_1")
 DEFAULT_CAREER_SEASONS = 6
 DEFAULT_SEASON = get_current_season()
+
+logger = logging.getLogger(__name__)
 
 # forecast cache: (league, season) -> (timestamp, {match_id_str: forecast_dict})
 _forecast_cache: dict[tuple[str, int], tuple[float, dict[str, dict]]] = {}
@@ -766,6 +769,7 @@ class AnalyticsService:
                 for p in raw_squad if isinstance(p, dict)
             ]
         except Exception:
+            logger.warning("squad fetch failed", exc_info=True)
             report["squad"] = []
 
         return report
@@ -1026,7 +1030,42 @@ class AnalyticsService:
         min_age: int | None = None,
         max_age: int | None = None,
         positions: list[str] | None = None,
+        per90_sort: bool = False,
+        min_npxG_per90: float | None = None,
+        min_xA_per90: float | None = None,
+        min_xGChain_per90: float | None = None,
+        min_xGBuildup_per90: float | None = None,
+        template_player_name: str | None = None,
+        template_player_id: int | None = None,
     ) -> dict:
+        # --- validation (422 on bad) ---
+        if not isinstance(per90_sort, bool):
+            raise ValueError("per90_sort must be a boolean.")
+        for label, val in [
+            ("min_npxG_per90", min_npxG_per90),
+            ("min_xA_per90", min_xA_per90),
+            ("min_xGChain_per90", min_xGChain_per90),
+            ("min_xGBuildup_per90", min_xGBuildup_per90),
+        ]:
+            if val is not None:
+                try:
+                    fval = float(val)
+                except Exception:
+                    raise ValueError(f"{label} must be a number in [0,5].")
+                if not (0 <= fval <= 5):
+                    raise ValueError(f"{label} must be in [0,5].")
+        if template_player_name is not None and template_player_id is not None:
+            raise ValueError("template_player_name and template_player_id are exclusive (provide only one)")
+        if isinstance(template_player_name, str) and not template_player_name.strip():
+            template_player_name = None
+        if isinstance(template_player_name, str):
+            template_player_name = template_player_name.strip()
+        if template_player_id is not None:
+            try:
+                template_player_id = int(template_player_id)
+            except Exception:
+                raise ValueError("template_player_id must be an integer.")
+
         start_date, end_date = _valid_date_range(start_date, end_date)
         target_seasons = parse_seasons(seasons) or [season]
 
@@ -1086,19 +1125,186 @@ class AnalyticsService:
                 aged.append(p)
             filtered = aged
 
-        if order_by in ("age_asc", "age_desc"):
-            names = [p.get("player_name") for p in filtered]
-            birthdates = await self._birthdate_map(names, filtered)
-            keyed = {p.get("player_name"): _age(birthdates.get(p.get("player_name"))) for p in filtered}
-            filtered.sort(key=lambda p: (keyed.get(p.get("player_name")) is None, keyed.get(p.get("player_name")) or 999))
-            if order_by == "age_desc":
-                filtered.reverse()
+        # thresholds after minimum_minutes/position/min-max-age but before ranking
+        if min_npxG_per90 is not None:
+            filtered = [p for p in filtered if _per90_value(p, "npxG") >= float(min_npxG_per90)]
+        if min_xA_per90 is not None:
+            filtered = [p for p in filtered if _per90_value(p, "xA") >= float(min_xA_per90)]
+        if min_xGChain_per90 is not None:
+            filtered = [p for p in filtered if _per90_value(p, "xGChain") >= float(min_xGChain_per90)]
+        if min_xGBuildup_per90 is not None:
+            filtered = [p for p in filtered if _per90_value(p, "xGBuildup") >= float(min_xGBuildup_per90)]
+
+        template_meta = None
+        similarity_map: dict[int, float] = {}
+        if template_player_name is not None or template_player_id is not None:
+            # resolve template via _find_player_in_league then search_players fallback
+            target_template = None
+            if template_player_id is not None:
+                target_template = merged_by_id.get(int(template_player_id))
+                if target_template is None:
+                    raise ValueError(f"Template player id {template_player_id} is not in {league_name} {target_seasons} league stats table.")
+            else:
+                assert template_player_name is not None
+                found = _find_player_in_league(template_player_name, list(merged_by_id.values()))
+                if found is not None:
+                    target_template = found
+                else:
+                    matches = await self.client.search_players(template_player_name)
+                    if not matches:
+                        raise ValueError(f"Template player '{template_player_name}' was not found via Understat search.")
+                    tid = int(matches[0].get("id") or 0)
+                    if tid and tid in merged_by_id:
+                        target_template = merged_by_id[tid]
+                    else:
+                        raise ValueError(f"Template player '{template_player_name}' is not in {league_name} {target_seasons} league stats table.")
+            # compute cosine similarity on z-scored per90 vector over PLAYER_RADAR_METRICS vs filtered pool
+            from .analytics.player import _standardized_vector, _cosine_similarity
+            from .analytics.percentiles import PLAYER_RADAR_METRICS
+
+            keys = [k for k, _, _, _ in PLAYER_RADAR_METRICS]
+            pool_for_std = filtered if filtered else list(merged_by_id.values())
+            # ensure template's favorite/position_group for meta even if not in filtered
+            tid = int(target_template.get("id", 0))
+            if tid not in player_groups:
+                fav = await self._favorite_position(tid)
+                fav = fav if isinstance(fav, str) and fav else None
+                player_groups[tid] = group_from_favorite(fav) or to_group(target_template.get("position"))
+            template_vec = _standardized_vector(target_template, pool_for_std, keys) if pool_for_std else [0.0]*len(keys)
+            # exclude template itself from ranked pool (same as similar_players)
+            candidates = [p for p in filtered if int(p.get("id", 0)) != tid]
+            # if template was the only entry, keep empty; otherwise rank candidates
+            scored: list[tuple[float, dict]] = []
+            for candidate in candidates:
+                vec = _standardized_vector(candidate, pool_for_std, keys)
+                score = _cosine_similarity(template_vec, vec)
+                scored.append((score, candidate))
+            scored.sort(key=lambda pair: pair[0], reverse=True)
+            filtered = [c for _, c in scored]
+            similarity_map = {int(c.get("id", 0)): round(float(s), 3) for s, c in scored}
+            template_meta = {
+                "name": target_template.get("player_name"),
+                "id": int(target_template.get("id", 0)),
+                "position_group": player_groups.get(tid, ""),
+                "honest_note": "Cosine on z-scored per90 vector vs position-filtered pool (same as similar_players)",
+            }
+        elif per90_sort:
+            if order_by in ("age_asc", "age_desc"):
+                names = [p.get("player_name") for p in filtered]
+                birthdates = await self._birthdate_map(names, filtered)
+                keyed = {p.get("player_name"): _age(birthdates.get(p.get("player_name"))) for p in filtered}
+                filtered.sort(key=lambda p: (keyed.get(p.get("player_name")) is None, keyed.get(p.get("player_name")) or 999))
+                if order_by == "age_desc":
+                    filtered.reverse()
+            else:
+                # map order_by to per90 key (same names)
+                per90_key_map = {
+                    "npxG": "npxG",
+                    "xA": "xA",
+                    "xGChain": "xGChain",
+                    "xGBuildup": "xGBuildup",
+                    "goals": "goals",
+                    "assists": "assists",
+                    "xG": "xG",
+                    "npg": "npg",
+                    "shots": "shots",
+                    "key_passes": "key_passes",
+                }
+                key = per90_key_map.get(order_by, order_by)
+                filtered.sort(key=lambda p: _per90_value(p, key), reverse=True)
         else:
-            filtered.sort(key=lambda p: _float(p, order_by), reverse=True)
+            if order_by in ("age_asc", "age_desc"):
+                names = [p.get("player_name") for p in filtered]
+                birthdates = await self._birthdate_map(names, filtered)
+                keyed = {p.get("player_name"): _age(birthdates.get(p.get("player_name"))) for p in filtered}
+                filtered.sort(key=lambda p: (keyed.get(p.get("player_name")) is None, keyed.get(p.get("player_name")) or 999))
+                if order_by == "age_desc":
+                    filtered.reverse()
+            else:
+                filtered.sort(key=lambda p: _float(p, order_by), reverse=True)
         top = filtered[:limit]
 
         ppda_by_team = await self._team_press_map(league_name, target_seasons[-1], start_date, end_date)
-        birthdates = await self._birthdate_map([p.get("player_name") for p in top], top)
+        birthdates_top = await self._birthdate_map([p.get("player_name") for p in top], top)
+
+        # age_scatter from filtered (pre-limit) where age known
+        age_scatter: list[dict] = []
+        try:
+            scatter_names = [p.get("player_name") for p in filtered]
+            scatter_birthdates = await self._birthdate_map(scatter_names, filtered)
+            for p in filtered:
+                dob = scatter_birthdates.get(p.get("player_name"))
+                age = _age(dob)
+                if age is None:
+                    continue
+                pid = int(p.get("id", 0))
+                age_scatter.append({
+                    "id": pid,
+                    "name": p.get("player_name"),
+                    "age": age,
+                    "npxG_per90": _per90_value(p, "npxG"),
+                    "xA_per90": _per90_value(p, "xA"),
+                    "team": p.get("team_title"),
+                    "position_group": player_groups.get(pid, ""),
+                })
+        except Exception:
+            age_scatter = []
+
+        # sparkline per top player: gather up to 8 with 2s timeout, last 5 matches desc
+        sparkline_map: dict[int, list[dict] | None] = {}
+        # default null for all
+        for p in top:
+            sparkline_map[int(p.get("id", 0))] = None
+        fetch_ids = [int(p.get("id", 0)) for p in top[:8]]
+        if fetch_ids:
+            async def _fetch_spark(pid: int):
+                try:
+                    data = await asyncio.wait_for(self.client.get_player_data(pid), timeout=2.0)
+                except Exception:
+                    return None
+                try:
+                    if not isinstance(data, dict):
+                        return None
+                    matches = data.get("matches")
+                    # matches could be dict or list
+                    if isinstance(matches, dict):
+                        matches = list(matches.values())
+                    if not isinstance(matches, list):
+                        return None
+                    # sort by date desc most recent first
+                    def _date_key(m):
+                        try:
+                            return (m.get("date") or "")[:10]
+                        except Exception:
+                            return ""
+                    sorted_matches = sorted(matches, key=_date_key, reverse=True)
+                    last5 = sorted_matches[:5]
+                    out = []
+                    for m in last5:
+                        date_val = (m.get("date") or "")[:10]
+                        # xG may be string
+                        try:
+                            xg_val = round(float(m.get("xG") or 0), 2)
+                        except Exception:
+                            xg_val = 0.0
+                        try:
+                            goals_val = int(float(m.get("goals") or 0))
+                        except Exception:
+                            try:
+                                goals_val = int(m.get("goals") or 0)
+                            except Exception:
+                                goals_val = 0
+                        out.append({"date": date_val, "xG": xg_val, "goals": goals_val})
+                    return out
+                except Exception:
+                    return None
+
+            results = await asyncio.gather(*(_fetch_spark(pid) for pid in fetch_ids), return_exceptions=True)
+            for pid, res in zip(fetch_ids, results):
+                if isinstance(res, BaseException) or res is None:
+                    sparkline_map[pid] = None
+                else:
+                    sparkline_map[pid] = res
 
         return {
             "league_name": league_name,
@@ -1109,6 +1315,9 @@ class AnalyticsService:
             "minimum_minutes": minimum_minutes,
             "order_by": order_by,
             "limit": limit,
+            "per90_sort": per90_sort,
+            "template": template_meta,
+            "age_scatter": age_scatter,
             "players": [
                 {
                     "id": p.get("id"),
@@ -1117,8 +1326,8 @@ class AnalyticsService:
                     "position": p.get("position"),
                     "position_group": player_groups[int(p.get("id", 0))],
                     "favorite_position": p.get("_favorite_position"),
-                    "age": _age(birthdates.get(p.get("player_name"))),
-                    "date_of_birth": birthdates.get(p.get("player_name")),
+                    "age": _age(birthdates_top.get(p.get("player_name"))),
+                    "date_of_birth": birthdates_top.get(p.get("player_name")),
                     "team_ppda": ppda_by_team.get(p.get("team_title")),
                     "team_oppda": ppda_by_team.get(f"{p.get('team_title')}::oppda"),
                     "minutes": int(_minutes(p)),
@@ -1137,6 +1346,8 @@ class AnalyticsService:
                     "xG_per_shot": _ratio_value(p, "xG", "shots"),
                     "conversion": _ratio_value(p, "goals", "shots"),
                     "g_minus_xg": round(_float(p, "goals") - _float(p, "xG"), 2),
+                    "similarity": similarity_map.get(int(p.get("id", 0))),
+                    "sparkline": sparkline_map.get(int(p.get("id", 0))),
                 }
                 for p in top
             ],

@@ -304,7 +304,7 @@
                 <input id="discoverMinutes" type="number" value="900" style="min-width:90px" />
               </div>
               <div class="field">
-                <label>Rank By</label>
+                <label for="discoverOrderBy">Rank By</label>
                 <select id="discoverOrderBy">
                   <option value="npxG">NP xG (Non-penalty xG)</option>
                   <option value="xA">xA (Expected Assists)</option>
@@ -337,6 +337,29 @@
                 <input id="discoverTo" type="date" />
               </div>
               <button class="primary" id="discoverGo">Discover Players</button>
+              <span id="watchlistCount" class="hero-pill" style="font-size:11px">Watchlist: 0</span>
+              <span id="watchlistCountPill" class="hero-pill" style="font-size:11px">Watchlist: 0</span>
+            </div>
+            <div class="controls-row" style="margin-top:10px">
+              <div class="field">
+                <label for="per90_tgl">Per 90 Ranking</label>
+                <label class="check" style="display:flex;align-items:center;gap:6px;margin-bottom:8px;font-size:13px;color:var(--text);text-transform:none;letter-spacing:0">
+                  <input type="checkbox" id="per90_tgl" /> Totals / Per 90
+                </label>
+              </div>
+              <div class="field">
+                <label for="thresh_npxG">npxG/90 ≥</label>
+                <input id="thresh_npxG" type="number" min="0" max="5" step="0.01" placeholder="e.g. 0.35" style="min-width:90px" />
+              </div>
+              <div class="field">
+                <label for="thresh_xA">xA/90 ≥</label>
+                <input id="thresh_xA" type="number" min="0" max="5" step="0.01" placeholder="e.g. 0.15" style="min-width:90px" />
+              </div>
+              <div class="field">
+                <label for="templatePlayer">Template player</label>
+                <input id="templatePlayer" type="text" list="templatePlayerList" placeholder="e.g. Erling Haaland" style="min-width:180px" />
+                <datalist id="templatePlayerList"></datalist>
+              </div>
             </div>
           </div>
 
@@ -482,6 +505,6 @@
   <div id="tooltip" class="tooltip"></div>
   <div id="chartTip" class="tooltip"></div>
 
-  <script src="/dashboard/app.js?v=22"></script>
+  <script src="/dashboard/app.js?v=23"></script>
 </body>
 </html>

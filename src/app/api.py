@@ -9,7 +9,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StrictBool, model_validator
 
 from app import __version__
 from app.analytics_service import AnalyticsService
@@ -300,6 +300,8 @@ class AnalyzeLeagueRequest(BaseModel):
 
 
 class DiscoverPlayersRequest(BaseModel):
+    model_config = {"extra": "forbid"}
+
     league_name: str = "EPL"
     season: int = Field(default_factory=get_current_season)
     position_group: str | None = None
@@ -312,6 +314,21 @@ class DiscoverPlayersRequest(BaseModel):
     seasons: list[int] | str | None = None
     min_age: int | None = None
     max_age: int | None = None
+    per90_sort: StrictBool = False
+    min_npxG_per90: float | None = Field(default=None, ge=0, le=5)
+    min_xA_per90: float | None = Field(default=None, ge=0, le=5)
+    min_xGChain_per90: float | None = Field(default=None, ge=0, le=5)
+    min_xGBuildup_per90: float | None = Field(default=None, ge=0, le=5)
+    template_player_name: str | None = None
+    template_player_id: int | None = None
+
+    @model_validator(mode="after")
+    def _validate_template_exclusive(self):
+        if self.template_player_name is not None and self.template_player_id is not None:
+            raise ValueError("template_player_name and template_player_id are exclusive (provide only one)")
+        if isinstance(self.template_player_name, str) and not self.template_player_name.strip():
+            object.__setattr__(self, "template_player_name", None)
+        return self
 
 
 @app.post(
@@ -582,6 +599,13 @@ async def discover_players(payload: DiscoverPlayersRequest, request: Request):
             min_age=payload.min_age,
             max_age=payload.max_age,
             positions=payload.positions,
+            per90_sort=payload.per90_sort,
+            min_npxG_per90=payload.min_npxG_per90,
+            min_xA_per90=payload.min_xA_per90,
+            min_xGChain_per90=payload.min_xGChain_per90,
+            min_xGBuildup_per90=payload.min_xGBuildup_per90,
+            template_player_name=payload.template_player_name,
+            template_player_id=payload.template_player_id,
         )
     except ValueError as exc:
         return JSONResponse(
@@ -597,6 +621,25 @@ class PredictMatchRequest(BaseModel):
     away: str
     use_xg: bool = True
     pool_leagues: bool = True
+
+    @model_validator(mode="before")
+    @classmethod
+    def _accept_team_aliases(cls, data: Any) -> Any:
+        """Backward compatibility both ways: accept home_team/away_team as aliases.
+
+        The dashboard sends home_team/away_team; earlier API clients send
+        home/away. Canonical home/away always wins when both are present.
+        """
+        if not isinstance(data, dict):
+            return data
+        normalized = dict(data)
+        if "home" not in normalized and "home_team" in normalized:
+            normalized["home"] = normalized["home_team"]
+        normalized.pop("home_team", None)
+        if "away" not in normalized and "away_team" in normalized:
+            normalized["away"] = normalized["away_team"]
+        normalized.pop("away_team", None)
+        return normalized
 
 
 class SimulateSeasonRequest(BaseModel):
