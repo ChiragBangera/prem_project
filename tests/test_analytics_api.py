@@ -131,6 +131,14 @@ class AnalyticsApiTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Arsenal", body["narrative"]["narrative"])
         self.assertIn("xG", body["narrative"])
 
+    async def test_analyze_match_returns_meta_team_names(self):
+        response = await self.client.post("/api/v1/analyze/match/1234")
+
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["meta"]["home"], "Arsenal")
+        self.assertEqual(body["meta"]["away"], "Chelsea")
+
 
 if __name__ == "__main__":
     unittest.main()

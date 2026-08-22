@@ -129,6 +129,10 @@ function fmt(n, decimals = 2) {
   return Number(n).toFixed(decimals);
 }
 
+function escapeHtml(s) {
+  return String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
 function pct(n, decimals = 0) {
   if (n === null || n === undefined || isNaN(n)) return "—";
   return `${(Number(n) * 100).toFixed(decimals)}%`;
@@ -666,7 +670,18 @@ function renderPitchHeatmap(containerId, dataInput, options = {}) {
   const lineups = (sofa && sofa.lineups && sofa.lineups.data) || null;
 
   const currentMode = state.pitchModes[containerId] || options.defaultMode || "shots";
-  state.pitchModes[containerId] = currentMode;
+
+  // Only offer tabs we actually have (or can lazily build) data for.
+  const rbBuildable = !!(sofa && sofa.event_id && lineups);
+  const availableModes = PITCH_MODES.filter((m) => {
+    if (m.needs === "shots") return shots.length > 0;
+    if (m.needs === "rb") return rb != null || rbBuildable;
+    if (m.needs === "sofa") return m.id === "possession" ? !!(sofa && sofa.statistics) : !!lineups;
+    return true;
+  });
+  const modes = availableModes.length ? availableModes : PITCH_MODES.slice(0, 1);
+  const activeMode = modes.some((m) => m.id === currentMode) ? currentMode : modes[0].id;
+  state.pitchModes[containerId] = activeMode;
 
   const width = options.width || 760;
   const height = options.height || 460;
@@ -676,9 +691,9 @@ function renderPitchHeatmap(containerId, dataInput, options = {}) {
     <div class="pitch-container">
       <div class="pitch-toolbar">
         <div class="pitch-mode-group">
-          ${PITCH_MODES.map((m) => `<button class="pitch-mode-btn ${currentMode === m.id ? 'active' : ''}" data-mode="${m.id}" data-needs="${m.needs}">${m.label}</button>`).join("")}
+          ${modes.map((m) => `<button class="pitch-mode-btn ${activeMode === m.id ? 'active' : ''}" data-mode="${m.id}" data-needs="${m.needs}">${m.label}</button>`).join("")}
         </div>
-        <div class="pitch-legend">${pitchLegendHTML(currentMode)}</div>
+        <div class="pitch-legend">${pitchLegendHTML(activeMode)}</div>
       </div>
       <div class="pitch-stage">
         <canvas id="${containerId}_canvas" class="pitch-canvas" width="${width}" height="${height}"></canvas>
@@ -699,7 +714,7 @@ function renderPitchHeatmap(containerId, dataInput, options = {}) {
   });
 
   // Determine data availability for the selected mode → honest empty or build trigger.
-  const modeCfg = PITCH_MODES.find((m) => m.id === currentMode);
+  const modeCfg = PITCH_MODES.find((m) => m.id === activeMode);
   let missing = null;
   if (modeCfg) {
     if (modeCfg.needs === "rb" && !rb) missing = "rating-breakdown";
@@ -731,7 +746,7 @@ function renderPitchHeatmap(containerId, dataInput, options = {}) {
 
   // Draw the selected mode.
   if (ctx) {
-    switch (currentMode) {
+    switch (activeMode) {
       case "heatmap":
         drawGaussianHeatmap(ctx, shots, width, height);
         drawPitchLines(ctx, width, height, isHalfPitch);
@@ -747,7 +762,7 @@ function renderPitchHeatmap(containerId, dataInput, options = {}) {
   }
 
   // Hover tooltips — only meaningful for the shot mode.
-  if (currentMode === "shots" && canvas) {
+  if (activeMode === "shots" && canvas) {
     canvas.addEventListener("mousemove", (e) => {
       const rect = canvas.getBoundingClientRect();
       const mouseX = ((e.clientX - rect.left) / rect.width) * width;
@@ -967,6 +982,62 @@ function formationSlots(formation, n) {
   // Top up to n with attackers pushed high (rare, defensive formations).
   for (let i = slots.length; i < n; i++) slots.push({ x: 50, y: 90 });
   return slots.slice(0, n);
+}
+
+// Normalize a lineup entry across both payload shapes:
+//   Sofascore: { player: {id, name, …}, shirtNumber, statistics: {…} }
+//   Understat: { player: "Name", position: "GK", positionOrder: "1", player_id, … }
+function resolveRosterPlayer(p) {
+  const embedded = p && typeof p.player === "object" && p.player !== null ? p.player : null;
+  return {
+    id: String((embedded && embedded.id) || (p && p.id) || (p && p.player_id) || ""),
+    name: (embedded && embedded.name) || (p && typeof p.player === "string" && p.player) || (p && p.name) || "",
+    position: (p && p.position) || (embedded && embedded.position) || "",
+    number: p && p.shirtNumber != null ? p.shirtNumber : (p && p.positionOrder != null ? p.positionOrder : ""),
+    rating: (p && p.rating) || (p && p.statistics && p.statistics.rating) || null,
+    raw: p,
+  };
+}
+
+// Derive a formation string ("4-3-3") from real player positions — never invent one.
+function formationFromPositions(players) {
+  const buckets = { def: 0, mid: 0, fwd: 0 };
+  players.forEach((r) => {
+    const pos = String(r.position || "").toUpperCase();
+    if (/^(RB|DR|CB|DC|LB|DL)$/.test(pos)) buckets.def++;
+    else if (/^(FW|ST|CF|FWL|FWR)$/.test(pos)) buckets.fwd++;
+    else if (pos && pos !== "GK" && pos !== "SUB") buckets.mid++;
+  });
+  if (!buckets.def && !buckets.mid && !buckets.fwd) return null;
+  return `${buckets.def}-${buckets.mid}-${buckets.fwd}`;
+}
+
+// Unified lineup view for the match screen, from whichever feed is live.
+function matchLineupData(d, sofaData) {
+  const sofaLineups = sofaData && sofaData.lineups && sofaData.lineups.data;
+  if (sofaLineups) {
+    const homePlayers = ((sofaLineups.home && sofaLineups.home.players) || []).map(resolveRosterPlayer);
+    const awayPlayers = ((sofaLineups.away && sofaLineups.away.players) || []).map(resolveRosterPlayer);
+    return {
+      homePlayers,
+      awayPlayers,
+      homeFormation: (sofaLineups.home && sofaLineups.home.formation) || formationFromPositions(homePlayers),
+      awayFormation: (sofaLineups.away && sofaLineups.away.formation) || formationFromPositions(awayPlayers),
+      live: true,
+    };
+  }
+  const bySlot = (list) => [...(list || [])]
+    .sort((a, b) => (parseFloat(a.positionOrder) || 99) - (parseFloat(b.positionOrder) || 99))
+    .map(resolveRosterPlayer);
+  const homePlayers = bySlot(d.rosters && d.rosters.h);
+  const awayPlayers = bySlot(d.rosters && d.rosters.a);
+  return {
+    homePlayers,
+    awayPlayers,
+    homeFormation: formationFromPositions(homePlayers.slice(0, 11)),
+    awayFormation: formationFromPositions(awayPlayers.slice(0, 11)),
+    live: false,
+  };
 }
 
 // Build (lazy) per-player rating-breakdown for an event, cache in state, re-render.
@@ -1197,18 +1268,27 @@ function matchPossessionSplit(sofaData, home, away) {
   `;
 }
 
-function renderMatchTacticalBoard(d, sofascoreData = null) {
-  const home = d.meta.home || "Home Team";
-  const away = d.meta.away || "Away Team";
-  const homeScore = d.narrative.scoreline.h.split(" ")[1] || "0";
-  const awayScore = d.narrative.scoreline.a.split(" ")[1] || "0";
+function renderMatchTacticalBoard(d, sofascoreData = null, lineup = null) {
+  const home = (d.meta && d.meta.home) || "Home Team";
+  const away = (d.meta && d.meta.away) || "Away Team";
+  const scoreline = d.narrative && d.narrative.scoreline ? d.narrative.scoreline : {};
+  const homeScore = scoreline.h ?? "0";
+  const awayScore = scoreline.a ?? "0";
 
-  const sofaLineups = sofascoreData && sofascoreData.lineups && sofascoreData.lineups.data;
-  const homeFormation = (sofaLineups && sofaLineups.home && sofaLineups.home.formation) || "4-3-3";
-  const awayFormation = (sofaLineups && sofaLineups.away && sofaLineups.away.formation) || "4-2-3-1";
+  lineup = lineup || matchLineupData(d, sofascoreData);
+  const { homePlayers, awayPlayers, live } = lineup;
+  const homeFormation = lineup.homeFormation || "—";
+  const awayFormation = lineup.awayFormation || "—";
 
-  const homePlayers = (sofaLineups && sofaLineups.home && sofaLineups.home.players) || (d.rosters && d.rosters.h) || [];
-  const awayPlayers = (sofaLineups && sofaLineups.away && sofaLineups.away.players) || (d.rosters && d.rosters.a) || [];
+  const playerRow = (pl, i, side) => `
+    <div class="chip-player-row" style="cursor:pointer" onclick="inspectMatchPlayer('${pl.id || i}', '${side}')">
+      <span class="chip-num">${pl.number || i + 1}</span>
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(pl.name || "Unknown")}</div>
+        <div style="font-size:10.5px;color:var(--muted)">${pl.position || "—"} ${pl.rating ? `· <span style="color:var(--accent);font-weight:800">⭐ ${fmt(pl.rating, 1)}</span>` : ""}</div>
+      </div>
+    </div>
+  `;
 
   return `
     <div class="card" style="margin-top:20px">
@@ -1217,15 +1297,15 @@ function renderMatchTacticalBoard(d, sofascoreData = null) {
           <span class="question-title">Tactical Formation & Lineup Board</span>
           <span class="question-desc">Starting formations, player positions, and interactive deep scouting</span>
         </div>
-        ${sofascoreData && sofascoreData.lineups && sofascoreData.lineups.enabled ? `<span class="hero-pill accent">⚡ Live Sofascore Feed</span>` : `<span class="hero-pill">Understat Lineups</span>`}
+        ${live ? `<span class="hero-pill accent">⚡ Live Sofascore Feed</span>` : `<span class="hero-pill">${homeFormation !== "—" ? "Understat Lineups · formation from positions" : "Understat Lineups"}</span>`}
       </div>
 
       <!-- Cross-Match Formation Header -->
       <div class="chip-pitch-header">
         <div class="chip-team-badge">
-          <div class="crest">🛡️</div>
+          <div class="mr-initials home">${initials(home)}</div>
           <div>
-            <div style="font-size:14px;font-weight:800;color:var(--text-bright)">${home}</div>
+            <div style="font-size:14px;font-weight:800;color:var(--text-bright)">${escapeHtml(home)}</div>
             <div class="chip-formation">${homeFormation}</div>
           </div>
         </div>
@@ -1234,9 +1314,9 @@ function renderMatchTacticalBoard(d, sofascoreData = null) {
           <div style="font-size:11px;color:var(--muted)">Full Time</div>
         </div>
         <div class="chip-team-badge" style="flex-direction:row-reverse;text-align:right">
-          <div class="crest">🛡️</div>
+          <div class="mr-initials away">${initials(away)}</div>
           <div>
-            <div style="font-size:14px;font-weight:800;color:var(--text-bright)">${away}</div>
+            <div style="font-size:14px;font-weight:800;color:var(--text-bright)">${escapeHtml(away)}</div>
             <div class="chip-formation">${awayFormation}</div>
           </div>
         </div>
@@ -1248,21 +1328,8 @@ function renderMatchTacticalBoard(d, sofascoreData = null) {
       <!-- Tactical Pitch Grid (Left Lineup · Dotted Pitch · Right Lineup) -->
       <div class="chip-pitch-grid">
         <div class="chip-lineup">
-          <div class="chip-lineup-title">${home} Lineup</div>
-          ${homePlayers.slice(0, 11).map((p, i) => {
-            const playerObj = p.player || p;
-            const pStats = p.statistics || {};
-            const rating = pStats.rating || p.rating;
-            return `
-              <div class="chip-player-row" style="cursor:pointer" onclick="inspectMatchPlayer('${playerObj.id || i}', 'home')">
-                <span class="chip-num">${p.shirtNumber || i + 1}</span>
-                <div style="flex:1;min-width:0">
-                  <div style="font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${playerObj.name || playerObj.player || p.name}</div>
-                  <div style="font-size:10.5px;color:var(--muted)">${p.position || playerObj.position || "—"} ${rating ? `· <span style="color:var(--accent);font-weight:800">⭐ ${fmt(rating, 1)}</span>` : ""}</div>
-                </div>
-              </div>
-            `;
-          }).join("")}
+          <div class="chip-lineup-title">${escapeHtml(home)} Lineup</div>
+          ${homePlayers.slice(0, 11).map((pl, i) => playerRow(pl, i, "home")).join("")}
         </div>
 
         <div class="chip-pitch-wrap">
@@ -1271,21 +1338,8 @@ function renderMatchTacticalBoard(d, sofascoreData = null) {
         </div>
 
         <div class="chip-lineup">
-          <div class="chip-lineup-title">${away} Lineup</div>
-          ${awayPlayers.slice(0, 11).map((p, i) => {
-            const playerObj = p.player || p;
-            const pStats = p.statistics || {};
-            const rating = pStats.rating || p.rating;
-            return `
-              <div class="chip-player-row" style="cursor:pointer" onclick="inspectMatchPlayer('${playerObj.id || i}', 'away')">
-                <span class="chip-num" style="color:var(--neutral)">${p.shirtNumber || i + 1}</span>
-                <div style="flex:1;min-width:0">
-                  <div style="font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${playerObj.name || playerObj.player || p.name}</div>
-                  <div style="font-size:10.5px;color:var(--muted)">${p.position || playerObj.position || "—"} ${rating ? `· <span style="color:var(--accent);font-weight:800">⭐ ${fmt(rating, 1)}</span>` : ""}</div>
-                </div>
-              </div>
-            `;
-          }).join("")}
+          <div class="chip-lineup-title">${escapeHtml(away)} Lineup</div>
+          ${awayPlayers.slice(0, 11).map((pl, i) => playerRow(pl, i, "away")).join("")}
         </div>
       </div>
     </div>
@@ -1300,66 +1354,42 @@ function drawDottedTacticalPitch(homePlayers, awayPlayers, homeFormation, awayFo
 
   drawMinimalPitch(ctx, w, h, false);
 
-  // Derive player positions from the real formation strings (never hardcoded).
-  const homeCoords = formationSlots(homeFormation || "4-3-3", 11).map((s) => [s.x, s.y]);
-  const awayCoords = formationSlots(awayFormation || "4-3-3", 11).map((s) => [s.x, s.y]);
-
-  ctx.font = "bold 9px var(--sans, sans-serif)";
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-
-  // Home Player Chips
-  homePlayers.slice(0, 11).forEach((p, i) => {
-    const playerObj = p.player || p;
-    const slot = homeCoords[i] || [50, 50];
-    const [px, py] = slot;
-    const x = (px / 100) * w;
-    const y = (py / 100) * h;
+  const drawChip = (pl, slotX, slotY, colorVar) => {
+    const x = (slotX / 100) * w;
+    const y = (slotY / 100) * h;
     ctx.beginPath();
     ctx.arc(x, y, 12, 0, Math.PI * 2);
     ctx.fillStyle = getThemeColor("--panel-3") || "#1e2328";
     ctx.fill();
-    ctx.strokeStyle = getThemeColor("--accent") || "#1ed760";
+    ctx.strokeStyle = getThemeColor(colorVar) || "#1ed760";
     ctx.lineWidth = 2;
     ctx.stroke();
 
-    ctx.fillStyle = getThemeColor("--accent") || "#1ed760";
+    ctx.fillStyle = getThemeColor(colorVar) || "#1ed760";
     ctx.font = "bold 10px var(--mono, monospace)";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.fillText(p.shirtNumber || String(i + 1), x, y);
+    if (pl.number !== "" && pl.number != null) ctx.fillText(String(pl.number), x, y);
 
-    ctx.fillStyle = getThemeColor("--text-bright") || "#F3F5F7";
-    ctx.font = "bold 9px var(--sans, sans-serif)";
-    const name = (playerObj.name || playerObj.player || "").split(" ").pop();
-    ctx.fillText(name, x, y + 18);
+    if (pl.name) {
+      ctx.fillStyle = getThemeColor("--text-bright") || "#F3F5F7";
+      ctx.font = "bold 9px var(--sans, sans-serif)";
+      ctx.fillText(pl.name.split(" ").pop(), x, y + 18);
+    }
+  };
+
+  // Home occupies its own half (slots y: own goal → opponent goal).
+  const homeSlots = formationSlots(homeFormation || "4-3-3", Math.min(homePlayers.length, 11));
+  homePlayers.slice(0, 11).forEach((pl, i) => {
+    const s = homeSlots[i] || { x: 50, y: 50 };
+    drawChip(pl, s.x, s.y, "--accent");
   });
 
-  // Away Player Chips
-  awayPlayers.slice(0, 11).forEach((p, i) => {
-    const playerObj = p.player || p;
-    const slot = awayCoords[i] || [50, 50];
-    const [px, py] = slot;
-    const x = (px / 100) * w;
-    const y = (py / 100) * h;
-    ctx.beginPath();
-    ctx.arc(x, y, 12, 0, Math.PI * 2);
-    ctx.fillStyle = getThemeColor("--panel-3") || "#1e2328";
-    ctx.fill();
-    ctx.strokeStyle = getThemeColor("--neutral") || "#38bdf8";
-    ctx.lineWidth = 2;
-    ctx.stroke();
-
-    ctx.fillStyle = getThemeColor("--neutral") || "#38bdf8";
-    ctx.font = "bold 10px var(--mono, monospace)";
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.fillText(p.shirtNumber || String(i + 1), x, y);
-
-    ctx.fillStyle = getThemeColor("--text-bright") || "#F3F5F7";
-    ctx.font = "bold 9px var(--sans, sans-serif)";
-    const name = (playerObj.name || playerObj.player || "").split(" ").pop();
-    ctx.fillText(name, x, y + 18);
+  // Away mirrored onto the opposite half so the two sides never overlap.
+  const awaySlots = formationSlots(awayFormation || "4-3-3", Math.min(awayPlayers.length, 11));
+  awayPlayers.slice(0, 11).forEach((pl, i) => {
+    const s = awaySlots[i] || { x: 50, y: 50 };
+    drawChip(pl, 100 - s.x, 100 - s.y, "--neutral");
   });
 }
 
@@ -1369,19 +1399,21 @@ window.inspectMatchPlayer = function(playerId, side) {
   const sofa = state.activeMatchSofascore;
   if (!d) return;
 
-  let player = null;
+  let raw = null;
   const sofaLineups = sofa && sofa.lineups && sofa.lineups.data;
   if (sofaLineups && sofaLineups[side] && sofaLineups[side].players) {
-    player = sofaLineups[side].players.find(p => String((p.player && p.player.id) || p.id) === String(playerId)) || sofaLineups[side].players[parseInt(playerId, 10)];
+    raw = sofaLineups[side].players.find(p => String((p.player && p.player.id) || p.id) === String(playerId));
   }
-  if (!player && d.rosters && d.rosters[side === 'home' ? 'h' : 'a']) {
-    player = d.rosters[side === 'home' ? 'h' : 'a'][parseInt(playerId, 10)];
+  if (!raw && d.rosters && d.rosters[side === 'home' ? 'h' : 'a']) {
+    const list = d.rosters[side === 'home' ? 'h' : 'a'];
+    raw = list.find((p) => String(p.player_id) === String(playerId)) || list[parseInt(playerId, 10)];
   }
-  if (!player) return;
+  if (!raw) return;
 
-  const playerObj = player.player || player;
+  const r = resolveRosterPlayer(raw);
+  const player = raw;
   const stats = player.statistics || {};
-  const name = playerObj.name || playerObj.player || player.name;
+  const name = r.name || "Unknown Player";
 
   let drawer = $("playerDrawerModal");
   if (!drawer) {
@@ -1399,7 +1431,7 @@ window.inspectMatchPlayer = function(playerId, side) {
         <div>
           <h3 style="font-size:20px;font-weight:900;color:var(--text-bright);margin:0">${name}</h3>
           <div style="font-size:12px;color:var(--muted);margin-top:2px">
-            #${player.shirtNumber || "—"} · ${player.position || playerObj.position || "—"} · ${playerObj.country ? `${playerObj.country.name} · ` : ""}${playerObj.height ? `${playerObj.height}cm · ` : ""}${side === 'home' ? d.meta.home : d.meta.away}
+            #${r.number !== "" && r.number != null ? r.number : "—"} · ${r.position || "—"} · ${side === 'home' ? ((d.meta && d.meta.home) || "Home") : ((d.meta && d.meta.away) || "Away")}
           </div>
         </div>
         ${stats.rating ? `
@@ -1448,7 +1480,7 @@ window.inspectMatchPlayer = function(playerId, side) {
       </table>
 
       <div style="margin-top:16px;text-align:right">
-        <button class="primary" onclick="$('playerName').value='${name}';$('playerDrawerModal').remove();activateTab('player');runPlayer()">
+        <button class="primary" onclick="$('playerName').value='${name.replace(/'/g, "\\'")}';$('playerDrawerModal').remove();activateTab('player');runPlayer()">
           Open Full Career Scouting Report →
         </button>
       </div>
@@ -1845,50 +1877,27 @@ async function runMatch() {
 }
 
 function renderMatch(node, d, sofaData = null) {
-  const n = d.narrative;
+  const n = d.narrative || {};
   clear(node);
 
+  const home = (d.meta && d.meta.home) || "Home";
+  const away = (d.meta && d.meta.away) || "Away";
+  const lineup = matchLineupData(d, sofaData);
   const homeShots = (d.shot_map.home || []).map((s) => ({ ...s, side: "home" }));
   const awayShots = (d.shot_map.away || []).map((s) => ({ ...s, side: "away" }));
   const allShots = [...homeShots, ...awayShots];
 
   node.innerHTML = `
-    <!-- Match Scoreline Hero Banner -->
-    <div class="player-hero-card">
-      <div class="hero-main" style="justify-content:center;text-align:center">
-        <div>
-          <div style="font-size:11px;text-transform:uppercase;color:var(--accent);letter-spacing:1.4px;font-weight:800">
-            OFFICIAL MATCH INTELLIGENCE REPORT
-          </div>
-          <div style="font-size:36px;font-weight:900;color:var(--text-bright);margin:10px 0;letter-spacing:-0.5px">
-            ${n.scoreline.h} — ${n.scoreline.a}
-          </div>
-          <div style="font-size:15px;color:var(--accent);font-family:var(--mono);font-weight:700">
-            Expected Goals (xG): ${fmt(n.xG.h)} vs ${fmt(n.xG.a)}
-          </div>
-          <div class="hint" style="margin-top:12px;max-width:680px;margin-left:auto;margin-right:auto;font-size:13px;line-height:1.5">
-            ${n.narrative}
-          </div>
-        </div>
-      </div>
-    </div>
+    ${renderScoreboard(d, home, away)}
+    ${matchFactStrip(d)}
 
-    <!-- Tactical Formation & Lineup Board -->
-    ${renderMatchTacticalBoard(d, sofaData)}
-
-    <!-- 7-Category Sofascore Tactical Statistics -->
-    ${sofaData && sofaData.statistics ? renderSofascoreStatsSections(sofaData.statistics, d.meta.home, d.meta.away) : ""}
-
-    <!-- Chronological Incidents Timeline -->
-    ${sofaData && sofaData.incidents ? renderMatchIncidents(sofaData.incidents) : ""}
-
-    <!-- Row 1: Tactical 4-Tier Shot Map vs Cumulative xG Timeline Flow -->
-    <div class="grid cols-2" style="margin-top:20px">
+    <!-- Row 1: where chances were created | how momentum accumulated -->
+    <div class="grid cols-2">
       <div class="card">
         <div class="card-header">
           <div class="section-question">
             <span class="question-title">Where were the match chances created?</span>
-            <span class="question-desc">Full pitch tactical 4-tier shot locations and Gaussian density heatmap</span>
+            <span class="question-desc">Shot locations tiered by quality · hover any shot for detail</span>
           </div>
         </div>
         ${shotQualityRailHTML(allShots)}
@@ -1899,23 +1908,23 @@ function renderMatch(node, d, sofaData = null) {
         <div class="card-header">
           <div class="section-question">
             <span class="question-title">How did match momentum accumulate?</span>
-            <span class="question-desc">Minute-by-minute step curve of cumulative expected goals</span>
+            <span class="question-desc">Cumulative expected goals after each shot, minute by minute</span>
           </div>
         </div>
         <div id="xgtl" style="margin-top:14px"></div>
       </div>
     </div>
 
-    <!-- Row 2: Big Chance Inventory vs Situations Breakdown -->
+    <!-- Row 2: which chances decided it | tactical phase profile -->
     <div class="grid cols-2" style="margin-top:20px">
       <div class="card">
         <div class="card-header">
           <div class="section-question">
             <span class="question-title">Which high-probability chances decided the match?</span>
-            <span class="question-desc">Big Chance Inventory (xG ≥ ${d.big_chance_inventory.xG_threshold})</span>
+            <span class="question-desc">Every shot above xG ${d.big_chance_inventory.xG_threshold}, both sides</span>
           </div>
         </div>
-        ${bigChances(d.big_chance_inventory)}
+        ${bigChances(d.big_chance_inventory, home, away)}
       </div>
 
       <div class="card">
@@ -1925,65 +1934,191 @@ function renderMatch(node, d, sofaData = null) {
             <span class="question-desc">Open play versus corner, set piece, and penalty distribution</span>
           </div>
         </div>
-        ${situationBreakdown(d.situation_breakdown)}
+        ${situationBreakdown(d.situation_breakdown, home, away)}
       </div>
     </div>
 
-    <!-- Row 3: Match Lineups / Individual Player Ratings -->
+    <!-- Lineup board -->
+    ${renderMatchTacticalBoard(d, sofaData, lineup)}
+
+    <!-- Live Sofascore layers (only when resolved) -->
+    ${sofaData && sofaData.statistics ? renderSofascoreStatsSections(sofaData.statistics, home, away) : ""}
+    ${sofaData && sofaData.incidents ? renderMatchIncidents(sofaData.incidents) : ""}
+
+    <!-- Key performers -->
     ${d.rosters ? `
       <div class="card" style="margin-top:20px">
         <div class="card-header">
           <div class="section-question">
             <span class="question-title">Who were the key individual performers?</span>
-            <span class="question-desc">Individual player minutes, shots, goals, and xG generation</span>
+            <span class="question-desc">Minutes, shots, goals, and xG contribution — click a name for a career report</span>
           </div>
         </div>
-        ${rostersBlock(d.rosters)}
+        ${rostersBlock(d.rosters, home, away)}
       </div>
     ` : ""}
 
-    <div class="caveat"><strong>Limitations.</strong><ul>${d.limitations.map((l) => `<li>${l}</li>`).join("")}</ul></div>
+    <details class="caveat" style="margin-top:24px">
+      <summary>Limitations — read before quoting these numbers</summary>
+      <ul>${(d.limitations || []).map((l) => `<li>${l}</li>`).join("")}</ul>
+    </details>
   `;
 
   renderPitchHeatmap("matchPitch", { shots: allShots, sofa: sofaData }, { sofascore: sofaData });
-  drawXgTimeline("xgtl", d.xg_timeline);
+  drawXgTimeline("xgtl", d.xg_timeline, home, away);
+  animateTruthBar(node);
   setTimeout(() => {
-    const sofaLineups = sofaData && sofaData.lineups && sofaData.lineups.data;
-    const homePl = (sofaLineups && sofaLineups.home && sofaLineups.home.players) || (d.rosters && d.rosters.h) || [];
-    const awayPl = (sofaLineups && sofaLineups.away && sofaLineups.away.players) || (d.rosters && d.rosters.a) || [];
-    const homeF = (sofaLineups && sofaLineups.home && sofaLineups.home.formation) || "4-3-3";
-    const awayF = (sofaLineups && sofaLineups.away && sofaLineups.away.formation) || "4-2-3-1";
-    drawDottedTacticalPitch(homePl, awayPl, homeF, awayF);
+    drawDottedTacticalPitch(lineup.homePlayers, lineup.awayPlayers, lineup.homeFormation, lineup.awayFormation);
   }, 50);
 }
 
-function bigChances(inv) {
-  return `<table><thead><tr><th>Side</th><th>Min</th><th>Shooter</th><th class="num">xG</th><th>Result</th></tr></thead><tbody>
-    ${inv.home.map((s) => row("Home", s)).join("")}${inv.away.map((s) => row("Away", s)).join("")}
-  </tbody></table>`;
-  function row(side, s) { return `<tr><td><strong>${side}</strong></td><td>${s.minute}'</td><td>${s.player || "—"}</td><td class="num">${fmt(s.xG)}</td><td><span class="badge ${s.result === 'Goal' ? 'good' : ''}">${s.result}</span></td></tr>`; }
+// ─── Match Report: scoreboard hero ────────────────────────────
+function initials(name) {
+  const words = String(name || "?").trim().split(/\s+/);
+  if (words.length === 1) return words[0].slice(0, 3).toUpperCase();
+  return words.slice(0, 2).map((w) => w[0]).join("").toUpperCase();
 }
 
-function situationBreakdown(sb) {
-  const head = `<tr><th>${term("situations")}</th><th class="num">${term("shots")}</th><th class="num">${term("xG")}</th><th class="num">${term("goals")}</th></tr>`;
-  const rows = (obj) => Object.entries(obj).sort((a, b) => b[1].xG - a[1].xG).map(([k, v]) => `<tr><td>${k}</td><td class="num">${v.shots}</td><td class="num">${fmt(v.xG)}</td><td class="num"><strong>${v.goals}</strong></td></tr>`).join("");
-  return `<table><thead><tr><th colspan=4 style="color:var(--accent)">Home Team</th></tr>${head}</thead><tbody>${rows(sb.home)}</tbody></table>` +
-    `<table style="margin-top:14px"><thead><tr><th colspan=4 style="color:var(--accent-emerald)">Away Team</th></tr>${head}</thead><tbody>${rows(sb.away)}</tbody></table>`;
+function renderScoreboard(d, homeName, awayName) {
+  const n = d.narrative || {};
+  const hxg = Number(n.xG && n.xG.h) || 0;
+  const axg = Number(n.xG && n.xG.a) || 0;
+  const totalXg = hxg + axg;
+  const homeShare = totalXg > 0 ? Math.round((hxg / totalXg) * 1000) / 10 : 50;
+  const forecast = d.forecast && d.forecast.w != null
+    ? `<span class="sep">·</span><span title="Understat pre-match model probabilities">Forecast W${Math.round(d.forecast.w * 100)} D${Math.round(d.forecast.d * 100)} L${Math.round(d.forecast.l * 100)}</span>`
+    : "";
+
+  return `
+    <section class="mr-scoreboard" aria-label="Match scoreboard">
+      <div class="mr-eyebrow">
+        <span>Match report</span><span class="sep">·</span><span>Shot-level xG</span>${forecast}
+      </div>
+      <div class="mr-board">
+        <div class="mr-team">
+          <div class="mr-initials home">${initials(homeName)}</div>
+          <div style="min-width:0">
+            <div class="mr-team-name">${escapeHtml(homeName)}</div>
+            <div class="mr-team-sub">Home</div>
+          </div>
+        </div>
+        <div class="mr-score">${n.scoreline != null ? n.scoreline.h ?? 0 : 0}<span class="mr-score-sep">:</span>${n.scoreline != null ? n.scoreline.a ?? 0 : 0}</div>
+        <div class="mr-team away">
+          <div class="mr-initials away">${initials(awayName)}</div>
+          <div style="min-width:0">
+            <div class="mr-team-name">${escapeHtml(awayName)}</div>
+            <div class="mr-team-sub">Away</div>
+          </div>
+        </div>
+      </div>
+      <div class="mr-truthbar-wrap">
+        <div class="mr-truthbar-labels">
+          <span class="home"><strong>${fmt(hxg)}</strong> xG</span>
+          <span>share of expected goals</span>
+          <span class="away"><strong>${fmt(axg)}</strong> xG</span>
+        </div>
+        <div class="mr-truthbar" role="img" aria-label="${escapeHtml(homeName)} ${homeShare} percent of expected goals, ${escapeHtml(awayName)} ${(100 - homeShare).toFixed(1)} percent">
+          <div class="seg-home" data-share="${homeShare}" style="width:50%"></div>
+          <div class="seg-away"></div>
+        </div>
+      </div>
+      ${n.narrative ? `<p class="mr-lede">${n.narrative}</p>` : ""}
+    </section>`;
 }
 
-function rostersBlock(rosters) {
+function animateTruthBar(node) {
+  const seg = node.querySelector(".mr-truthbar .seg-home");
+  if (!seg) return;
+  const target = `${parseFloat(seg.dataset.share)}%`;
+  if (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    seg.style.width = target;
+    return;
+  }
+  requestAnimationFrame(() => requestAnimationFrame(() => { seg.style.width = target; }));
+}
+
+function matchFactStrip(d) {
+  const shotsH = (d.shot_map.home || []).length;
+  const shotsA = (d.shot_map.away || []).length;
+  const bigH = ((d.big_chance_inventory && d.big_chance_inventory.home) || []).length;
+  const bigA = ((d.big_chance_inventory && d.big_chance_inventory.away) || []).length;
+  const hxg = Number(d.narrative && d.narrative.xG && d.narrative.xG.h) || 0;
+  const axg = Number(d.narrative && d.narrative.xG && d.narrative.xG.a) || 0;
+  const perShot = shotsH + shotsA > 0 ? (hxg + axg) / (shotsH + shotsA) : 0;
+
+  const split = (h, a) => `<span class="home">${h}</span><span class="unit"> : </span><span class="away">${a}</span>`;
+  return `
+    <div class="mr-facts">
+      <div class="mr-fact">
+        <div class="mr-fact-value split">${split((d.narrative && d.narrative.scoreline && d.narrative.scoreline.h) ?? 0, (d.narrative && d.narrative.scoreline && d.narrative.scoreline.a) ?? 0)}</div>
+        <div class="mr-fact-label">Goals</div>
+      </div>
+      <div class="mr-fact">
+        <div class="mr-fact-value split">${split(fmt(hxg), fmt(axg))}</div>
+        <div class="mr-fact-label">Expected goals</div>
+      </div>
+      <div class="mr-fact">
+        <div class="mr-fact-value split">${split(shotsH, shotsA)}</div>
+        <div class="mr-fact-label">Shots</div>
+      </div>
+      <div class="mr-fact">
+        <div class="mr-fact-value split">${split(bigH, bigA)}</div>
+        <div class="mr-fact-label">Big chances</div>
+      </div>
+      <div class="mr-fact">
+        <div class="mr-fact-value">${fmt(perShot, 3)}<span class="unit"> /shot</span></div>
+        <div class="mr-fact-label">Match xG intensity</div>
+      </div>
+    </div>`;
+}
+
+function bigChances(inv, homeName = "Home", awayName = "Away") {
+  const section = (title, colorVar, list) => `
+    <div>
+      <h4 style="font-size:12.5px;color:${colorVar};margin-bottom:8px">${title}</h4>
+      ${list.length ? `
+        <table>
+          <thead><tr><th>Min</th><th>Shooter</th><th class="num">xG</th><th>Result</th></tr></thead>
+          <tbody>
+            ${list.map((s) => `<tr><td>${s.minute}'</td><td>${s.player || "—"}</td><td class="num">${fmt(s.xG)}</td><td><span class="badge ${s.result === 'Goal' ? 'good' : ''}">${s.result}</span></td></tr>`).join("")}
+          </tbody>
+        </table>` : `<div class="empty-state">No chances above the xG threshold.</div>`}
+    </div>`;
+  return `
+    <div>${section(homeName, "var(--accent)", inv.home)}</div>
+    <div style="margin-top:14px">${section(awayName, "var(--neutral)", inv.away)}</div>`;
+}
+
+function situationBreakdown(sb, homeName = "Home", awayName = "Away") {
+  const head = `<tr><th>${term("situations", "Situation")}</th><th class="num">${term("shots", "Shots")}</th><th class="num">${term("xG", "xG")}</th><th class="num">${term("goals", "Goals")}</th></tr>`;
+  const rows = (obj) => Object.entries(obj).sort((a, b) => b[1].xG - a[1].xG)
+    .map(([k, v]) => {
+      const label = String(k).replace(/([a-z])([A-Z])/g, "$1 $2");
+      const totalXg = fmt(v.xG);
+      return `<tr><td>${label}</td><td class="num">${v.shots}</td><td class="num">${totalXg}</td><td class="num"><strong>${v.goals}</strong></td></tr>`;
+    }).join("");
+  const table = (title, colorVar, side) => `
+    <div>
+      <h4 style="font-size:12.5px;color:${colorVar};margin-bottom:8px">${title}</h4>
+      <table><thead>${head}</thead><tbody>${rows(sb[side])}</tbody></table>
+    </div>`;
+  return table(homeName, "var(--accent)", "home") +
+    `<div style="margin-top:14px">${table(awayName, "var(--neutral)", "away")}</div>`;
+}
+
+function rostersBlock(rosters, homeName = "Home", awayName = "Away") {
   if (!rosters) return "";
-  const renderSide = (title, list) => {
+  const renderSide = (title, colorVar, list) => {
     if (!list || !list.length) return "";
     return `
-      <div style="margin-top:14px">
-        <h4 style="font-size:12.5px;color:var(--accent);margin-bottom:8px">${title}</h4>
+      <div>
+        <h4 style="font-size:12.5px;color:${colorVar};margin-bottom:8px">${escapeHtml(title)}</h4>
         <table>
           <thead><tr><th>Player</th><th>Pos</th><th class="num">Min</th><th class="num">Shots</th><th class="num">Goals</th><th class="num">xG</th><th class="num">xA</th><th class="num">xGChain</th></tr></thead>
           <tbody>
             ${list.map((p) => `
               <tr>
-                <td><strong style="cursor:pointer" onclick="$('playerName').value='${p.player}';activateTab('player');runPlayer()">${p.player}</strong></td>
+                <td><strong style="cursor:pointer" onclick="$('playerName').value='${String(p.player || "").replace(/'/g, "\\'")}';activateTab('player');runPlayer()">${p.player || "—"}</strong></td>
                 <td><span class="badge">${p.position || "—"}</span></td>
                 <td class="num">${p.time || 0}</td>
                 <td class="num">${p.shots || 0}</td>
@@ -1998,30 +2133,63 @@ function rostersBlock(rosters) {
       </div>
     `;
   };
-  return `<div class="grid cols-2">${renderSide("Home Squad", rosters.h)}${renderSide("Away Squad", rosters.a)}</div>`;
+  return `<div class="grid cols-2">${renderSide(homeName, "var(--accent)", rosters.h)}${renderSide(awayName, "var(--neutral)", rosters.a)}</div>`;
 }
 
-function drawXgTimeline(container, tl) {
+function drawXgTimeline(container, tl, homeName = "Home", awayName = "Away") {
   const el = document.getElementById(container); if (!el) return;
-  const w = 1100, h = 260, padL = 56, pad = 30, x0 = padL, x1 = w - pad, y0 = 24, y1 = h - 40;
+  const w = 1100, h = 300, padL = 64, padR = 74, x0 = padL, x1 = w - padR, y0 = 34, y1 = h - 46;
   const home = tl.home || [], away = tl.away || [];
+  if (!home.length && !away.length) {
+    el.innerHTML = `<div class="empty-state">No shot timeline recorded.</div>`;
+    return;
+  }
   const allMax = Math.max(...home.map((p) => p.cumulative_xG), ...away.map((p) => p.cumulative_xG), 0.5);
   const minuteMax = Math.max(...home.map((p) => p.minute), ...away.map((p) => p.minute), 90);
   const x = (m) => x0 + (m / minuteMax) * (x1 - x0);
   const y = (v) => y1 - (v / allMax) * (y1 - y0);
   const homeColor = getThemeColor("--accent") || "#1ed760";
   const awayColor = getThemeColor("--neutral") || "#38bdf8";
+
+  // Horizontal gridlines with tick labels.
+  const gridSteps = 4;
+  let grid = "";
+  for (let i = 1; i <= gridSteps; i++) {
+    const v = (allMax / gridSteps) * i;
+    grid += `<line x1="${x0}" y1="${y(v)}" x2="${x1}" y2="${y(v)}" stroke="var(--border)" stroke-dasharray="3 5" opacity="0.6"/>
+      <text x="${x0 - 10}" y="${y(v) + 4}" fill="var(--muted)" font-size="12" text-anchor="end">${fmt(v, allMax >= 2 ? 1 : 2)}</text>`;
+  }
+  // Minute ticks.
+  const minuteStep = minuteMax > 90 ? 15 : 45;
+  let ticks = "";
+  for (let m = 0; m <= minuteMax; m += minuteStep) {
+    ticks += `<text x="${x(m)}" y="${y1 + 20}" fill="var(--muted)" font-size="12" text-anchor="middle">${m}'</text>`;
+  }
+
   const path = (pts, color) => pts.length ? `<path d="${pts.map((p, i) => `${i ? "L" : "M"}${x(p.minute)},${y(p.cumulative_xG)}`).join(" ")}" fill="none" stroke="${color}" stroke-width="2.5"/>` : "";
   const dots = (pts, color) => pts.map((p) => hoverDot(x(p.minute), y(p.cumulative_xG), `${p.minute}' — Cumulative xG: ${fmt(p.cumulative_xG, 3)}`, color, 3.5)).join("");
+  // End-of-line totals; nudge apart when the two curves finish close together.
+  const hy = home.length ? y(home[home.length - 1].cumulative_xG) : null;
+  const ay = away.length ? y(away[away.length - 1].cumulative_xG) : null;
+  let awayDy = 0;
+  if (hy != null && ay != null && Math.abs(hy - ay) < 18) awayDy = hy > ay ? 18 : -18;
+  const endLabel = (pts, color, name, dy) => {
+    if (!pts.length) return "";
+    const last = pts[pts.length - 1];
+    return `<text x="${Math.min(x(last.minute) + 8, x1 + 4)}" y="${y(last.cumulative_xG) + 4 + dy}" fill="${color}" font-size="12.5" font-weight="800">${name} ${fmt(last.cumulative_xG, 2)}</text>`;
+  };
 
   el.innerHTML = `<svg class="timeline-svg" viewBox="0 0 ${w} ${h}">
     <line x1="${x0}" y1="${y1}" x2="${x1}" y2="${y1}" stroke="var(--border)"/>
     <line x1="${x0}" y1="${y1}" x2="${x0}" y2="${y0}" stroke="var(--border)"/>
+    ${grid}
     ${path(home, homeColor)}${path(away, awayColor)}
     ${dots(home, homeColor)}${dots(away, awayColor)}
-    <text x="${x0}" y="${y0}" fill="var(--muted)" font-size="10.5"><tspan fill="${homeColor}">● Home</tspan>  <tspan fill="${awayColor}">● Away</tspan>  · Cumulative Match xG Progression</text>
-    <text x="${x0 + (x1 - x0) / 2}" y="${h - 6}" fill="var(--muted)" font-size="10" text-anchor="middle">Match Minute →</text>
-    <text x="14" y="${y0 + (y1 - y0) / 2}" fill="var(--muted)" font-size="10" text-anchor="middle" transform="rotate(-90 14 ${y0 + (y1 - y0) / 2})">xG ↑</text>
+    ${endLabel(home, homeColor, homeName, 0)}
+    ${endLabel(away, awayColor, awayName, awayDy)}
+    <text x="${x0}" y="18" fill="var(--muted)" font-size="13"><tspan fill="${homeColor}" font-weight="800">● ${homeName}</tspan><tspan dx="18" fill="${awayColor}" font-weight="800">● ${awayName}</tspan><tspan dx="18" opacity="0.85">Cumulative xG</tspan></text>
+    <text x="${x0 + (x1 - x0) / 2}" y="${h - 8}" fill="var(--muted)" font-size="12.5" text-anchor="middle">Match Minute →</text>
+    <text x="16" y="${y0 + (y1 - y0) / 2}" fill="var(--muted)" font-size="12.5" text-anchor="middle" transform="rotate(-90 16 ${y0 + (y1 - y0) / 2})">Cumulative xG ↑</text>
   </svg>`;
 }
 

@@ -1416,6 +1416,9 @@ class AnalyticsService:
             "a": (away_shots[0].get("a_team") if away_shots else "Away"),
         }
         report = match_engine.match_report(meta, shots)
+        # team names for front-end display / downstream enrichment (no kickoff
+        # date exists in Understat's getMatchData payload)
+        report["meta"] = {"home": meta["h"], "away": meta["a"]}
         # rosters straight from get_match_data
         rosters = None
         try:
@@ -1431,6 +1434,12 @@ class AnalyticsService:
                         return []
                     h_list = _normalize_side(raw_rosters.get("h"))
                     a_list = _normalize_side(raw_rosters.get("a"))
+                    if meta["h"] == "Home" and h_list and isinstance(h_list[0], dict) and h_list[0].get("team_title"):
+                        meta["h"] = h_list[0]["team_title"]
+                        report["meta"]["home"] = meta["h"]
+                    if meta["a"] == "Away" and a_list and isinstance(a_list[0], dict) and a_list[0].get("team_title"):
+                        meta["a"] = a_list[0]["team_title"]
+                        report["meta"]["away"] = meta["a"]
                     rosters = {"h": h_list, "a": a_list}
                     if raw_rosters is None:
                         rosters = None

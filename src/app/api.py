@@ -25,6 +25,25 @@ from app.utils.utils import get_current_season
 PROJECT_SUMMARY = "Evidence-backed football analytics powered by Understat data."
 
 
+def _load_env_file() -> None:
+    """Minimal .env loader (KEY=VALUE lines) so optional data-source gates
+    like SOFASCORE_ENABLED survive server restarts. Real env vars win."""
+    try:
+        root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        with open(os.path.join(root, ".env")) as fh:
+            for line in fh:
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                key, _, value = line.partition("=")
+                os.environ.setdefault(key.strip(), value.strip().strip("'").strip('"'))
+    except OSError:
+        pass
+
+
+_load_env_file()
+
+
 class QuestionRequest(BaseModel):
     question: str = Field(
         min_length=3,
