@@ -200,6 +200,103 @@ class AnalyticsService:
                 "error": str(exc),
             }
 
+    async def _sofascore_ready(self) -> tuple[Any | None, dict | None]:
+        """Shared gate+client acquisition. Returns (client, honest_error_response)."""
+        if not self._is_sofascore_enabled():
+            return None, {
+                "enabled": False,
+                "honest_note": "Sofascore not enabled (SOFASCORE_ENABLED unset) — showing Understat-only data.",
+                "fallback": "understat",
+            }
+        client = self.sofascore
+        if client is None:
+            try:
+                from .stat_data.sofascore import SofascoreClient as _SC
+
+                client = _SC()
+            except Exception as exc:
+                return None, {
+                    "enabled": False,
+                    "honest_note": f"Sofascore unavailable ({exc}) — fallback to Understat.",
+                    "fallback": "understat",
+                    "error": str(exc),
+                }
+        return client, None
+
+    async def get_sofascore_incidents(self, event_id: int | str) -> dict:
+        """Goals/cards/subs feed for match flow timeline."""
+        client, err = await self._sofascore_ready()
+        if err:
+            return {**err, "incidents": None}
+        try:
+            data = await client.get_incidents(event_id)
+            return {"enabled": True, "data": data, "honest_note": "Sofascore incidents fetched."}
+        except Exception as exc:
+            return {
+                "enabled": False,
+                "honest_note": f"Sofascore unavailable ({exc}) — fallback to Understat.",
+                "fallback": "understat",
+                "error": str(exc),
+            }
+
+    async def get_sofascore_rating_breakdown(self, event_id: int | str, player_id: int | str) -> dict:
+        """Per-player action stream (passes/dribbles/defensive/carries + coords)."""
+        client, err = await self._sofascore_ready()
+        if err:
+            return {**err}
+        try:
+            data = await client.get_player_rating_breakdown(event_id, player_id)
+            return {"enabled": True, "data": data, "honest_note": "Sofascore rating breakdown fetched."}
+        except Exception as exc:
+            return {
+                "enabled": False,
+                "honest_note": f"Sofascore unavailable ({exc}) — fallback to Understat.",
+                "fallback": "understat",
+                "error": str(exc),
+            }
+
+    async def get_sofascore_player_heatmap(self, event_id: int | str, player_id: int | str) -> dict:
+        """Per-player touch heatmap (System A 0–100 grid)."""
+        client, err = await self._sofascore_ready()
+        if err:
+            return {**err}
+        try:
+            data = await client.get_heatmap(event_id, player_id)
+            return {"enabled": True, "data": data, "honest_note": "Sofascore heatmap fetched."}
+        except Exception as exc:
+            return {
+                "enabled": False,
+                "honest_note": f"Sofascore unavailable ({exc}) — fallback to Understat.",
+                "fallback": "understat",
+                "error": str(exc),
+            }
+
+    async def resolve_sofascore_event(
+        self,
+        understat_match_id: int | str,
+        home_team: str | None = None,
+        away_team: str | None = None,
+        kickoff_date: str | None = None,
+    ) -> dict:
+        """Map Understat match id → Sofascore event id (cache → CSV → search)."""
+        client, err = await self._sofascore_ready()
+        if err:
+            return {**err, "resolved": False}
+        try:
+            return await client.resolve_event_id(
+                understat_match_id,
+                home_team=home_team,
+                away_team=away_team,
+                kickoff_date=kickoff_date,
+            )
+        except Exception as exc:
+            return {
+                "resolved": False,
+                "enabled": False,
+                "honest_note": f"Sofascore resolver failed ({exc}).",
+                "error": str(exc),
+            }
+
     # ── Federated fallback helpers (Phase 5C) ───────────────────────────────
     def _is_federated_enabled(self) -> bool:
         try:
@@ -1030,8 +1127,17 @@ class AnalyticsService:
         else:
             position_trend = team_engine.position_trend(history, league_histories or {})
 
-        report = team_engine.team_report(team_row, team_history=history, team_shots=shots,
-                                        league_histories=league_histories)
+        latest_table = None
+        if valid_tables:
+            latest_table = valid_tables[sorted(valid_tables.keys())[-1]]
+
+        report = team_engine.team_report(
+            team_row,
+            team_history=history,
+            team_shots=shots,
+            league_histories=league_histories,
+            league_table=latest_table,
+        )
         report["position_trend"] = position_trend
         report["season_trends"] = {str(s): t for s, t in sorted(season_trends.items())} if season_trends else None
         report["date_window"] = {"start_date": start_date, "end_date": end_date}

@@ -786,3 +786,80 @@ async def calibrate(payload: CalibrateRequest, request: Request):
             status_code=422,
             content={"error": "invalid_parameters", "detail": str(exc)},
         )
+
+
+# ── Sofascore tactical endpoints (Phase 5R Stage 1) ────────────────────────
+# All routes delegate to AnalyticsService which never raises on gate-off /
+# upstream failure — they return {"enabled": false, honest_note, fallback}.
+
+
+@app.get("/api/v1/sofascore/event/{event_id}/statistics", tags=["Sofascore"])
+async def sofascore_event_statistics(event_id: int, request: Request):
+    return await request.app.state.analytics.get_sofascore_event_statistics(event_id)
+
+
+@app.get("/api/v1/sofascore/event/{event_id}/lineups", tags=["Sofascore"])
+async def sofascore_event_lineups(event_id: int, request: Request):
+    return await request.app.state.analytics.get_sofascore_lineups(event_id)
+
+
+@app.get("/api/v1/sofascore/event/{event_id}/shotmap", tags=["Sofascore"])
+async def sofascore_event_shotmap(request: Request, event_id: int, player_id: int | None = None):
+    return await request.app.state.analytics.get_sofascore_shotmap(event_id, player_id)
+
+
+@app.get("/api/v1/sofascore/event/{event_id}/incidents", tags=["Sofascore"])
+async def sofascore_event_incidents(event_id: int, request: Request):
+    return await request.app.state.analytics.get_sofascore_incidents(event_id)
+
+
+@app.get("/api/v1/sofascore/event/{event_id}/player/{player_id}/rating-breakdown", tags=["Sofascore"])
+async def sofascore_player_rating_breakdown(event_id: int, player_id: int, request: Request):
+    return await request.app.state.analytics.get_sofascore_rating_breakdown(event_id, player_id)
+
+
+@app.get("/api/v1/sofascore/event/{event_id}/player/{player_id}/heatmap", tags=["Sofascore"])
+async def sofascore_player_heatmap(event_id: int, player_id: int, request: Request):
+    return await request.app.state.analytics.get_sofascore_player_heatmap(event_id, player_id)
+
+
+class ResolveEventRequest(BaseModel):
+    understat_match_id: int
+    home_team: str | None = None
+    away_team: str | None = None
+    kickoff_date: str | None = None
+
+
+@app.post("/api/v1/sofascore/resolve-event", tags=["Sofascore"])
+async def sofascore_resolve_event(payload: ResolveEventRequest, request: Request):
+    return await request.app.state.analytics.resolve_sofascore_event(
+        payload.understat_match_id,
+        home_team=payload.home_team,
+        away_team=payload.away_team,
+        kickoff_date=payload.kickoff_date,
+    )
+
+
+# ── Federated endpoints (fixtures / standings) ────────────────────────────
+
+
+@app.get("/api/v1/federated/fixtures", tags=["Federated"])
+async def federated_fixtures(
+    request: Request,
+    league: str = "EPL",
+    season: int | None = None,
+):
+    if season is None:
+        season = get_current_season()
+    return await request.app.state.analytics.get_federated_fixtures(league=league, season=season)
+
+
+@app.get("/api/v1/federated/standings", tags=["Federated"])
+async def federated_standings(
+    request: Request,
+    league: str = "EPL",
+    season: int | None = None,
+):
+    if season is None:
+        season = get_current_season()
+    return await request.app.state.analytics.get_federated_standings(league=league, season=season)

@@ -24,9 +24,12 @@ Key behaviours:
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import random
+import sqlite3
 import time
+from pathlib import Path
 from typing import Any
 
 try:
@@ -42,6 +45,31 @@ DEFAULT_HEADERS = {
 }
 
 ENABLED_TRUTHY = {"1", "true", "yes", "on", "enabled"}
+
+EVENT_MAP_TTL = 0  # resolved event-ID map never expires
+
+
+def _root_cache_dir() -> Path:
+    try:
+        return Path(__file__).resolve().parents[3] / "cache"
+    except Exception:
+        return Path("cache")
+
+
+def _ensure_sqlite_db(db_path: str | Path) -> None:
+    path = Path(db_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with sqlite3.connect(str(path)) as conn:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS cache (
+                key TEXT PRIMARY KEY,
+                data TEXT NOT NULL,
+                ts REAL NOT NULL
+            )
+            """
+        )
+        conn.commit()
 
 # ── Env gate ──────────────────────────────────────────────────────────────
 
@@ -375,6 +403,7 @@ class SofascoreClient:
         timeout: float = 20.0,
         disable_throttle: bool = False,
         enabled_override: bool | None = None,
+        cache_dir: str | Path | None = None,
     ):
         self.base_url = base_url.rstrip("/")
         self._injected_client = httpx_client
@@ -388,6 +417,20 @@ class SofascoreClient:
         # Simple in-memory TTL cache for event stats: (event_id, period) -> (ts, data)
         self._cache: dict[str, tuple[float, Any]] = {}
         self._cache_ttl = 6 * 3600  # 6h per spec
+        # sqlite write-through (cache/sofa.db) — survives restarts, mirrors FederatedClient schema
+        if cache_dir is not None:
+            cdir = Path(cache_dir)
+        else:
+            try:
+                cdir = _root_cache_dir()
+            except Exception:
+                cdir = Path("cache")
+        self.cache_dir = str(cdir)
+        self.sofa_db = str(cdir / "sofa.db")
+        try:
+            _ensure_sqlite_db(self.sofa_db)
+        except Exception:
+            pass
 
     def _is_enabled(self) -> bool:
         if self._enabled_override is not None:
@@ -477,11 +520,35 @@ class SofascoreClient:
                     continue
                 raise
 
-    # ── Cache helpers ──
+    # ── Cache helpers (in-memory L1 + sqlite L2) ──
+    def _sqlite_get(self, key: str, ttl: int) -> Any | None:
+        try:
+            _ensure_sqlite_db(self.sofa_db)
+            with sqlite3.connect(self.sofa_db) as conn:
+                conn.row_factory = sqlite3.Row
+                row = conn.execute("SELECT data, ts FROM cache WHERE key=?", (key,)).fetchone()
+                if not row:
+                    return None
+                ts = float(row["ts"])
+                if ttl > 0 and time.time() - ts > ttl:
+                    try:
+                        conn.execute("DELETE FROM cache WHERE key=?", (key,))
+                        conn.commit()
+                    except Exception:
+                        pass
+                    return None
+                return json.loads(row["data"])
+        except Exception:
+            return None
+
     def _cache_get(self, key: str) -> Any | None:
         entry = self._cache.get(key)
         if not entry:
-            return None
+            # sqlite fallback — same TTL policy as memory
+            disk = self._sqlite_get(key, self._cache_ttl)
+            if disk is not None:
+                self._cache[key] = (time.time(), disk)
+            return disk
         ts, data = entry
         if time.time() - ts > self._cache_ttl:
             self._cache.pop(key, None)
@@ -490,6 +557,16 @@ class SofascoreClient:
 
     def _cache_set(self, key: str, data: Any) -> None:
         self._cache[key] = (time.time(), data)
+        try:
+            _ensure_sqlite_db(self.sofa_db)
+            with sqlite3.connect(self.sofa_db) as conn:
+                conn.execute(
+                    "INSERT OR REPLACE INTO cache (key, data, ts) VALUES (?, ?, ?)",
+                    (key, json.dumps(data), time.time()),
+                )
+                conn.commit()
+        except Exception:
+            pass
 
     # ── Public API ──
 
@@ -501,6 +578,7 @@ class SofascoreClient:
         Also stores period/groups structure for convenience.
         """
         cache_key = f"stats:{event_id}"
+        self._check_enabled()
         cached = self._cache_get(cache_key)
         if cached is not None:
             return cached
@@ -549,6 +627,7 @@ class SofascoreClient:
     async def get_lineups(self, event_id: int | str) -> dict:
         """GET /event/{id}/lineups → filtered, KEEP player stats, DROP display strings."""
         cache_key = f"lineups:{event_id}"
+        self._check_enabled()
         cached = self._cache_get(cache_key)
         if cached is not None:
             return cached
@@ -709,6 +788,178 @@ class SofascoreClient:
     async def get_heatmaps(self, event_id: int | str, player_id: int | str) -> dict:
         """Alias for get_heatmap — plural name per task spec."""
         return await self.get_heatmap(event_id, player_id)
+
+    async def get_incidents(self, event_id: int | str) -> dict:
+        """GET /event/{id}/incidents → goals/cards/subs/VAR feed for match flow timeline.
+
+        Reference: TacosScore §8.3. Chronological feed; each item keeps incidentType,
+        time, addedTime, isHome + type-specific fields (player, goalType, incidentClass…).
+        """
+        cache_key = f"incidents:{event_id}"
+        self._check_enabled()
+        cached = self._cache_get(cache_key)
+        if cached is not None:
+            return cached
+        data = await self._request(f"/event/{event_id}/incidents")
+        incidents: list[dict] = []
+        if isinstance(data, dict):
+            raw = data.get("incidents") or []
+            if isinstance(raw, list):
+                incidents = raw
+        elif isinstance(data, list):
+            incidents = data
+        filtered: list[dict] = []
+        for inc in incidents:
+            if not isinstance(inc, dict):
+                continue
+            out = dict(inc)
+            out.pop("reversedPeriodTime", None)
+            out.pop("reversedPeriodTimeSeconds", None)
+            filtered.append(out)
+        # API feeds newest-first; sort ascending for 0'→90' narrative
+        try:
+            filtered.sort(key=lambda i: ((i.get("time") or 0), (i.get("addedTime") or 0)))
+        except Exception:
+            pass
+        out = {"incidents": filtered, "event_id": str(event_id)}
+        self._cache_set(cache_key, out)
+        return out
+
+    # ── Event-ID resolver: Understat match id ↔ Sofascore event id ──────────
+    def _manual_event_map_path(self) -> Path:
+        return _root_cache_dir().parent / "data" / "sofascore" / "event_map.csv"
+
+    def _manual_event_lookup(self, understat_match_id: int | str) -> int | None:
+        """Manual override CSV: understat_match_id,sofascore_event_id[,note]."""
+        path = self._manual_event_map_path()
+        try:
+            import csv
+
+            target = str(understat_match_id).strip()
+            with open(path, newline="", encoding="utf-8") as fh:
+                for row in csv.reader(fh):
+                    if len(row) >= 2 and row[0].strip() == target:
+                        return int(row[1].strip())
+        except Exception:
+            return None
+        return None
+
+    @staticmethod
+    def _norm_name(name: str | None) -> str:
+        return "".join(ch for ch in str(name or "").lower() if ch.isalnum())
+
+    async def resolve_event_id(
+        self,
+        understat_match_id: int | str,
+        home_team: str | None = None,
+        away_team: str | None = None,
+        kickoff_date: str | None = None,
+    ) -> dict:
+        """Resolve an Understat match id to a Sofascore event id.
+
+        Order: sqlite event_map (permanent) → manual CSV override → live search by
+        home team + kickoff-date proximity (±1 day), cached permanently on success.
+        Never raises for unresolvable — returns {"resolved": False}.
+        """
+        uid = str(understat_match_id)
+        map_key = f"event_map:{uid}"
+        hit = self._sqlite_get(map_key, EVENT_MAP_TTL)
+        if isinstance(hit, dict) and hit.get("sofascore_event_id"):
+            return {"resolved": True, **hit, "source": "cache"}
+        manual = self._manual_event_lookup(uid)
+        if manual:
+            rec = {"understat_match_id": uid, "sofascore_event_id": manual}
+            try:
+                _ensure_sqlite_db(self.sofa_db)
+                with sqlite3.connect(self.sofa_db) as conn:
+                    conn.execute(
+                        "INSERT OR REPLACE INTO cache (key, data, ts) VALUES (?, ?, ?)",
+                        (map_key, json.dumps(rec), time.time()),
+                    )
+                    conn.commit()
+            except Exception:
+                pass
+            return {"resolved": True, **rec, "source": "manual_csv"}
+        if not home_team:
+            return {
+                "resolved": False,
+                "understat_match_id": uid,
+                "honest_note": "No mapping for this Understat match id — seed data/sofascore/event_map.csv or provide home_team for search.",
+            }
+        try:
+            search = await self._request("/search/all", params={"q": home_team})
+        except Exception as exc:
+            return {"resolved": False, "understat_match_id": uid, "error": str(exc)}
+        team_ids: list[tuple[int, str]] = []
+        results = search.get("results", []) if isinstance(search, dict) else []
+        for r in results:
+            if not isinstance(r, dict):
+                continue
+            entity = r.get("entity") or {}
+            if r.get("type") != "team" and not entity.get("team"):
+                continue
+            try:
+                tid = int(entity.get("id"))
+            except Exception:
+                continue
+            team_ids.append((tid, entity.get("name") or ""))
+        want_home = self._norm_name(home_team)
+        want_away = self._norm_name(away_team) if away_team else ""
+        for tid, tname in team_ids[:3]:
+            try:
+                evs = await self._request(f"/team/{tid}/events/last/0")
+            except Exception:
+                continue
+            events = evs.get("events", []) if isinstance(evs, dict) else []
+            for ev in events:
+                if not isinstance(ev, dict):
+                    continue
+                ht = (ev.get("homeTeam") or {}).get("name") or ""
+                at = (ev.get("awayTeam") or {}).get("name") or ""
+                n_ht, n_at = self._norm_name(ht), self._norm_name(at)
+                pair_ok = (
+                    (want_home in (n_ht, n_at))
+                    and (not want_away or want_away in (n_ht, n_at))
+                )
+                if not pair_ok:
+                    continue
+                if kickoff_date:
+                    try:
+                        import datetime as _dt
+
+                        ko = _dt.datetime.fromtimestamp(int(ev.get("startTimestamp", 0)), _dt.timezone.utc).date()
+                        want = _dt.date.fromisoformat(str(kickoff_date)[:10])
+                        if abs((ko - want).days) > 1:
+                            continue
+                    except Exception:
+                        pass
+                sid = ev.get("id")
+                try:
+                    sid_i = int(sid)
+                except Exception:
+                    continue
+                rec = {
+                    "understat_match_id": uid,
+                    "sofascore_event_id": sid_i,
+                    "home": ht,
+                    "away": at,
+                }
+                try:
+                    _ensure_sqlite_db(self.sofa_db)
+                    with sqlite3.connect(self.sofa_db) as conn:
+                        conn.execute(
+                            "INSERT OR REPLACE INTO cache (key, data, ts) VALUES (?, ?, ?)",
+                            (map_key, json.dumps(rec), time.time()),
+                        )
+                        conn.commit()
+                except Exception:
+                    pass
+                return {"resolved": True, **rec, "source": "search"}
+        return {
+            "resolved": False,
+            "understat_match_id": uid,
+            "honest_note": f"No recent Sofascore event matched {home_team} vs {away_team or '?'} on {kickoff_date or 'any date'}.",
+        }
 
     # Convenience: event-level heatmaps for all players who played?
     # Not required but useful

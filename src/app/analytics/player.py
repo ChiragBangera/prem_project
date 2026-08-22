@@ -256,6 +256,77 @@ def _cosine_similarity(a: list[float], b: list[float]) -> float:
     return dot / (na * nb)
 
 
+def compute_player_l1_metrics(player: dict, peers: list[dict], min_minutes: float = 450.0) -> list[dict]:
+    """Compute Layer 1 Decision Metrics with peer benchmark deltas and percentiles."""
+    group = position_group(player.get("position"))
+    families = position_families(player.get("position"))
+    same_pos = filter_by_families(peers, families)
+    qualified_peers = filter_by_minutes(same_pos, min_minutes)
+    if not qualified_peers:
+        qualified_peers = same_pos or [player]
+
+    def _metric_entry(key: str, label: str, subline: str, decimals: int = 2, unit: str = "/90", better: str = "higher"):
+        val = player_per90(player, key) if key not in ("g_minus_xg", "conversion", "xG_per_shot") else 0.0
+        if key == "g_minus_xg":
+            val = to_float(player.get("goals", 0)) - to_float(player.get("xG", 0))
+        elif key == "conversion":
+            shots = to_float(player.get("shots", 0))
+            val = (to_float(player.get("goals", 0)) / shots * 100.0) if shots > 0 else 0.0
+        elif key == "xG_per_shot":
+            shots = to_float(player.get("shots", 0))
+            val = (to_float(player.get("xG", 0)) / shots) if shots > 0 else 0.0
+
+        peer_vals = []
+        for p in qualified_peers:
+            if key in ("g_minus_xg", "conversion", "xG_per_shot"):
+                if key == "g_minus_xg":
+                    pv = to_float(p.get("goals", 0)) - to_float(p.get("xG", 0))
+                elif key == "conversion":
+                    ps = to_float(p.get("shots", 0))
+                    pv = (to_float(p.get("goals", 0)) / ps * 100.0) if ps > 0 else 0.0
+                elif key == "xG_per_shot":
+                    ps = to_float(p.get("shots", 0))
+                    pv = (to_float(p.get("xG", 0)) / ps) if ps > 0 else 0.0
+            else:
+                pv = player_per90(p, key)
+            peer_vals.append(pv)
+
+        peer_avg = sum(peer_vals) / len(peer_vals) if peer_vals else 0.0
+        delta = val - peer_avg
+
+        if len(peer_vals) > 1:
+            count_below = sum(1 for pv in peer_vals if pv < val)
+            count_equal = sum(1 for pv in peer_vals if pv == val)
+            pct_rank = round((count_below + 0.5 * count_equal) / len(peer_vals) * 100.0, 1)
+        else:
+            pct_rank = 50.0
+
+        is_pos = (delta >= 0) if better == "higher" else (delta <= 0)
+
+        return {
+            "key": key,
+            "label": label,
+            "value": round_value(val, decimals),
+            "benchmark": round_value(peer_avg, decimals),
+            "delta": round_value(delta, decimals),
+            "delta_display": f"{delta:+.{decimals}f}",
+            "percentile": pct_rank,
+            "unit": unit,
+            "subline": subline,
+            "is_positive": is_pos,
+            "sample_size": len(qualified_peers),
+        }
+
+    return [
+        _metric_entry("npxG", "NP xG / 90", "Non-penalty goal threat", decimals=2, unit="/90"),
+        _metric_entry("xA", "xA / 90", "Chances created quality", decimals=2, unit="/90"),
+        _metric_entry("xGChain", "xG Chain / 90", "Total possession involvement", decimals=2, unit="/90"),
+        _metric_entry("xGBuildup", "xG Buildup / 90", "Deep buildup contribution", decimals=2, unit="/90"),
+        _metric_entry("xG_per_shot", "xG / Shot", "Shot selection quality", decimals=3, unit="xG"),
+        _metric_entry("g_minus_xg", "Goals − xG", "Finishing variance", decimals=2, unit="goals"),
+    ]
+
+
 def player_report(player: dict, league_peers: list[dict], team_roster: list[dict] | None = None,
                   shots: list[dict] | None = None) -> dict:
     """Bundle the full player analytics view into one JSON-serializable payload."""
@@ -267,6 +338,7 @@ def player_report(player: dict, league_peers: list[dict], team_roster: list[dict
             "position": player.get("position"),
             "position_group": position_group(player.get("position")),
         },
+        "l1_metrics": compute_player_l1_metrics(player, league_peers),
         "per90_breakdown": per90_breakdown(player),
         "involvement_profile": involvement_profile(player),
         "shot_selection": shot_selection_profile(player),

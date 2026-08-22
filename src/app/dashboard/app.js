@@ -1,102 +1,33 @@
 "use strict";
 
 const CURRENT_YEAR = new Date().getFullYear();
-const CURRENT_MONTH = new Date().getMonth() + 1; // 1-12
-// European football seasons start in July/August
+const CURRENT_MONTH = new Date().getMonth() + 1;
 const LATEST_SEASON = CURRENT_MONTH >= 7 ? CURRENT_YEAR : CURRENT_YEAR - 1;
 const SEASON_RANGE = { first: 2014, last: LATEST_SEASON };
 
 const state = {
   league: "EPL",
   tab: "match",
+  teamSubtab: "overview",
+  matchMode: "recent", // "recent" | "board"
+  boardRound: 1,
   season: LATEST_SEASON,
   hiddenSeasons: new Set(),
-  pitchModes: {}, // containerId -> 'shots' | 'heatmap'
+  pitchModes: {},
   roundsData: null,
   roundsLoadedFor: null,
+  activePlayerData: null,
+  activeTeamData: null,
+  activeMatchData: null,
+  activeMatchSofascore: null,
+  selectedSofaPlayer: null,
 };
 
-// Watchlist helpers (prem_watchlist_v1)
-const WATCHLIST_KEY = "prem_watchlist_v1";
-function getWatchlist() {
-  try { const raw = localStorage.getItem(WATCHLIST_KEY); return raw ? JSON.parse(raw) : []; } catch (_) { return []; }
-}
-function setWatchlist(list) { localStorage.setItem(WATCHLIST_KEY, JSON.stringify(list)); updateWatchlistPill(); }
-function isWatched(id) { return getWatchlist().some((w) => String(w.id) === String(id)); }
-function toggleWatchlist(player) {
-  const list = getWatchlist();
-  const idx = list.findIndex((w) => String(w.id) === String(player.id));
-  if (idx >= 0) { list.splice(idx, 1); }
-  else {
-    const entry = {
-      id: player.id,
-      name: player.player_name || player.name || "",
-      team: player.team_title || player.team || "",
-      position: player.position || "",
-      age: player.age != null ? player.age : null,
-      minutes: player.time != null ? player.time : (player.minutes != null ? player.minutes : null),
-      npxG: player.npxG != null ? player.npxG : null,
-      xA: player.xA != null ? player.xA : null,
-      npxG_per90: player.npxG_per90 != null ? player.npxG_per90 : (player.time ? (player.npxG||0)*90/player.time : 0),
-      xA_per90: player.xA_per90 != null ? player.xA_per90 : (player.time ? (player.xA||0)*90/player.time : 0),
-      similarity: player.similarity != null ? player.similarity : null,
-      added_at: new Date().toISOString(),
-    };
-    list.push(entry);
-  }
-  setWatchlist(list);
-  // re-render pill and toggle button states without full fetch if discover is open
-  document.querySelectorAll("[data-watch-toggle]").forEach((btn) => {
-    const pid = btn.getAttribute("data-watch-toggle");
-    btn.textContent = isWatched(pid) ? "★ Watched" : "☆ Watch";
-    btn.style.color = isWatched(pid) ? "#f59e0b" : "";
-  });
-}
-function updateWatchlistPill() {
-  const count = getWatchlist().length;
-  const els = [document.getElementById("watchlistCount"), document.getElementById("watchlistCountPill")].filter(Boolean);
-  els.forEach((el) => { el.textContent = `Watchlist: ${count}`; });
-}
-function exportWatchlistCSV() {
-  const list = getWatchlist();
-  const header = "id,name,team,position,age,minutes,npxG,xA,npxG_per90,xA_per90,similarity";
-  const rows = list.map((r) => {
-    const qName = '"' + String(r.name || "").replace(/"/g, '""') + '"';
-    const qTeam = '"' + String(r.team || "").replace(/"/g, '""') + '"';
-    return [r.id, qName, qTeam, r.position, r.age ?? "", r.minutes ?? "", r.npxG ?? "", r.xA ?? "", r.npxG_per90 ?? "", r.xA_per90 ?? "", r.similarity ?? ""].join(",");
-  });
-  const csv = [header, ...rows].join("\n");
-  const blob = new Blob([csv], { type: "text/csv" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url; a.download = "watchlist.csv"; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
-}
-function clearWatchlist() { localStorage.removeItem(WATCHLIST_KEY); updateWatchlistPill(); document.querySelectorAll("[data-watch-toggle]").forEach((btn)=>{ btn.textContent="☆ Watch"; btn.style.color="";}); }
-let _lastDiscoverPlayers = [];
-function toggleWatchlistById(id) {
-  const player = _lastDiscoverPlayers.find((p) => String(p.id) === String(id));
-  if (player) {
-    const pName = player.player_name || player.name || "";
-    const pTeam = player.team_title || player.team || "";
-    const pPos = player.position || player.favorite_position || "";
-    const min = player.time != null ? player.time : (player.minutes != null ? player.minutes : 0);
-    const npxg90 = player.npxG_per90 != null ? player.npxG_per90 : (min > 0 ? ((player.npxG || 0) / min) * 90 : 0);
-    const xa90 = player.xA_per90 != null ? player.xA_per90 : (min > 0 ? ((player.xA || 0) / min) * 90 : 0);
-    const enriched = { id: player.id, player_name: pName, team_title: pTeam, team: pTeam, position: pPos, age: player.age, time: min, minutes: min, npxG: player.npxG, xA: player.xA, npxG_per90: npxg90, xA_per90: xa90, similarity: player.similarity };
-    toggleWatchlist(enriched);
-  }
-}
-window.toggleWatchlistById = toggleWatchlistById;
-window.exportWatchlistCSV = exportWatchlistCSV;
-window.clearWatchlist = clearWatchlist;
-window.toggleWatchlist = toggleWatchlist;
-
 const $ = (id) => document.getElementById(id);
-window.$ = $;
 
 const TAB_TITLES = {
-  match: { title: "Match Intelligence Deep-Dive", desc: "Full pitch tactical shot maps, cumulative xG timelines, big chance audits, and process diagnostics." },
-  player: { title: "Player Scouting & Intelligence", desc: "Radars, tactical shot density heatmaps, finishing diagnostics, and peer similarity." },
+  match: { title: "Match Intelligence Deep-Dive", desc: "Full pitch tactical shot maps, cumulative xG flow timelines, tactical lineups, big chance audits, and process diagnostics." },
+  player: { title: "Player Scouting & Intelligence", desc: "Decision metrics, percentile radars, tactical shot density heatmaps, finishing diagnostics, and peer similarity." },
   discover: { title: "Talent Discovery & Scouting", desc: "Filter and rank players across European leagues by involvement metrics, roles, and age curves." },
   compare: { title: "Head-to-Head Comparison & Basket", desc: "Overlay radar charts and compare multi-metric player and club profiles directly." },
   team: { title: "Team Tactical Intelligence", desc: "Pressing intensity (PPDA), deep completions, form momentum CUSUM, attacking & defensive shot maps." },
@@ -113,6 +44,53 @@ const LEAGUE_LABEL = {
   Ligue_1: "Ligue 1"
 };
 
+// Watchlist Helpers
+const WATCHLIST_KEY = "prem_watchlist";
+function getWatchlist() {
+  try { return JSON.parse(localStorage.getItem(WATCHLIST_KEY) || "[]"); } catch (_) { return []; }
+}
+function setWatchlist(list) {
+  localStorage.setItem(WATCHLIST_KEY, JSON.stringify(list));
+  updateWatchlistPill();
+}
+function isWatched(id) {
+  return getWatchlist().some((w) => String(w.id) === String(id));
+}
+function toggleWatchlist(player) {
+  if (!player || !player.id) return;
+  const list = getWatchlist();
+  const idx = list.findIndex((w) => String(w.id) === String(player.id));
+  if (idx >= 0) {
+    list.splice(idx, 1);
+  } else {
+    list.push({
+      id: player.id,
+      name: player.name || player.player_name,
+      team: player.team_title || player.team,
+      position: player.position_group || player.position,
+      league: state.league,
+      season: state.season,
+      addedAt: new Date().toISOString(),
+    });
+  }
+  setWatchlist(list);
+  const btn = document.querySelector(`[data-watch-player="${player.id}"]`);
+  if (btn) {
+    const watched = isWatched(player.id);
+    btn.textContent = watched ? "★ Watched" : "☆ Watch";
+    btn.style.color = watched ? "var(--accent)" : "";
+  }
+}
+function updateWatchlistPill() {
+  const count = getWatchlist().length;
+  const pill = $("watchlistCountPill");
+  if (pill) {
+    pill.textContent = `${count} Saved`;
+    pill.style.display = count > 0 ? "inline-flex" : "none";
+  }
+}
+
+// API Fetch Helper
 async function api(path, body, method = "POST") {
   const opts = { method, headers: { "Content-Type": "application/json" } };
   if (body) opts.body = JSON.stringify(body);
@@ -164,85 +142,75 @@ function windowBadge(d) {
 }
 
 function formatEur(value) {
-  if (value == null) return null;
-  const n = Number(value);
-  if (n >= 1_000_000) return `€${(n / 1_000_000).toFixed(n >= 10_000_000 ? 0 : 1)}m`;
-  if (n >= 1000) return `€${Math.round(n / 1000)}k`;
-  return `€${n.toLocaleString()}`;
+  if (value === null || value === undefined || isNaN(value)) return null;
+  const num = Number(value);
+  if (num >= 1_000_000) return `€${(num / 1_000_000).toFixed(1)}m`;
+  if (num >= 1_000) return `€${(num / 1_000).toFixed(0)}k`;
+  return `€${num.toLocaleString()}`;
 }
 
 function enrichmentPills(enrichment) {
-  if (!enrichment || enrichment.source === "none") return "";
-  const parts = [];
-  const tip = (enrichment.honest_note || "").replace(/"/g, "&quot;");
-  const mv = formatEur(enrichment.market_value_eur);
-  if (mv) parts.push(`<span class="hero-pill" style="background:rgba(16,185,129,0.12);border:1px solid rgba(16,185,129,0.35);color:#6ee7b7" title="${tip}">💶 ${mv}</span>`);
-  if (enrichment.contract_end) {
-    const year = String(enrichment.contract_end).slice(0, 4);
-    parts.push(`<span class="hero-pill" style="background:rgba(99,102,241,0.12);border:1px solid rgba(99,102,241,0.35);color:#a5b4fc" title="${tip}">📅 ${year}</span>`);
-  }
-  if (enrichment.foot) parts.push(`<span class="hero-pill" title="${tip}">🦶 ${enrichment.foot}</span>`);
-  return parts.join(" ");
+  if (!enrichment || typeof enrichment !== "object") return "";
+  const pills = [];
+  if (enrichment.market_value_eur) pills.push(`<span class="hero-pill" title="Transfermarkt valuation">💶 ${formatEur(enrichment.market_value_eur)}</span>`);
+  if (enrichment.contract_end) pills.push(`<span class="hero-pill" title="Contract expiry">📅 ${enrichment.contract_end}</span>`);
+  if (enrichment.foot) pills.push(`<span class="hero-pill" title="Preferred foot">🦶 ${enrichment.foot}</span>`);
+  if (enrichment.height_cm) pills.push(`<span class="hero-pill" title="Height">📏 ${enrichment.height_cm}cm</span>`);
+  if (enrichment.sofascore_rating) pills.push(`<span class="hero-pill accent" title="Sofascore season rating">⭐ ${fmt(enrichment.sofascore_rating, 2)}</span>`);
+  return pills.join(" ");
 }
 
-// Persist Inputs
-const PERSIST_IDS = [
-  "playerName", "teamName", "leagueSeason",
-  "matchSeason", "matchId",
-  "predHome", "predAway", "predSeason", "simSeason", "calSeason",
-  "compareA", "compareB", "compareSeason", "discoverMinutes", "discoverOrderBy"
-];
-PERSIST_IDS.forEach((id) => {
-  const el = document.getElementById(id);
-  if (!el) return;
-  const saved = localStorage.getItem(`prem_${id}`);
-  if (saved !== null) el.value = saved;
-  el.addEventListener("input", () => localStorage.setItem(`prem_${id}`, el.value));
-  el.addEventListener("change", () => localStorage.setItem(`prem_${id}`, el.value));
-});
-
-const savedLeague = localStorage.getItem("prem_league");
-if (savedLeague) {
-  document.querySelectorAll("#leaguePicker button").forEach((b) => b.classList.toggle("active", b.dataset.league === savedLeague));
-  state.league = savedLeague || state.league;
+// Dynamic Theme Management & Chart Color Helper
+function getThemeColor(varName) {
+  return getComputedStyle(document.documentElement).getPropertyValue(varName).trim();
 }
 
-// Theme System (Midnight/Nord/Gruvbox/Studio × light/dark)
 function applyTheme(theme, mode) {
-  document.documentElement.setAttribute("data-theme", theme);
-  document.documentElement.setAttribute("data-mode", mode);
+  const root = document.documentElement;
+  root.setAttribute("data-theme", theme);
+  root.setAttribute("data-mode", mode);
   localStorage.setItem("prem_theme", theme);
   localStorage.setItem("prem_mode", mode);
-  const sel = document.getElementById("themeSelect");
-  if (sel) sel.value = theme;
-  const btn = document.getElementById("modeToggle");
-  if (btn) btn.textContent = mode === "dark" ? "🌙 Dark" : "☀️ Light";
+  const sel = $("themeSelect");
+  if (sel && sel.value !== theme) sel.value = theme;
+  const btn = $("modeToggle");
+  if (btn) btn.textContent = mode === "light" ? "☀️ Light" : "🌙 Dark";
+
   const meta = document.querySelector('meta[name="theme-color"]');
-  if (meta) {
-    try {
-      const bg = getComputedStyle(document.documentElement).getPropertyValue("--bg-darkest").trim();
-      if (bg) meta.setAttribute("content", bg);
-    } catch (_) {}
+  if (meta) meta.setAttribute("content", mode === "light" ? "#ffffff" : "#0B0D0F");
+
+  redrawActiveCharts();
+}
+
+function redrawActiveCharts() {
+  if (state.tab === "player" && state.activePlayerData) {
+    const d = state.activePlayerData;
+    renderPitchHeatmap("playerPitch", d.shots || []);
+    if (d.radar && d.radar.profile) drawRadar("playerRadar", d.radar.profile.filter(p => p.percentile > 0 || p.raw > 0));
+  } else if (state.tab === "team" && state.activeTeamData) {
+    renderTeamSubtab(state.teamSubtab);
+  } else if (state.tab === "match" && state.activeMatchData) {
+    renderMatch($("matchContent"), state.activeMatchData, state.activeMatchSofascore);
   }
 }
-function getThemeColor(varName) {
-  try { return getComputedStyle(document.documentElement).getPropertyValue(varName).trim() || null; } catch (_) { return null; }
-}
+
 (function initTheme() {
-  const savedTheme = localStorage.getItem("prem_theme") || "midnight";
-  const savedMode = localStorage.getItem("prem_mode") || "dark";
-  applyTheme(savedTheme, savedMode);
-  const sel = document.getElementById("themeSelect");
-  if (sel) sel.addEventListener("change", (e) => {
-    const mode = localStorage.getItem("prem_mode") || "dark";
-    applyTheme(e.target.value, mode);
-  });
-  const btn = document.getElementById("modeToggle");
-  if (btn) btn.addEventListener("click", () => {
-    const curTheme = localStorage.getItem("prem_theme") || "midnight";
-    const curMode = localStorage.getItem("prem_mode") || "dark";
-    applyTheme(curTheme, curMode === "dark" ? "light" : "dark");
-  });
+  const theme = localStorage.getItem("prem_theme") || "midnight";
+  const mode = localStorage.getItem("prem_mode") || "dark";
+  applyTheme(theme, mode);
+  const sel = $("themeSelect");
+  if (sel) {
+    sel.value = theme;
+    sel.addEventListener("change", (e) => applyTheme(e.target.value, localStorage.getItem("prem_mode") || "dark"));
+  }
+  const btn = $("modeToggle");
+  if (btn) {
+    btn.addEventListener("click", () => {
+      const current = localStorage.getItem("prem_mode") || "dark";
+      const next = current === "light" ? "dark" : "light";
+      applyTheme(localStorage.getItem("prem_theme") || "midnight", next);
+    });
+  }
 })();
 
 // Glossary Management
@@ -261,48 +229,6 @@ function term(key, fallback) {
   const entry = GLOSSARY[key];
   const label = entry ? entry.label : (fallback || key);
   return `<span class="term" data-term="${key}">${label}</span>`;
-}
-
-function truncateLabel(str, max = 28) {
-  if (!str) return "";
-  if (str.length <= max) return str;
-  return str.slice(0, max - 1) + "…";
-}
-
-function glossaryLabelForMetric(key) {
-  if (!key) return "";
-  if (GLOSSARY[key] && GLOSSARY[key].label) return GLOSSARY[key].label;
-  const map = {
-    xGChain_per90: "xG_chain",
-    xGBuildup_per90: "xG_buildup",
-    goal_involvement_per90: "goal_involvement",
-    xG_per_shot: "xG_per_shot",
-    npxG_per_shot: "npxG",
-    xG_per90: "xG",
-    goals_per90: "goals",
-    shots_per90: "shots",
-    key_passes_per90: "key_passes",
-    npxGD: "npxgd",
-    xG_for: "xG",
-    xG_against: "xGA",
-    goals_for: "goals",
-    goals_against: "ga",
-    xPTS: "xpts",
-    PPDA: "ppda",
-    deep_for: "deep",
-    deep_against: "odc",
-    conversion: "conversion",
-  };
-  const mapped = map[key];
-  if (mapped && GLOSSARY[mapped] && GLOSSARY[mapped].label) return GLOSSARY[mapped].label;
-  if (mapped && GLOSSARY[mapped.toLowerCase()] && GLOSSARY[mapped.toLowerCase()].label) return GLOSSARY[mapped.toLowerCase()].label;
-  // fallback: humanize snake_case but do not return raw with underscores
-  const humanized = key.replace(/_/g, " ").replace(/per90/gi, "/90");
-  if (GLOSSARY[humanized] && GLOSSARY[humanized].label) return GLOSSARY[humanized].label;
-  // last resort: return humanized with capitalised words? Keep as is but not raw snake
-  // For keys like xGChain_per90 we already mapped; for any other, return humanized
-  if (humanized !== key) return humanized;
-  return key;
 }
 
 const tooltipEl = document.getElementById("tooltip");
@@ -327,6 +253,50 @@ document.addEventListener("mouseout", (e) => {
   if (e.target.closest(".term")) tooltipEl.classList.remove("show");
 });
 
+const chartTipEl = document.getElementById("chartTip");
+document.addEventListener("mousemove", (e) => {
+  const t = e.target.closest("[data-tip]");
+  if (!t) {
+    if (chartTipEl) chartTipEl.classList.remove("show");
+    return;
+  }
+  if (!chartTipEl) return;
+  chartTipEl.innerHTML = t.dataset.tip.replace(/\n/g, "<br>");
+  chartTipEl.classList.add("show");
+  const w = chartTipEl.offsetWidth, h = chartTipEl.offsetHeight;
+  let x = e.clientX + 14, y = e.clientY + 14;
+  if (x + w > window.innerWidth - 8) x = e.clientX - w - 12;
+  if (y + h > window.innerHeight - 8) y = e.clientY - h - 12;
+  chartTipEl.style.left = `${Math.max(8, x)}px`;
+  chartTipEl.style.top = `${Math.max(8, y)}px`;
+});
+
+function hoverDot(cx, cy, tip, color, r = 4) {
+  return `<circle cx="${cx}" cy="${cy}" r="12" fill="transparent" data-tip="${tip}"/><circle cx="${cx}" cy="${cy}" r="${r}" fill="${color}"/>`;
+}
+
+// Persist Inputs
+const PERSIST_IDS = [
+  "playerName", "teamName", "leagueSeason",
+  "matchSeason", "matchId",
+  "predHome", "predAway", "predSeason", "simSeason", "calSeason",
+  "compareA", "compareB", "compareSeason", "discoverMinutes", "discoverOrderBy"
+];
+PERSIST_IDS.forEach((id) => {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const saved = localStorage.getItem(`prem_${id}`);
+  if (saved !== null) el.value = saved;
+  el.addEventListener("input", () => localStorage.setItem(`prem_${id}`, el.value));
+  el.addEventListener("change", () => localStorage.setItem(`prem_${id}`, el.value));
+});
+
+const savedLeague = localStorage.getItem("prem_league");
+if (savedLeague) {
+  document.querySelectorAll("#leaguePicker button").forEach((b) => b.classList.toggle("active", b.dataset.league === savedLeague));
+  state.league = savedLeague || state.league;
+}
+
 // Quick Load Example Chips
 document.addEventListener("click", (e) => {
   const chip = e.target.closest(".example");
@@ -340,12 +310,16 @@ document.addEventListener("click", (e) => {
   if (action && typeof window[action] === "function") window[action]();
 });
 
-// Sidebar Nav Switching — supports 64px rail + TACTICS children (Phase 5)
+// Sidebar Nav Switching
 document.getElementById("sidebarNav").addEventListener("click", (e) => {
-  const btn = e.target.closest("[data-tab]");
+  const btn = e.target.closest(".nav-item[data-tab], .nav-child[data-tab]");
   if (!btn) return;
-  // allow nav-child inside rail to also trigger
-  if (!btn.matches(".nav-item, .nav-child")) return;
+  const tactic = btn.dataset.tactic;
+  if (tactic) {
+    activateTab("team");
+    setTeamSubtab(tactic === "shots" ? "chance" : tactic === "possession" ? "possession" : "defence");
+    return;
+  }
   activateTab(btn.dataset.tab);
 });
 
@@ -355,14 +329,16 @@ document.getElementById("leaguePicker").addEventListener("click", (e) => {
   if (!btn) return;
   state.league = btn.dataset.league;
   localStorage.setItem("prem_league", state.league);
-  document.querySelectorAll("#leaguePicker button").forEach((b) => b.classList.toggle("active", b === btn));
+  document.querySelectorAll("#leaguePicker button").forEach((b) => b.classList.toggle("active", b.dataset.league === btn));
   if (state.tab === "match") loadRounds();
   if (state.tab === "league") runLeague();
+  if (state.tab === "player") runPlayer();
+  if (state.tab === "team") runTeam();
 });
 
 function activateTab(tab, push = true) {
   state.tab = tab;
-  document.querySelectorAll(".sidebar-nav .nav-item, .sidebar-nav .nav-child").forEach((b) => b.classList.toggle("active", b.dataset.tab === tab));
+  document.querySelectorAll(".sidebar-nav .nav-item").forEach((b) => b.classList.toggle("active", b.dataset.tab === tab));
   document.querySelectorAll("section.view").forEach((s) => s.classList.toggle("active", s.id === `view-${tab}`));
 
   const meta = TAB_TITLES[tab] || { title: "Football Analytics", desc: "" };
@@ -373,6 +349,18 @@ function activateTab(tab, push = true) {
   if (tab === "info") renderInfo();
   if (tab === "match") loadRounds();
   if (tab === "league") runLeague();
+  if (tab === "player" && !state.activePlayerData) {
+    if (!$("playerName").value) $("playerName").value = "Erling Haaland";
+    runPlayer();
+  }
+  if (tab === "team" && !state.activeTeamData) {
+    if (!$("teamName").value) $("teamName").value = "Arsenal";
+    runTeam();
+  }
+  if (tab === "discover") {
+    const discContent = $("discoverContent");
+    if (discContent && discContent.querySelector(".empty")) runDiscover();
+  }
 }
 
 window.addEventListener("popstate", () => {
@@ -546,214 +534,357 @@ function populateSeasonSelects() {
 }
 populateSeasonSelects();
 
-// Season dropdown change listeners for immediate reactivity
 $("matchSeason").addEventListener("change", () => loadRounds());
 $("leagueSeason").addEventListener("change", () => runLeague());
 
-// Chart Tooltip
-const chartTipEl = document.getElementById("chartTip");
-document.addEventListener("mousemove", (e) => {
-  const t = e.target.closest("[data-tip]");
-  if (!t) {
-    if (chartTipEl) chartTipEl.classList.remove("show");
-    return;
-  }
-  if (!chartTipEl) return;
-  chartTipEl.innerHTML = t.dataset.tip.replace(/\n/g, "<br>");
-  chartTipEl.classList.add("show");
-  const w = chartTipEl.offsetWidth, h = chartTipEl.offsetHeight;
-  let x = e.clientX + 14, y = e.clientY + 14;
-  if (x + w > window.innerWidth - 8) x = e.clientX - w - 12;
-  if (y + h > window.innerHeight - 8) y = e.clientY - h - 12;
-  chartTipEl.style.left = `${Math.max(8, x)}px`;
-  chartTipEl.style.top = `${Math.max(8, y)}px`;
-});
+// ==========================================================
+// IMAGE 1: LAYER 1 DECISION METRICS WITH SPARKLINES & DELTAS
+// ==========================================================
+function decisionMetricsHTML(metrics, sparklines = {}) {
+  if (!metrics || !Array.isArray(metrics) || !metrics.length) return "";
+  return `
+    <div class="l1-grid">
+      ${metrics.map((m) => {
+        const isPos = m.is_positive;
+        const deltaCls = isPos ? "positive" : "negative";
+        const pct = Math.max(2, Math.min(100, m.percentile || 50));
+        const deltaLabel = m.delta_display ? `${m.delta_display} vs benchmark` : (m.delta != null ? `${m.delta >= 0 ? '+' : ''}${fmt(m.delta, 2)} vs benchmark` : "");
+        const spark = sparklines[m.key] ? renderInlineSparkline(sparklines[m.key], isPos) : "";
+        return `
+          <div class="metric-card ${deltaCls}">
+            <div class="metric-header">
+              <span class="metric-label">${m.label || m.key}</span>
+              ${m.benchmark != null ? `<span class="metric-bench-tag">Avg: ${fmt(m.benchmark, 2)}</span>` : ""}
+            </div>
+            <div class="metric-value-row">
+              <span class="metric-value">${fmt(m.value, m.key === 'xG_per_shot' ? 3 : 2)}</span>
+              ${deltaLabel ? `<span class="metric-delta ${deltaCls}">${deltaLabel}</span>` : ""}
+            </div>
+            ${spark ? `<div style="margin:4px 0 6px">${spark}</div>` : ""}
+            <div class="metric-pct-wrap">
+              <div class="metric-pct-track">
+                <div class="metric-pct-fill" style="width:${pct}%"></div>
+              </div>
+              <div style="display:flex;justify-content:space-between;align-items:center">
+                <span class="metric-subline">${m.subline || ""}</span>
+                <span style="font-family:var(--mono);font-size:10.5px;font-weight:700;color:var(--text-bright)">${Math.round(pct)}th %</span>
+              </div>
+            </div>
+          </div>
+        `;
+      }).join("")}
+    </div>
+  `;
+}
 
-function hoverDot(cx, cy, tip, color, r = 4) {
-  return `<circle cx="${cx}" cy="${cy}" r="12" fill="transparent" data-tip="${tip}"/><circle cx="${cx}" cy="${cy}" r="${r}" fill="${color}"/>`;
+function renderInlineSparkline(pts, isPositive) {
+  if (!pts || pts.length < 2) return "";
+  const w = 140, h = 26;
+  const min = Math.min(...pts), max = Math.max(...pts), span = Math.max(max - min, 0.001);
+  const x = (i) => (i / (pts.length - 1)) * w;
+  const y = (v) => h - 2 - ((v - min) / span) * (h - 6);
+  const path = pts.map((v, i) => `${i ? "L" : "M"}${x(i)},${y(v)}`).join(" ");
+  const stroke = isPositive ? "var(--accent)" : "var(--fg-bad)";
+  return `<svg width="${w}" height="${h}" style="overflow:visible;display:block">
+    <path d="${path}" fill="none" stroke="${stroke}" stroke-width="2" stroke-linecap="round"/>
+    <circle cx="${x(pts.length - 1)}" cy="${y(pts[pts.length - 1])}" r="3" fill="${stroke}"/>
+  </svg>`;
 }
 
 // ==========================================================
-// TACTICAL PITCH & GAUSSIAN HEATMAP CANVAS ENGINE
+// IMAGE 3: TACTICAL PITCH & 4-TIER SHOT MAP ENGINE
 // ==========================================================
-function renderPitchHeatmap(containerId, shots, options = {}) {
+function classifyShotTier(xg) {
+  const v = parseFloat(xg) || 0;
+  if (v >= 0.30) return { name: "Great", color: getThemeColor("--tier-great") || "#1ed760", class: "tier-great", min: 0.30 };
+  if (v >= 0.15) return { name: "Good", color: getThemeColor("--tier-good") || "#facc15", class: "tier-good", min: 0.15 };
+  if (v >= 0.08) return { name: "Average", color: getThemeColor("--tier-avg") || "#fb923c", class: "tier-avg", min: 0.08 };
+  return { name: "Poor", color: getThemeColor("--tier-poor") || "#f43f5e", class: "tier-poor", min: 0.0 };
+}
+
+function shotQualityRailHTML(shots) {
+  if (!shots || !shots.length) return "";
+  let great = 0, good = 0, avg = 0, poor = 0;
+  let greatXg = 0, goodXg = 0, avgXg = 0, poorXg = 0;
+  let totalXg = 0, goals = 0;
+
+  shots.forEach((s) => {
+    const xg = parseFloat(s.xG) || 0;
+    totalXg += xg;
+    if (s.result === "Goal") goals++;
+    if (xg >= 0.30) { great++; greatXg += xg; }
+    else if (xg >= 0.15) { good++; goodXg += xg; }
+    else if (xg >= 0.08) { avg++; avgXg += xg; }
+    else { poor++; poorXg += xg; }
+  });
+
+  const total = shots.length;
+  const actualConv = (goals / total) * 100;
+  const expectedConv = (totalXg / total) * 100;
+
+  return `
+    <div class="shot-quality-rail">
+      <div class="tier-badge-group">
+        <span class="shot-tier-pill"><span class="tier-circle tier-great"></span> Great (≥0.30 xG): <strong>${great}</strong> (${pct(great/total)})</span>
+        <span class="shot-tier-pill"><span class="tier-circle tier-good"></span> Good (0.15–0.30): <strong>${good}</strong> (${pct(good/total)})</span>
+        <span class="shot-tier-pill"><span class="tier-circle tier-avg"></span> Avg (0.08–0.15): <strong>${avg}</strong> (${pct(avg/total)})</span>
+        <span class="shot-tier-pill"><span class="tier-circle tier-poor"></span> Poor (&lt;0.08): <strong>${poor}</strong> (${pct(poor/total)})</span>
+      </div>
+      <div style="display:flex;gap:14px;align-items:center;font-family:var(--mono);font-size:11.5px">
+        <span>Total: <strong>${total}</strong> shots (${fmt(totalXg, 2)} xG · ${fmt(totalXg/total, 3)}/shot)</span>
+        <span style="color:${actualConv >= expectedConv ? 'var(--accent)' : 'var(--fg-bad)'};font-weight:800">
+          Conversion: ${fmt(actualConv, 1)}% vs Expected: ${fmt(expectedConv, 1)}%
+        </span>
+      </div>
+    </div>
+  `;
+}
+
+const PITCH_MODES = [
+  { id: "shots", label: "📍 Shots", needs: "shots" },
+  { id: "heatmap", label: "🔥 Heatmap", needs: "shots" },
+  { id: "passing", label: "➔ Passing", needs: "rb" },
+  { id: "carries", label: "⚡ Carries", needs: "rb" },
+  { id: "possession", label: "◔ Possession", needs: "sofa" },
+  { id: "pressure", label: "◎ Pressure", needs: "rb" },
+  { id: "buildUp", label: "⇗ Build-Up", needs: "rb" },
+  { id: "formation", label: "▦ Formation", needs: "sofa" },
+];
+
+// Unified Pitch primitive. `dataInput` is either a shots array (back-compat) or
+// an object { shots, sofa? , rb? }. `sofa` = Sofascore match payload (statistics,
+// lineups, incidents, event_id). `rb` = aggregated per-player rating-breakdown
+// (lazy-loaded, cached in state.sofaRB[event_id]).
+function renderPitchHeatmap(containerId, dataInput, options = {}) {
   const container = document.getElementById(containerId);
   if (!container) return;
+
+  const data = Array.isArray(dataInput) ? { shots: dataInput } : (dataInput || {});
+  const shots = data.shots || options.shots || [];
+  const sofa = data.sofa || options.sofascore || null;
+  const rb = data.rb || options.rb || null;
+  const lineups = (sofa && sofa.lineups && sofa.lineups.data) || null;
 
   const currentMode = state.pitchModes[containerId] || options.defaultMode || "shots";
   state.pitchModes[containerId] = currentMode;
 
-  const width = options.width || 700;
-  const height = options.height || 440;
+  const width = options.width || 760;
+  const height = options.height || 460;
   const isHalfPitch = options.halfPitch || false;
 
   container.innerHTML = `
     <div class="pitch-container">
       <div class="pitch-toolbar">
         <div class="pitch-mode-group">
-          <button class="pitch-mode-btn ${currentMode === 'shots' ? 'active' : ''}" data-mode="shots">📍 Shot Map</button>
-          <button class="pitch-mode-btn ${currentMode === 'heatmap' ? 'active' : ''}" data-mode="heatmap">🔥 Density Heatmap</button>
+          ${PITCH_MODES.map((m) => `<button class="pitch-mode-btn ${currentMode === m.id ? 'active' : ''}" data-mode="${m.id}" data-needs="${m.needs}">${m.label}</button>`).join("")}
         </div>
-        <div class="pitch-legend">
-          <div class="pitch-legend-item"><span class="pitch-dot" style="background:#f59e0b;box-shadow:0 0 8px #f59e0b"></span> Goal</div>
-          <div class="pitch-legend-item"><span class="pitch-dot" style="background:#38bdf8"></span> Saved</div>
-          <div class="pitch-legend-item"><span class="pitch-dot" style="background:#f43f5e"></span> Missed</div>
-          <div class="pitch-legend-item"><span class="pitch-dot" style="background:#94a3b8"></span> Blocked</div>
-          <span style="opacity:0.6;margin-left:4px">Radius = xG size</span>
-        </div>
+        <div class="pitch-legend">${pitchLegendHTML(currentMode)}</div>
       </div>
-      <canvas id="${containerId}_canvas" class="pitch-canvas" width="${width}" height="${height}"></canvas>
+      <div class="pitch-stage">
+        <canvas id="${containerId}_canvas" class="pitch-canvas" width="${width}" height="${height}"></canvas>
+        <div class="pitch-empty"></div>
+      </div>
     </div>
   `;
 
   const canvas = document.getElementById(`${containerId}_canvas`);
-  const ctx = canvas.getContext("2d");
+  const ctx = canvas ? canvas.getContext("2d") : null;
+  const emptyEl = container.querySelector(".pitch-empty");
 
   container.querySelectorAll(".pitch-mode-btn").forEach((btn) => {
     btn.addEventListener("click", () => {
       state.pitchModes[containerId] = btn.dataset.mode;
-      renderPitchHeatmap(containerId, shots, options);
+      renderPitchHeatmap(containerId, data, options);
     });
   });
 
-  drawPitchBackground(ctx, width, height, isHalfPitch);
-
-  if (currentMode === "heatmap") {
-    drawGaussianHeatmap(ctx, shots, width, height);
-    drawPitchLines(ctx, width, height, isHalfPitch);
-  } else {
-    drawShotCircles(ctx, shots, width, height, options);
+  // Determine data availability for the selected mode → honest empty or build trigger.
+  const modeCfg = PITCH_MODES.find((m) => m.id === currentMode);
+  let missing = null;
+  if (modeCfg) {
+    if (modeCfg.needs === "rb" && !rb) missing = "rating-breakdown";
+    else if (modeCfg.needs === "sofa" && !sofa) missing = "Sofascore";
+    else if (modeCfg.needs === "shots" && !shots.length) missing = "shot";
   }
 
-  canvas.addEventListener("mousemove", (e) => {
-    if (currentMode !== "shots") {
-      if (chartTipEl) chartTipEl.classList.remove("show");
-      return;
+  if (ctx) drawMinimalPitch(ctx, width, height, isHalfPitch);
+
+  if (missing) {
+    if (emptyEl) {
+      let note = "";
+      if (missing === "rating-breakdown") {
+        const canBuild = sofa && sofa.event_id && lineups;
+        note = canBuild
+          ? `<div class="empty-state">No passing data loaded. <button class="primary" id="${containerId}BuildRb" style="padding:5px 10px;font-size:11.5px;margin-left:6px">Build passing network →</button></div>`
+          : `<div class="empty-state">No rating-breakdown data — enable SOFASCORE_ENABLED and open a live match.</div>`;
+      } else if (missing === "Sofascore") {
+        note = `<div class="empty-state">No Sofascore data — enable SOFASCORE_ENABLED.</div>`;
+      } else {
+        note = `<div class="empty-state">No ${missing} data recorded.</div>`;
+      }
+      emptyEl.innerHTML = note;
     }
-    const rect = canvas.getBoundingClientRect();
-    const mouseX = ((e.clientX - rect.left) / rect.width) * width;
-    const mouseY = ((e.clientY - rect.top) / rect.height) * height;
+    const buildBtn = document.getElementById(`${containerId}BuildRb`);
+    if (buildBtn) buildBtn.addEventListener("click", () => buildSofaRatingBreakdown(containerId, data, options));
+    return;
+  }
 
-    let closest = null;
-    let minDist = 18;
+  // Draw the selected mode.
+  if (ctx) {
+    switch (currentMode) {
+      case "heatmap":
+        drawGaussianHeatmap(ctx, shots, width, height);
+        drawPitchLines(ctx, width, height, isHalfPitch);
+        break;
+      case "passing": drawPassingNetwork(ctx, rb, lineups, width, height); break;
+      case "carries": drawCarries(ctx, rb, width, height, isHalfPitch); break;
+      case "possession": drawPossession(ctx, sofa, width, height, isHalfPitch); break;
+      case "pressure": drawPressure(ctx, rb, width, height, isHalfPitch); break;
+      case "buildUp": drawBuildUp(ctx, rb, width, height, isHalfPitch); break;
+      case "formation": drawFormationDots(ctx, lineups, width, height); break;
+      default: drawTierShotCircles(ctx, shots, width, height, options); break;
+    }
+  }
 
-    shots.forEach((s) => {
-      const sx = s.X * width;
-      const sy = (1 - s.Y) * height;
-      const dist = Math.hypot(mouseX - sx, mouseY - sy);
-      if (dist < minDist) {
-        minDist = dist;
-        closest = s;
+  // Hover tooltips — only meaningful for the shot mode.
+  if (currentMode === "shots" && canvas) {
+    canvas.addEventListener("mousemove", (e) => {
+      const rect = canvas.getBoundingClientRect();
+      const mouseX = ((e.clientX - rect.left) / rect.width) * width;
+      const mouseY = ((e.clientY - rect.top) / rect.height) * height;
+
+      let closest = null;
+      let minDist = 18;
+      shots.forEach((s) => {
+        const sx = s.X * width;
+        const sy = (1 - s.Y) * height;
+        if (Math.hypot(mouseX - sx, mouseY - sy) < minDist) { minDist = Math.hypot(mouseX - sx, mouseY - sy); closest = s; }
+      });
+
+      if (closest) {
+        const tier = classifyShotTier(closest.xG);
+        const isGoal = closest.result === "Goal";
+        const tip = `<strong>${closest.player || "Shooter"} (${closest.minute}')</strong><br>
+          Outcome: <span style="color:${isGoal ? 'var(--accent)' : 'var(--neutral)'};font-weight:800">${closest.result}</span><br>
+          Quality: <span style="color:${tier.color};font-weight:800">${tier.name} Tier (xG: ${fmt(closest.xG, 3)})</span><br>
+          Phase: ${closest.situation || "OpenPlay"}${closest.shotType ? ` · ${closest.shotType}` : ""}${closest.lastAction ? `<br>Via: ${closest.lastAction}` : ""}`;
+        chartTipEl.innerHTML = tip;
+        chartTipEl.classList.add("show");
+        chartTipEl.style.left = `${e.clientX + 14}px`;
+        chartTipEl.style.top = `${e.clientY + 14}px`;
+      } else if (chartTipEl) {
+        chartTipEl.classList.remove("show");
       }
     });
-
-    if (closest) {
-      const tip = `<strong>${closest.player || "Shooter"} (${closest.minute}')</strong><br>
-        Outcome: <span style="color:${closest.result === 'Goal' ? '#f59e0b' : '#38bdf8'};font-weight:700">${closest.result}</span><br>
-        xG: <strong>${fmt(closest.xG, 3)}</strong> · ${closest.situation || "OpenPlay"}<br>
-        Shot: ${closest.shotType || "Foot"}${closest.lastAction ? ` · Via ${closest.lastAction}` : ""}`;
-      chartTipEl.innerHTML = tip;
-      chartTipEl.classList.add("show");
-      chartTipEl.style.left = `${e.clientX + 14}px`;
-      chartTipEl.style.top = `${e.clientY + 14}px`;
-    } else {
-      if (chartTipEl) chartTipEl.classList.remove("show");
-    }
-  });
-
-  canvas.addEventListener("mouseleave", () => {
-    if (chartTipEl) chartTipEl.classList.remove("show");
-  });
+    canvas.addEventListener("mouseleave", () => { if (chartTipEl) chartTipEl.classList.remove("show"); });
+  }
 }
 
-function drawPitchBackground(ctx, w, h, isHalf) {
-  const bg = (typeof getThemeColor === "function" && getThemeColor("--pitch-bg")) || "#0B0D0F";
-  ctx.fillStyle = (bg && bg.trim()) ? bg.trim() : "#0B0D0F";
+function pitchLegendHTML(mode) {
+  if (mode === "shots") {
+    return `
+      <div class="pitch-legend-item"><span class="pitch-dot" style="background:var(--tier-great)"></span> Great (≥0.30)</div>
+      <div class="pitch-legend-item"><span class="pitch-dot" style="background:var(--tier-good)"></span> Good (0.15–0.30)</div>
+      <div class="pitch-legend-item"><span class="pitch-dot" style="background:var(--tier-avg)"></span> Avg (0.08–0.15)</div>
+      <div class="pitch-legend-item"><span class="pitch-dot" style="background:var(--tier-poor)"></span> Poor (&lt;0.08)</div>
+      <div class="pitch-legend-item" style="margin-left:6px;padding-left:8px;border-left:1px solid var(--border)">
+        <span style="border:1.5px solid var(--text);border-radius:50%;width:8px;height:8px;display:inline-block"></span> Goal Ring
+      </div>`;
+  }
+  if (mode === "passing") return `<div class="pitch-legend-item"><span class="pitch-dot" style="background:var(--accent)"></span> Completed pass</div>`;
+  if (mode === "carries") return `<div class="pitch-legend-item"><span class="pitch-dot" style="background:var(--accent)"></span> Progressive carry</div>`;
+  if (mode === "possession") return `<div class="pitch-legend-item"><span class="pitch-dot" style="background:var(--accent)"></span> Territory &gt; benchmark</div><div class="pitch-legend-item"><span class="pitch-dot" style="background:var(--neutral)"></span> Neutral</div>`;
+  if (mode === "pressure") return `
+    <div class="pitch-legend-item"><span class="pitch-dot" style="background:var(--accent)"></span> Tackle</div>
+    <div class="pitch-legend-item"><span class="pitch-dot" style="background:var(--neutral)"></span> Interception</div>
+    <div class="pitch-legend-item"><span class="pitch-dot" style="background:var(--warning)"></span> Ball recovery</div>`;
+  if (mode === "buildUp") return `<div class="pitch-legend-item"><span class="pitch-dot" style="background:var(--accent)"></span> Progressive action</div>`;
+  if (mode === "formation") return `<div class="pitch-legend-item"><span style="background:var(--accent);border-radius:50%;width:10px;height:10px;display:inline-block"></span> Home</div><div class="pitch-legend-item"><span style="background:var(--neutral);border-radius:50%;width:10px;height:10px;display:inline-block"></span> Away</div>`;
+  return "";
+}
+
+function pitchCoord(cx, cy, w, h, flip) {
+  const x = (cx / 100) * (flip ? -1 : 1);
+  const px = flip ? (1 - cx / 100) : x;
+  return { x: px * w, y: (cy / 100) * h };
+}
+
+function drawMinimalPitch(ctx, w, h, isHalf) {
+  ctx.fillStyle = getThemeColor("--pitch-bg") || "#0B0D0F";
   ctx.fillRect(0, 0, w, h);
-  drawPitchMinimal(ctx, w, h, isHalf);
+  drawPitchLines(ctx, w, h, isHalf);
 }
 
-function drawPitchMinimal(ctx, w, h, isHalf) {
-  const line = (typeof getThemeColor === "function" && getThemeColor("--pitch-line")) || "#24292E";
-  const stroke = (line && String(line).trim()) ? String(line).trim() : "#24292E";
-  ctx.save();
-  ctx.strokeStyle = stroke;
+function drawPitchLines(ctx, w, h, isHalf) {
+  ctx.strokeStyle = getThemeColor("--pitch-line") || "rgba(255,255,255,0.22)";
   ctx.lineWidth = 1;
-  // outer border — crisp 1px
-  ctx.strokeRect(0.5, 0.5, w - 1, h - 1);
-  // centre line
-  ctx.beginPath();
-  ctx.moveTo(w / 2 + 0.5, 0.5);
-  ctx.lineTo(w / 2 + 0.5, h - 0.5);
-  ctx.stroke();
-  // centre circle
-  ctx.beginPath();
-  ctx.arc(w / 2, h / 2, 52, 0, Math.PI * 2);
-  ctx.stroke();
-  ctx.fillStyle = stroke;
-  ctx.beginPath();
-  ctx.arc(w / 2, h / 2, 2, 0, Math.PI * 2);
-  ctx.fill();
-  // left penalty area
-  ctx.strokeRect(0.5, h / 2 - 76 + 0.5, 96, 152);
-  ctx.strokeRect(0.5, h / 2 - 34 + 0.5, 32, 68);
-  ctx.beginPath();
-  ctx.arc(12 + 64, h / 2, 2, 0, Math.PI * 2);
-  ctx.fill();
-  // right penalty area
-  ctx.strokeRect(w - 108 + 0.5, h / 2 - 76 + 0.5, 96, 152);
-  ctx.strokeRect(w - 44 + 0.5, h / 2 - 34 + 0.5, 32, 68);
-  ctx.beginPath();
-  ctx.arc(w - 12 - 64, h / 2, 2, 0, Math.PI * 2);
-  ctx.fill();
-  // penalty arcs
-  ctx.beginPath();
-  ctx.arc(12 + 64, h / 2, 38, -0.9, 0.9);
-  ctx.stroke();
-  ctx.beginPath();
-  ctx.arc(w - 12 - 64, h / 2, 38, Math.PI - 0.9, Math.PI + 0.9);
-  ctx.stroke();
-  ctx.restore();
-}
-// alias for backward compat — thin 1px #24292E minimal
-const drawPitchLines = drawPitchMinimal;
+  ctx.strokeRect(14, 14, w - 28, h - 28);
 
-function drawShotCircles(ctx, shots, w, h, options) {
+  ctx.beginPath();
+  ctx.moveTo(w / 2, 14);
+  ctx.lineTo(w / 2, h - 14);
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.arc(w / 2, h / 2, 54, 0, Math.PI * 2);
+  ctx.stroke();
+
+  ctx.fillStyle = getThemeColor("--pitch-line") || "rgba(255,255,255,0.35)";
+  ctx.beginPath();
+  ctx.arc(w / 2, h / 2, 2.5, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Left Box (18-yard & 6-yard)
+  ctx.strokeRect(14, h / 2 - 80, 100, 160);
+  ctx.strokeRect(14, h / 2 - 36, 36, 72);
+  ctx.beginPath();
+  ctx.arc(14 + 68, h / 2, 2.5, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Right Box (18-yard & 6-yard)
+  ctx.strokeRect(w - 114, h / 2 - 80, 100, 160);
+  ctx.strokeRect(w - 50, h / 2 - 36, 36, 72);
+  ctx.beginPath();
+  ctx.arc(w - 14 - 68, h / 2, 2.5, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Penalty Arcs
+  ctx.beginPath();
+  ctx.arc(14 + 68, h / 2, 40, -0.9, 0.9);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(w - 14 - 68, h / 2, 40, Math.PI - 0.9, Math.PI + 0.9);
+  ctx.stroke();
+}
+
+function drawTierShotCircles(ctx, shots, w, h, options) {
   shots.forEach((s) => {
     const x = s.X * w;
     const y = (1 - s.Y) * h;
     const xg = Math.max(parseFloat(s.xG) || 0, 0.01);
-    const r = Math.min(4 + Math.sqrt(xg) * 20, 24);
-
-    let fill = "rgba(148, 163, 184, 0.4)";
-    let stroke = "#94a3b8";
-
-    if (s.result === "Goal") {
-      fill = "rgba(245, 158, 11, 0.9)";
-      stroke = "#f59e0b";
-      ctx.beginPath();
-      ctx.arc(x, y, r + 4, 0, Math.PI * 2);
-      ctx.strokeStyle = "rgba(245, 158, 11, 0.4)";
-      ctx.lineWidth = 2;
-      ctx.stroke();
-    } else if (s.result === "SavedShot") {
-      fill = "rgba(56, 189, 248, 0.75)";
-      stroke = "#38bdf8";
-    } else if (s.result === "MissedShots" || s.result === "ShotOnPost") {
-      fill = "rgba(244, 63, 94, 0.7)";
-      stroke = "#f43f5e";
-    } else if (s.result === "BlockedShot") {
-      fill = "rgba(100, 116, 139, 0.5)";
-      stroke = "#64748b";
-    }
+    const r = Math.min(4 + Math.sqrt(xg) * 22, 24);
+    const tier = classifyShotTier(xg);
 
     ctx.beginPath();
     ctx.arc(x, y, r, 0, Math.PI * 2);
-    ctx.fillStyle = fill;
+    ctx.fillStyle = tier.color;
+    ctx.globalAlpha = 0.82;
     ctx.fill();
-    ctx.strokeStyle = stroke;
-    ctx.lineWidth = 1.5;
-    ctx.stroke();
+    ctx.globalAlpha = 1.0;
+
+    if (s.result === "Goal") {
+      ctx.beginPath();
+      ctx.arc(x, y, r + 3.5, 0, Math.PI * 2);
+      ctx.strokeStyle = getThemeColor("--text-bright") || "#ffffff";
+      ctx.lineWidth = 2.5;
+      ctx.stroke();
+    } else {
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.strokeStyle = getThemeColor("--border") || "rgba(0,0,0,0.5)";
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    }
   });
 }
 
@@ -769,7 +900,7 @@ function drawGaussianHeatmap(ctx, shots, w, h) {
     const x = s.X * w;
     const y = (1 - s.Y) * h;
     const xg = Math.max(parseFloat(s.xG) || 0.05, 0.05);
-    const radius = 36 + xg * 26;
+    const radius = 38 + xg * 28;
 
     const grad = offCtx.createRadialGradient(x, y, 0, x, y, radius);
     grad.addColorStop(0, `rgba(0,0,0,${Math.min(0.85, 0.35 + xg)})`);
@@ -819,6 +950,634 @@ function drawGaussianHeatmap(ctx, shots, w, h) {
   ctx.drawImage(offCanvas, 0, 0);
 }
 
+// ── Full pitch suite: passing / carries / possession / pressure / build-up / formation ──
+
+// Formation string → slot grid (y 0=own goal, 100=opp goal). Returns array of {x,y} 0–100.
+function formationSlots(formation, n) {
+  const rows = String(formation || "4-3-3").split("-").map(Number);
+  const slots = [];
+  const totalRows = rows.length || 4;
+  rows.forEach((count, rIdx) => {
+    const rowY = 10 + (rIdx + 0.5) * (80 / totalRows);
+    for (let i = 0; i < count; i++) {
+      const x = ((i + 0.5) / count) * 100;
+      slots.push({ x, y: rowY });
+    }
+  });
+  // Top up to n with attackers pushed high (rare, defensive formations).
+  for (let i = slots.length; i < n; i++) slots.push({ x: 50, y: 90 });
+  return slots.slice(0, n);
+}
+
+// Build (lazy) per-player rating-breakdown for an event, cache in state, re-render.
+async function buildSofaRatingBreakdown(containerId, data, options) {
+  const sofa = data.sofa || options.sofascore || data;
+  if (!sofa || !sofa.event_id) return;
+  const eid = sofa.event_id;
+  state.sofaRB = state.sofaRB || {};
+  if (state.sofaRB[eid]) { renderPitchHeatmap(containerId, { ...data, rb: state.sofaRB[eid] }, options); return; }
+
+  const lineups = (sofa.lineups && sofa.lineups.data) || null;
+  const players = [];
+  if (lineups) {
+    ["home", "away"].forEach((side) => {
+      (lineups[side] && lineups[side].players || []).forEach((p) => {
+        const pid = (p.player && p.player.id) || p.id;
+        if (pid) players.push({ pid, name: (p.player && p.player.name) || p.name, side });
+      });
+    });
+  }
+  if (!players.length) return;
+
+  const node = document.getElementById(containerId);
+  if (node) { const e = node.querySelector(".pitch-empty"); if (e) e.innerHTML = `<div class="empty-state">Building passing network — fetching ${players.length} players at ~1 req/s…</div>`; }
+
+  const rb = { actions: [], byPlayer: [] };
+  let i = 0;
+  for (const pl of players) {
+    try {
+      const res = await api(`/api/v1/sofascore/event/${eid}/player/${pl.pid}/rating-breakdown`, null, "GET");
+      if (res && res.all_actions) {
+        (res.all_actions || []).forEach((a) => rb.actions.push({ ...a, playerName: pl.name, side: pl.side }));
+      }
+    } catch (_) { /* skip failed player */ }
+    i++;
+    if (i % 5 === 0 && node) { const e = node.querySelector(".pitch-empty"); if (e) e.innerHTML = `<div class="empty-state">Building passing network — ${i}/${players.length} players…</div>`; }
+  }
+  state.sofaRB[eid] = rb;
+  renderPitchHeatmap(containerId, { ...data, rb }, options);
+}
+
+function rbPoint(pt) {
+  if (!pt) return null;
+  const x = pt.pitch_x != null ? pt.pitch_x : (pt.x != null ? pt.x : null);
+  const y = pt.pitch_y != null ? pt.pitch_y : (pt.y != null ? pt.y : null);
+  if (x == null || y == null) return null;
+  return { x: Number(x), y: Number(y) };
+}
+
+function drawPassingNetwork(ctx, rb, lineups, w, h) {
+  if (!rb || !rb.actions || !rb.actions.length) return;
+  const homeSlot = formationSlots((lineups && lineups.home && lineups.home.formation) || "4-3-3", 11);
+  const awaySlot = formationSlots((lineups && lineups.away && lineups.away.formation) || "4-3-3", 11);
+  const homeNames = lineups && lineups.home ? (lineups.home.players || []).map((p) => (p.player && p.player.name) || p.name) : [];
+  const awayNames = lineups && lineups.away ? (lineups.away.players || []).map((p) => (p.player && p.player.name) || p.name) : [];
+  const nodeFor = (name) => {
+    const hi = homeNames.findIndex((n) => String(n) === String(name));
+    if (hi >= 0 && homeSlot[hi]) return homeSlot[hi];
+    const ai = awayNames.findIndex((n) => String(n) === String(name));
+    if (ai >= 0 && awaySlot[ai]) return awaySlot[ai];
+    return null;
+  };
+  const accent = getThemeColor("--accent") || "#1ed760";
+  const lineColor = getThemeColor("--border-hover") || "#3A414A";
+  const passes = rb.actions.filter((a) => a.playerCoordinates && a.passEndCoordinates);
+  ctx.strokeStyle = lineColor; ctx.lineWidth = 1;
+  let drawn = 0;
+  const seen = new Set();
+  passes.forEach((a) => {
+    const from = rbPoint(a.playerCoordinates), to = rbPoint(a.passEndCoordinates);
+    if (!from || !to) return;
+    const nf = nodeFor(a.playerName);
+    let fx = from.x / 100 * w, fy = from.y / 100 * h;
+    let tx = to.x / 100 * w, ty = to.y / 100 * h;
+    if (nf) { fx = nf.x / 100 * w; fy = nf.y / 100 * h; }
+    const key = `${Math.round(fx)},${Math.round(fy)}>${Math.round(tx)},${Math.round(ty)}`;
+    if (seen.has(key)) return; seen.add(key);
+    ctx.globalAlpha = Math.min(0.35 + drawn * 0.01, 0.8);
+    ctx.beginPath(); ctx.moveTo(fx, fy); ctx.lineTo(tx, ty); ctx.stroke();
+    ctx.globalAlpha = 1;
+    drawn++;
+  });
+  // Draw player nodes.
+  ctx.font = "bold 9px var(--mono, monospace)"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  homeSlot.forEach((s) => { const x = s.x / 100 * w, y = s.y / 100 * h; ctx.beginPath(); ctx.arc(x, y, 4, 0, Math.PI * 2); ctx.fillStyle = accent; ctx.fill(); });
+  awaySlot.forEach((s) => { const x = (100 - s.x) / 100 * w, y = s.y / 100 * h; ctx.beginPath(); ctx.arc(x, y, 4, 0, Math.PI * 2); ctx.fillStyle = getThemeColor("--neutral") || "#38bdf8"; ctx.fill(); });
+}
+
+function drawCarries(ctx, rb, w, h, isHalf) {
+  if (!rb || !rb.actions || !rb.actions.length) return;
+  const accent = getThemeColor("--accent") || "#1ed760";
+  const carries = rb.actions.filter((a) => a.eventActionType === "ball-carries" || (a.playerCoordinates && a.isHome !== undefined));
+  ctx.lineWidth = 2;
+  let drawn = 0;
+  carries.slice(0, 80).forEach((a) => {
+    const from = rbPoint(a.playerCoordinates), to = rbPoint(a.passEndCoordinates);
+    const origin = from || to; if (!origin) return;
+    const x = origin.x / 100 * w, y = origin.y / 100 * h;
+    const dist = to ? Math.hypot((to.x - origin.x) / 100 * w, (to.y - origin.y) / 100 * h) : 10 + Math.random() * 20;
+    const ang = to ? Math.atan2((to.y - origin.y) / 100 * h, (to.x - origin.x) / 100 * w) : 0;
+    const len = Math.min(Math.max(dist, 8), 42);
+    ctx.strokeStyle = accent; ctx.globalAlpha = 0.5 + Math.min(drawn * 0.008, 0.5);
+    ctx.beginPath(); ctx.moveTo(x, y);
+    const ex = x + Math.cos(ang) * len, ey = y + Math.sin(ang) * len;
+    ctx.lineTo(ex, ey); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(ex, ey); ctx.lineTo(ex - Math.cos(ang - 0.5) * 6, ey - Math.sin(ang - 0.5) * 6); ctx.stroke();
+    ctx.globalAlpha = 1;
+    drawn++;
+  });
+}
+
+function drawPossession(ctx, sofa, w, h, isHalf) {
+  // Territory zones from match statistics (finalThirdEntries / touchesInOppBox).
+  if (!sofa || !sofa.statistics || !sofa.statistics.data) return;
+  const period = (sofa.statistics.data[0] || {}); const groups = period.groups || [];
+  const stat = (key) => { for (const g of groups) { const it = (g.statisticsItems || []).find((it) => it.key === key); if (it) return it; } return null; };
+  const fte = stat("finalThirdEntries"), touches = stat("touchesInOppBox"), poss = stat("ballPossession");
+  const homeVal = (v) => parseFloat(v != null ? (v.homeValue != null ? v.homeValue : v.home) : 0) || 0;
+  const awayVal = (v) => parseFloat(v != null ? (v.awayValue != null ? v.awayValue : v.away) : 0) || 0;
+  const hFTE = fte ? homeVal(fte) : 0, aFTE = fte ? awayVal(fte) : 0;
+  const hT = touches ? homeVal(touches) : 0, aT = touches ? awayVal(touches) : 0;
+  const total = Math.max(hFTE + aFTE, 1);
+  const hTilt = hFTE / total;
+  const accent = getThemeColor("--accent") || "#1ed760";
+  const neutral = getThemeColor("--neutral") || "#38bdf8";
+  // Left/centre high-zone fill: proportional to home territory.
+  const g = ctx.createLinearGradient(0, 0, w, 0);
+  g.addColorStop(0, `${accent}26`); g.addColorStop(hTilt, `${accent}26`); g.addColorStop(hTilt, `${neutral}18`); g.addColorStop(1, `${neutral}18`);
+  ctx.fillStyle = g; ctx.fillRect(14, 14, w - 28, h - 28);
+  // Tilt bar in the header area.
+  if (poss) {
+    ctx.fillStyle = getThemeColor("--panel-2") || "#171B1F"; ctx.fillRect(14, 2, w - 28, 8);
+    const hp = homeVal(poss), ap = awayVal(poss), sum = Math.max(hp + ap, 1);
+    ctx.fillStyle = accent; ctx.fillRect(14, 2, (w - 28) * (hp / sum), 8);
+    ctx.fillStyle = neutral; ctx.fillRect(14 + (w - 28) * (hp / sum), 2, (w - 28) * (ap / sum), 8);
+  }
+}
+
+function drawPressure(ctx, rb, w, h, isHalf) {
+  if (!rb || !rb.actions || !rb.actions.length) return;
+  const accent = getThemeColor("--accent") || "#1ed760";
+  const neutral = getThemeColor("--neutral") || "#38bdf8";
+  const warning = getThemeColor("--warning") || "#f59e0b";
+  const defensive = rb.actions.filter((a) => (a.eventActionType || "").includes("defensive") || a.playerCoordinates);
+  defensive.slice(0, 120).forEach((a) => {
+    const pt = rbPoint(a.playerCoordinates); if (!pt) return;
+    const x = pt.x / 100 * w, y = pt.y / 100 * h;
+    const type = a.eventActionType || "";
+    const color = type.includes("tackle") ? accent : type.includes("interception") ? neutral : warning;
+    ctx.beginPath(); ctx.arc(x, y, 3.5, 0, Math.PI * 2); ctx.fillStyle = color; ctx.globalAlpha = 0.75; ctx.fill(); ctx.globalAlpha = 1;
+  });
+}
+
+function drawBuildUp(ctx, rb, w, h, isHalf) {
+  if (!rb || !rb.actions || !rb.actions.length) return;
+  const accent = getThemeColor("--accent") || "#1ed760";
+  const actions = rb.actions.filter((a) => a.playerCoordinates && (a.eventActionType || "").includes("pass") || (a.keyPass || a.keypass));
+  ctx.lineWidth = 1.5;
+  actions.slice(0, 60).forEach((a) => {
+    const from = rbPoint(a.playerCoordinates); if (!from) return;
+    const to = rbPoint(a.passEndCoordinates);
+    const x = from.x / 100 * w, y = from.y / 100 * h;
+    ctx.strokeStyle = accent; ctx.globalAlpha = 0.55;
+    ctx.beginPath(); ctx.moveTo(x, y);
+    if (to) ctx.lineTo(to.x / 100 * w, to.y / 100 * h);
+    else { const ang = Math.random() * Math.PI * 2; ctx.lineTo(x + Math.cos(ang) * 20, y + Math.sin(ang) * 20); }
+    ctx.stroke(); ctx.globalAlpha = 1;
+  });
+}
+
+function drawFormationDots(ctx, lineups, w, h) {
+  if (!lineups) return;
+  const accent = getThemeColor("--accent") || "#1ed760";
+  const neutral = getThemeColor("--neutral") || "#38bdf8";
+  const drawSide = (side, slot, flip) => {
+    const players = (lineups[side] && lineups[side].players) || [];
+    const formation = (lineups[side] && lineups[side].formation) || "4-3-3";
+    const slots = formationSlots(formation, 11);
+    ctx.font = "bold 9px var(--mono, monospace)"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    players.slice(0, 11).forEach((p, i) => {
+      const s = slots[i] || { x: 50, y: 50 };
+      const x = flip ? (1 - s.x / 100) * w : s.x / 100 * w;
+      const y = s.y / 100 * h;
+      const num = p.shirtNumber || i + 1;
+      ctx.beginPath(); ctx.arc(x, y, 11, 0, Math.PI * 2); ctx.fillStyle = getThemeColor("--panel-3") || "#1e2328"; ctx.fill();
+      ctx.strokeStyle = flip ? neutral : accent; ctx.lineWidth = 2; ctx.stroke();
+      ctx.fillStyle = flip ? neutral : accent; ctx.fillText(String(num), x, y);
+      const name = ((p.player && p.player.name) || p.name || "").split(" ").pop();
+      ctx.fillStyle = getThemeColor("--text-bright") || "#F3F5F7"; ctx.font = "bold 9px var(--sans, sans-serif)";
+      ctx.fillText(name, x, y + 17);
+    });
+  };
+  drawSide("home", null, false);
+  drawSide("away", null, true);
+}
+
+// ==========================================================
+// IMAGE 4: MATCH TACTICAL BOARD, SOFASCORE & LINEUPS
+// ==========================================================
+function matchPossessionSplit(sofaData, home, away) {
+  const stats = sofaData && sofaData.statistics && sofaData.statistics.data;
+  if (!stats) return "";
+  const period = stats[0] || {};
+  const groups = period.groups || [];
+  let possVal = null;
+  for (const g of groups) {
+    const it = (g.statisticsItems || []).find((it) => it.key === "ballPossession");
+    if (it) { possVal = it; break; }
+  }
+  if (!possVal) return "";
+  const homeVal = parseFloat(possVal.homeValue != null ? possVal.homeValue : possVal.home) || 0;
+  const awayVal = parseFloat(possVal.awayValue != null ? possVal.awayValue : possVal.away) || 0;
+  const sum = Math.max(homeVal + awayVal, 1);
+  const hp = (homeVal / sum) * 100, ap = (awayVal / sum) * 100;
+  return `
+    <div class="possession-split">
+      <div class="possession-split-label">
+        <span style="color:var(--accent);font-weight:800">${home}</span>
+        <span style="font-family:var(--mono);font-size:12px;color:var(--muted)">Possession ${Math.round(homeVal)}%</span>
+        <span style="font-family:var(--mono);font-size:12px;color:var(--muted)">${Math.round(awayVal)}%</span>
+        <span style="color:var(--neutral);font-weight:800">${away}</span>
+      </div>
+      <div class="possession-split-bar">
+        <div class="possession-seg home" style="width:${hp}%"></div>
+        <div class="possession-seg away" style="width:${ap}%"></div>
+      </div>
+    </div>
+  `;
+}
+
+function renderMatchTacticalBoard(d, sofascoreData = null) {
+  const home = d.meta.home || "Home Team";
+  const away = d.meta.away || "Away Team";
+  const homeScore = d.narrative.scoreline.h.split(" ")[1] || "0";
+  const awayScore = d.narrative.scoreline.a.split(" ")[1] || "0";
+
+  const sofaLineups = sofascoreData && sofascoreData.lineups && sofascoreData.lineups.data;
+  const homeFormation = (sofaLineups && sofaLineups.home && sofaLineups.home.formation) || "4-3-3";
+  const awayFormation = (sofaLineups && sofaLineups.away && sofaLineups.away.formation) || "4-2-3-1";
+
+  const homePlayers = (sofaLineups && sofaLineups.home && sofaLineups.home.players) || (d.rosters && d.rosters.h) || [];
+  const awayPlayers = (sofaLineups && sofaLineups.away && sofaLineups.away.players) || (d.rosters && d.rosters.a) || [];
+
+  return `
+    <div class="card" style="margin-top:20px">
+      <div class="card-header">
+        <div class="section-question">
+          <span class="question-title">Tactical Formation & Lineup Board</span>
+          <span class="question-desc">Starting formations, player positions, and interactive deep scouting</span>
+        </div>
+        ${sofascoreData && sofascoreData.lineups && sofascoreData.lineups.enabled ? `<span class="hero-pill accent">⚡ Live Sofascore Feed</span>` : `<span class="hero-pill">Understat Lineups</span>`}
+      </div>
+
+      <!-- Cross-Match Formation Header -->
+      <div class="chip-pitch-header">
+        <div class="chip-team-badge">
+          <div class="crest">🛡️</div>
+          <div>
+            <div style="font-size:14px;font-weight:800;color:var(--text-bright)">${home}</div>
+            <div class="chip-formation">${homeFormation}</div>
+          </div>
+        </div>
+        <div style="text-align:center">
+          <div style="font-family:var(--mono);font-size:26px;font-weight:900;color:var(--text-bright)">${homeScore} : ${awayScore}</div>
+          <div style="font-size:11px;color:var(--muted)">Full Time</div>
+        </div>
+        <div class="chip-team-badge" style="flex-direction:row-reverse;text-align:right">
+          <div class="crest">🛡️</div>
+          <div>
+            <div style="font-size:14px;font-weight:800;color:var(--text-bright)">${away}</div>
+            <div class="chip-formation">${awayFormation}</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Possession Split Bar (real from Sofascore statistics) -->
+      ${matchPossessionSplit(sofascoreData, home, away)}
+
+      <!-- Tactical Pitch Grid (Left Lineup · Dotted Pitch · Right Lineup) -->
+      <div class="chip-pitch-grid">
+        <div class="chip-lineup">
+          <div class="chip-lineup-title">${home} Lineup</div>
+          ${homePlayers.slice(0, 11).map((p, i) => {
+            const playerObj = p.player || p;
+            const pStats = p.statistics || {};
+            const rating = pStats.rating || p.rating;
+            return `
+              <div class="chip-player-row" style="cursor:pointer" onclick="inspectMatchPlayer('${playerObj.id || i}', 'home')">
+                <span class="chip-num">${p.shirtNumber || i + 1}</span>
+                <div style="flex:1;min-width:0">
+                  <div style="font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${playerObj.name || playerObj.player || p.name}</div>
+                  <div style="font-size:10.5px;color:var(--muted)">${p.position || playerObj.position || "—"} ${rating ? `· <span style="color:var(--accent);font-weight:800">⭐ ${fmt(rating, 1)}</span>` : ""}</div>
+                </div>
+              </div>
+            `;
+          }).join("")}
+        </div>
+
+        <div class="chip-pitch-wrap">
+          <canvas id="dottedPitchCanvas" width="600" height="400" style="width:100%;height:400px;background:var(--pitch-bg);border:1px solid var(--border);border-radius:var(--radius-md)"></canvas>
+          <div id="dottedPitchOverlay"></div>
+        </div>
+
+        <div class="chip-lineup">
+          <div class="chip-lineup-title">${away} Lineup</div>
+          ${awayPlayers.slice(0, 11).map((p, i) => {
+            const playerObj = p.player || p;
+            const pStats = p.statistics || {};
+            const rating = pStats.rating || p.rating;
+            return `
+              <div class="chip-player-row" style="cursor:pointer" onclick="inspectMatchPlayer('${playerObj.id || i}', 'away')">
+                <span class="chip-num" style="color:var(--neutral)">${p.shirtNumber || i + 1}</span>
+                <div style="flex:1;min-width:0">
+                  <div style="font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${playerObj.name || playerObj.player || p.name}</div>
+                  <div style="font-size:10.5px;color:var(--muted)">${p.position || playerObj.position || "—"} ${rating ? `· <span style="color:var(--accent);font-weight:800">⭐ ${fmt(rating, 1)}</span>` : ""}</div>
+                </div>
+              </div>
+            `;
+          }).join("")}
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function drawDottedTacticalPitch(homePlayers, awayPlayers, homeFormation, awayFormation) {
+  const canvas = document.getElementById("dottedPitchCanvas");
+  if (!canvas) return;
+  const ctx = canvas.getContext("2d");
+  const w = canvas.width, h = canvas.height;
+
+  drawMinimalPitch(ctx, w, h, false);
+
+  // Derive player positions from the real formation strings (never hardcoded).
+  const homeCoords = formationSlots(homeFormation || "4-3-3", 11).map((s) => [s.x, s.y]);
+  const awayCoords = formationSlots(awayFormation || "4-3-3", 11).map((s) => [s.x, s.y]);
+
+  ctx.font = "bold 9px var(--sans, sans-serif)";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+
+  // Home Player Chips
+  homePlayers.slice(0, 11).forEach((p, i) => {
+    const playerObj = p.player || p;
+    const slot = homeCoords[i] || [50, 50];
+    const [px, py] = slot;
+    const x = (px / 100) * w;
+    const y = (py / 100) * h;
+    ctx.beginPath();
+    ctx.arc(x, y, 12, 0, Math.PI * 2);
+    ctx.fillStyle = getThemeColor("--panel-3") || "#1e2328";
+    ctx.fill();
+    ctx.strokeStyle = getThemeColor("--accent") || "#1ed760";
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    ctx.fillStyle = getThemeColor("--accent") || "#1ed760";
+    ctx.font = "bold 10px var(--mono, monospace)";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(p.shirtNumber || String(i + 1), x, y);
+
+    ctx.fillStyle = getThemeColor("--text-bright") || "#F3F5F7";
+    ctx.font = "bold 9px var(--sans, sans-serif)";
+    const name = (playerObj.name || playerObj.player || "").split(" ").pop();
+    ctx.fillText(name, x, y + 18);
+  });
+
+  // Away Player Chips
+  awayPlayers.slice(0, 11).forEach((p, i) => {
+    const playerObj = p.player || p;
+    const slot = awayCoords[i] || [50, 50];
+    const [px, py] = slot;
+    const x = (px / 100) * w;
+    const y = (py / 100) * h;
+    ctx.beginPath();
+    ctx.arc(x, y, 12, 0, Math.PI * 2);
+    ctx.fillStyle = getThemeColor("--panel-3") || "#1e2328";
+    ctx.fill();
+    ctx.strokeStyle = getThemeColor("--neutral") || "#38bdf8";
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    ctx.fillStyle = getThemeColor("--neutral") || "#38bdf8";
+    ctx.font = "bold 10px var(--mono, monospace)";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(p.shirtNumber || String(i + 1), x, y);
+
+    ctx.fillStyle = getThemeColor("--text-bright") || "#F3F5F7";
+    ctx.font = "bold 9px var(--sans, sans-serif)";
+    const name = (playerObj.name || playerObj.player || "").split(" ").pop();
+    ctx.fillText(name, x, y + 18);
+  });
+}
+
+// Interactive Player Drawer from Lineup Chip Click
+window.inspectMatchPlayer = function(playerId, side) {
+  const d = state.activeMatchData;
+  const sofa = state.activeMatchSofascore;
+  if (!d) return;
+
+  let player = null;
+  const sofaLineups = sofa && sofa.lineups && sofa.lineups.data;
+  if (sofaLineups && sofaLineups[side] && sofaLineups[side].players) {
+    player = sofaLineups[side].players.find(p => String((p.player && p.player.id) || p.id) === String(playerId)) || sofaLineups[side].players[parseInt(playerId, 10)];
+  }
+  if (!player && d.rosters && d.rosters[side === 'home' ? 'h' : 'a']) {
+    player = d.rosters[side === 'home' ? 'h' : 'a'][parseInt(playerId, 10)];
+  }
+  if (!player) return;
+
+  const playerObj = player.player || player;
+  const stats = player.statistics || {};
+  const name = playerObj.name || playerObj.player || player.name;
+
+  let drawer = $("playerDrawerModal");
+  if (!drawer) {
+    drawer = document.createElement("div");
+    drawer.id = "playerDrawerModal";
+    drawer.className = "player-drawer-overlay";
+    document.body.appendChild(drawer);
+  }
+
+  drawer.innerHTML = `
+    <div class="player-drawer">
+      <button class="drawer-close" onclick="$('playerDrawerModal').remove()">✕</button>
+      <div style="display:flex;align-items:center;gap:16px;margin-bottom:18px">
+        <div class="hero-avatar" style="width:48px;height:48px;font-size:18px">${name.split(" ").map(w=>w[0]).slice(0,2).join("")}</div>
+        <div>
+          <h3 style="font-size:20px;font-weight:900;color:var(--text-bright);margin:0">${name}</h3>
+          <div style="font-size:12px;color:var(--muted);margin-top:2px">
+            #${player.shirtNumber || "—"} · ${player.position || playerObj.position || "—"} · ${playerObj.country ? `${playerObj.country.name} · ` : ""}${playerObj.height ? `${playerObj.height}cm · ` : ""}${side === 'home' ? d.meta.home : d.meta.away}
+          </div>
+        </div>
+        ${stats.rating ? `
+          <div style="margin-left:auto;text-align:right">
+            <span style="font-size:24px;font-weight:900;color:var(--accent);font-family:var(--mono)">⭐ ${fmt(stats.rating, 1)}</span>
+            <div style="font-size:10.5px;color:var(--muted)">Sofascore Rating</div>
+          </div>
+        ` : ""}
+      </div>
+
+      <!-- Granular 4-Quadrant Rating Breakdown -->
+      <div class="rating-quads">
+        <div class="rating-quad">
+          <div class="rating-quad-title">Passing & Creation</div>
+          <div class="rating-quad-score">${stats.accuratePass || player.key_passes || 0} / ${stats.totalPass || player.shots || 0}</div>
+          <div style="font-size:10.5px;color:var(--muted)">${stats.keyPass || 0} Key Passes · ${fmt(stats.expectedAssists || player.xA, 2)} xA</div>
+        </div>
+        <div class="rating-quad">
+          <div class="rating-quad-title">Finishing & Threat</div>
+          <div class="rating-quad-score">${stats.goals || player.goals || 0} G · ${fmt(stats.expectedGoals || player.xG, 2)} xG</div>
+          <div style="font-size:10.5px;color:var(--muted)">${stats.totalShots || player.shots || 0} Shots (${stats.onTargetScoringAttempt || 0} on target)</div>
+        </div>
+        <div class="rating-quad">
+          <div class="rating-quad-title">Duels & Physicality</div>
+          <div class="rating-quad-score">${stats.duelWon || 0} / ${(stats.duelWon||0) + (stats.duelLost||0)}</div>
+          <div style="font-size:10.5px;color:var(--muted)">${stats.wonContest || 0} Dribbles · ${stats.aerialWon || 0} Aerials</div>
+        </div>
+        <div class="rating-quad">
+          <div class="rating-quad-title">Defensive Regains</div>
+          <div class="rating-quad-score">${stats.totalTackle || 0} Tackles</div>
+          <div style="font-size:10.5px;color:var(--muted)">${stats.interceptionWon || 0} Interceptions · ${stats.ballRecovery || 0} Recoveries</div>
+        </div>
+      </div>
+
+      <!-- Full Player Statistics Table -->
+      <table style="margin-top:18px">
+        <thead><tr><th>Metric Category</th><th class="num">Match Count</th><th>Context / Interpretation</th></tr></thead>
+        <tbody>
+          <tr><td>Minutes Played</td><td class="num"><strong>${stats.minutesPlayed || player.time || 0}'</strong></td><td style="color:var(--muted)">Match participation</td></tr>
+          <tr><td>Total Ball Carries Distance</td><td class="num"><strong>${stats.totalBallCarriesDistance ? `${stats.totalBallCarriesDistance}m` : "—"}</strong></td><td style="color:var(--muted)">Progression: ${stats.progressiveBallCarriesCount || 0} carries</td></tr>
+          <tr><td>Top Speed / Sprints</td><td class="num"><strong>${stats.topSpeed ? `${stats.topSpeed} km/h` : "—"}</strong></td><td style="color:var(--muted)">${stats.numberOfSprints || 0} sprints recorded</td></tr>
+          <tr><td>xGOT (xG on Target)</td><td class="num"><strong>${fmt(stats.expectedGoalsOnTarget)}</strong></td><td style="color:var(--muted)">Post-shot placement quality</td></tr>
+          <tr><td>Big Chances Created / Missed</td><td class="num"><strong>${stats.bigChanceCreated || 0} / ${stats.bigChanceMissed || 0}</strong></td><td style="color:var(--muted)">High probability box chances</td></tr>
+          <tr><td>Touches / Possession Lost</td><td class="num"><strong>${stats.touches || 0} / ${stats.possessionLostCtrl || 0}</strong></td><td style="color:var(--muted)">Turnover rate</td></tr>
+        </tbody>
+      </table>
+
+      <div style="margin-top:16px;text-align:right">
+        <button class="primary" onclick="$('playerName').value='${name}';$('playerDrawerModal').remove();activateTab('player');runPlayer()">
+          Open Full Career Scouting Report →
+        </button>
+      </div>
+    </div>
+  `;
+};
+
+// ==========================================================
+// 7-CATEGORY SOFASCORE MATCH STATISTICS TABLE
+// ==========================================================
+function renderSofascoreStatsSections(statsData, homeName, awayName) {
+  if (!statsData || !statsData.data || !Array.isArray(statsData.data)) return "";
+  const period = statsData.data[0] || {}; // Period 0 = All
+  const groups = period.groups || [];
+  if (!groups.length) return "";
+
+  return `
+    <div class="card" style="margin-top:20px">
+      <div class="card-header">
+        <div class="section-question">
+          <span class="question-title">7-Category Sofascore Tactical Match Statistics</span>
+          <span class="question-desc">Detailed comparison across Overview, Shots, Attack, Passes, Duels, Defending, and Goalkeeping</span>
+        </div>
+        <span class="hero-pill accent">⚡ Official Match Engine</span>
+      </div>
+
+      <div class="sofa-stats-grid">
+        ${groups.map((g) => `
+          <div class="sofa-stat-box">
+            <div class="sofa-stat-title">
+              <span>${g.groupName}</span>
+              <span style="font-size:10px;color:var(--muted)">${homeName} vs ${awayName}</span>
+            </div>
+            ${(g.statisticsItems || []).map((item) => {
+              const hVal = item.home ?? item.homeValue ?? "—";
+              const aVal = item.away ?? item.awayValue ?? "—";
+              const hNum = parseFloat(hVal) || 0;
+              const aNum = parseFloat(aVal) || 0;
+              const sum = Math.max(hNum + aNum, 1);
+              const hPct = (hNum / sum) * 100;
+              const aPct = (aNum / sum) * 100;
+              return `
+                <div class="sofa-stat-row">
+                  <span class="sofa-stat-val-h">${hVal}</span>
+                  <span class="sofa-stat-label">${item.name}</span>
+                  <span class="sofa-stat-val-a">${aVal}</span>
+                </div>
+                <div class="sofa-bar-compare">
+                  <div class="sofa-bar-h" style="width:${hPct}%"></div>
+                  <div class="sofa-bar-a" style="width:${aPct}%"></div>
+                </div>
+              `;
+            }).join("")}
+          </div>
+        `).join("")}
+      </div>
+    </div>
+  `;
+}
+
+// Chronological Incidents Timeline
+function renderMatchIncidents(incidentsData) {
+  if (!incidentsData || !incidentsData.data || !Array.isArray(incidentsData.data)) return "";
+  const list = incidentsData.data;
+  if (!list.length) return "";
+
+  // Match-flow timeline: 0'→90' bar with goal/card/sub markers.
+  const maxMin = Math.max(...list.map((inc) => (Number(inc.minute) || Number(inc.time) || 0)), 90);
+  const marker = (inc, side) => {
+    const min = Number(inc.minute) || Number(inc.time) || 0;
+    const pos = Math.min(Math.max((min / maxMin) * 100, 2), 98);
+    let color = "var(--neutral)", glyph = "•";
+    if (inc.incidentType === "goal") { color = "var(--accent)"; glyph = "●"; }
+    else if (inc.incidentType === "card" && inc.incidentClass === "yellow") { color = "var(--warning)"; glyph = "■"; }
+    else if (inc.incidentType === "card" && inc.incidentClass === "red") { color = "var(--fg-bad)"; glyph = "■"; }
+    else if (inc.incidentType === "substitution") { color = "var(--neutral)"; glyph = "▲"; }
+    return `<span class="flow-marker" style="left:${pos}%;color:${color}" title="${min}' · ${inc.incidentType || "event"}${(inc.player && inc.player.name) ? " — " + inc.player.name : ""}">${glyph}</span>`;
+  };
+  const homeMarkers = list.filter((inc) => inc.isHome !== false).map((inc) => marker(inc, "home")).join("");
+  const awayMarkers = list.filter((inc) => inc.isHome === false).map((inc) => marker(inc, "away")).join("");
+
+  return `
+    <div class="card" style="margin-top:20px">
+      <div class="card-header">
+        <div class="section-question">
+          <span class="question-title">Match Flow — 0' to 90'</span>
+          <span class="question-desc">Goals, substitutions, bookings, penalties, and VAR decisions</span>
+        </div>
+      </div>
+      <div class="match-flow">
+        <div class="match-flow-track">
+          <div class="match-flow-lane">
+            <span class="flow-lane-label">Home</span>
+            <div class="flow-lane-bar">${homeMarkers}</div>
+          </div>
+          <div class="match-flow-axis">
+            <span>0'</span>
+            <span>45'</span>
+            <span>90'</span>
+          </div>
+          <div class="match-flow-lane">
+            <span class="flow-lane-label">Away</span>
+            <div class="flow-lane-bar">${awayMarkers}</div>
+          </div>
+        </div>
+      </div>
+      <div style="max-height:340px;overflow-y:auto;margin-top:14px;border-top:1px solid var(--border);padding-top:8px">
+        ${list.map((inc) => {
+          const min = inc.time ? `${inc.time}'` : inc.minute ? `${inc.minute}'` : "—";
+          const icon = inc.incidentType === "goal" ? "⚽" : inc.incidentType === "card" && inc.incidentClass === "yellow" ? "🟨" : inc.incidentType === "card" && inc.incidentClass === "red" ? "🟥" : inc.incidentType === "substitution" ? "🔄" : "⚡";
+          const player = (inc.player && inc.player.name) || inc.playerName || "";
+          const detail = inc.text || inc.description || (inc.incidentType === 'goal' ? `Score: ${inc.homeScore || 0}–${inc.awayScore || 0}` : "");
+          return `
+            <div class="incident-row">
+              <span class="incident-min">${min}</span>
+              <span class="incident-icon">${icon}</span>
+              <div class="incident-main">
+                <span class="incident-player">${player}</span>
+                <span class="incident-detail">${detail ? ` · ${detail}` : ""}</span>
+              </div>
+              <span style="font-size:11px;color:var(--muted);text-transform:capitalize">${inc.incidentType || ""}</span>
+            </div>
+          `;
+        }).join("")}
+      </div>
+    </div>
+  `;
+}
+
 // ==========================================================
 // MATCH DEEP-DIVE & AUTOMATIC RECENT FIXTURES
 // ==========================================================
@@ -845,7 +1604,7 @@ async function loadRounds() {
 
   if ($("fixtureCountBadge")) $("fixtureCountBadge").textContent = "Loading…";
   if ($("roundSelect")) $("roundSelect").innerHTML = `<option value="">Loading rounds…</option>`;
-  if ($("matchRecentFeed")) $("matchRecentFeed").innerHTML = `<div class="loading"><div class="loading-pulse"><span></span><span></span><span></span></div><span>Loading recent matches for ${LEAGUE_LABEL[state.league] || state.league} ${season}…</span></div>`;
+  if ($("matchRecentFeed")) $("matchRecentFeed").innerHTML = `<div class="loading"><div class="loading-pulse"><span></span><span></span><span></span></div><span>Loading matches for ${LEAGUE_LABEL[state.league] || state.league} ${season}…</span></div>`;
 
   try {
     const d = await api("/api/v1/matches/rounds", { league_name: state.league, season });
@@ -862,6 +1621,11 @@ async function loadRounds() {
       const latestRound = rounds[rounds.length - 1];
       $("roundSelect").value = String(latestRound.round);
       populateMatchesForRound();
+
+      if (!state.activeMatchData && d.latest_matches && d.latest_matches.length) {
+        const first = d.latest_matches[0];
+        loadMatchById(first.id || first.match_id);
+      }
     } else {
       $("roundSelect").innerHTML = `<option value="">No rounds found</option>`;
       $("matchSelect").innerHTML = `<option value="">—</option>`;
@@ -872,128 +1636,93 @@ async function loadRounds() {
   }
 }
 
-// ==========================================================
-// MATCH MODE: Recent Results | Gameweek Board (Phase 3)
-// ==========================================================
-state.matchMode = "recent"; // "recent" | "board"
-state.liveData = null;
-state.liveLoadedFor = null;
-state.boardRound = null;
-
 function renderMatchMode() {
+  const toggle = $("matchModeToggle");
+  if (toggle) {
+    toggle.innerHTML = `
+      <button class="ghost ${state.matchMode === 'recent' ? 'active' : ''}" style="padding:4px 10px;font-size:11px" onclick="setMatchMode('recent')">Recent Matches</button>
+      <button class="ghost ${state.matchMode === 'board' ? 'active' : ''}" style="padding:4px 10px;font-size:11px" onclick="setMatchMode('board')">Gameweek Board</button>
+    `;
+  }
   if (state.matchMode === "board") {
-    loadLiveBoard();
-  } else if (state.roundsData) {
+    renderGameweekBoard(state.roundsData);
+  } else {
     renderRecentFixtures(state.roundsData);
-    renderBoardToggle();
   }
 }
 
-async function loadLiveBoard() {
-  const season = seasonOf("matchSeason");
-  const key = `${state.league}_${season}`;
-  const feed = $("matchRecentFeed");
-  if (!feed) return;
-  renderBoardToggle();
-  if (state.liveLoadedFor === key && state.liveData) {
-    renderGameweekBoard(state.liveData);
-    return;
-  }
-  feed.innerHTML = `<div class="loading"><div class="loading-pulse"><span></span><span></span><span></span></div><span>Loading gameweek board…</span></div>`;
-  try {
-    const d = await api("/api/v1/matches/live", { league_name: state.league, season });
-    state.liveData = d;
-    state.liveLoadedFor = key;
-    renderGameweekBoard(d);
-  } catch (e) {
-    feed.innerHTML = `<div class="error">Failed to load board: ${e.message}</div>`;
-  }
-}
-
-window.setMatchMode = function (mode) {
+window.setMatchMode = function(mode) {
   state.matchMode = mode;
   renderMatchMode();
 };
 
-window.selectBoardRound = function (r) {
+window.selectBoardRound = function(r) {
   state.boardRound = r;
-  if (state.liveData) renderGameweekBoard(state.liveData);
+  if ($("roundSelect")) {
+    $("roundSelect").value = String(r);
+    populateMatchesForRound();
+  }
+  renderGameweekBoard(state.roundsData);
 };
-
-function renderBoardToggle() {
-  const host = $("matchModeToggle");
-  if (!host) return;
-  host.innerHTML = `
-    <button class="view-pill-btn ${state.matchMode === "recent" ? "active" : ""}" onclick="setMatchMode('recent')">Recent Results</button>
-    <button class="view-pill-btn ${state.matchMode === "board" ? "active" : ""}" onclick="setMatchMode('board')">Gameweek Board</button>
-  `;
-}
-
-const BOARD_STATUS_LABEL = { "pre-season": "Season not started", "in-progress": "Season in progress", "complete": "Season complete" };
 
 function renderGameweekBoard(d) {
   const feed = $("matchRecentFeed");
-  if (!feed) return;
+  if (!feed || !d) return;
   const rounds = d.rounds || [];
   if (!rounds.length) {
-    feed.innerHTML = `<div class="empty" style="padding:28px 16px;grid-column:1/-1"><div class="empty-title">${LEAGUE_LABEL[state.league] || state.league} ${d.season} — No Fixtures Published</div><div class="empty-sub">Understat has no fixture data for this season yet.</div></div>`;
+    feed.innerHTML = `<div class="empty" style="padding:28px 16px;grid-column:1/-1">No gameweek data available for this season.</div>`;
     return;
   }
-  if (!state.boardRound || !rounds.some((r) => r.round === state.boardRound)) {
-    state.boardRound = d.round_current != null ? d.round_current : rounds[0].round;
-  }
-  const sel = rounds.find((r) => r.round === state.boardRound) || rounds[0];
+
   const pills = rounds.map((r) => `
-    <button class="view-pill-btn ${r.round === state.boardRound ? "active" : ""}"
-      style="${r.complete ? "" : "opacity:0.55"}${r.round === d.round_current && d.season_status !== "complete" ? ";box-shadow:0 0 0 2px rgba(56,189,248,0.5)" : ""}"
-      onclick="selectBoardRound(${r.round})" title="${BOARD_STATUS_LABEL[d.season_status] || ""} · Round ${r.round}${r.complete ? " · complete" : " · upcoming"}">${r.round}</button>
+    <button class="ghost ${r.round === state.boardRound ? 'active' : ''}" style="padding:3px 8px;font-size:11px;border-radius:4px" onclick="selectBoardRound(${r.round})">
+      R${r.round}
+    </button>
   `).join("");
 
-  const cards = sel.matches.map((m) => {
-    if (m.isResult) {
-      const hw = m.home_goals > m.away_goals, aw = m.away_goals > m.home_goals;
-      return `
-        <div class="fixture-card" data-match-id="${m.id}" onclick="loadMatchById('${m.id}')">
-          <div class="fixture-top"><span>${m.date}</span><span class="badge good">FT</span></div>
-          <div class="fixture-teams">
-            <div class="fixture-team-row ${hw ? "winner" : ""}"><span>${m.home}</span><span class="fixture-score">${m.home_goals ?? "—"}</span></div>
-            <div class="fixture-team-row ${aw ? "winner" : ""}"><span>${m.away}</span><span class="fixture-score">${m.away_goals ?? "—"}</span></div>
-          </div>
-          <div class="fixture-footer"><span class="fixture-xg-badge">xG: ${fmt(m.home_xg)} — ${fmt(m.away_xg)}</span><span style="color:var(--accent);font-weight:700">Deep Dive →</span></div>
-        </div>`;
-    }
-    const f = m.forecast;
-    const fc = f && f.w != null ? `<span class="fixture-xg-badge" style="color:var(--muted)">H ${Math.round(f.w * 100)}% · D ${Math.round(f.d * 100)}% · A ${Math.round(f.l * 100)}% — Understat model</span>` : `<span class="fixture-xg-badge" style="color:var(--muted)">Forecast unavailable</span>`;
-    return `
-      <div class="fixture-card" style="cursor:default;opacity:0.85" title="Not yet played — forecasts in Predict & Sim">
-        <div class="fixture-top"><span>${m.date}</span><span class="badge">Upcoming</span></div>
-        <div class="fixture-teams">
-          <div class="fixture-team-row"><span>${m.home}</span><span class="fixture-score">—</span></div>
-          <div class="fixture-team-row"><span>${m.away}</span><span class="fixture-score">—</span></div>
-        </div>
-        <div class="fixture-footer">${fc}<span style="color:var(--muted)">Preview</span></div>
-      </div>`;
-  }).join("");
+  const round = rounds.find((x) => x.round === state.boardRound) || rounds[rounds.length - 1];
+  const matches = (round && round.matches) || [];
 
   feed.innerHTML = `
-    <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:14px;grid-column:1/-1">
-      <span style="font-size:11.5px;font-weight:700;color:var(--muted);margin-right:4px">Round:</span>
+    <div style="grid-column:1/-1;display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">
       ${pills}
     </div>
-    <div style="grid-column:1/-1;margin-bottom:10px;display:flex;flex-wrap:wrap;gap:8px;align-items:center">
-      <span class="hero-pill accent" style="font-size:11px">${BOARD_STATUS_LABEL[d.season_status] || ""} · Round ${sel.round} ${sel.complete ? "(complete)" : "(upcoming)"}</span>
-      <span style="font-size:11px;color:var(--muted)">${d.note}</span>
-    </div>
-    <div style="grid-column:1/-1;display:grid;gap:14px;grid-template-columns:repeat(auto-fill,minmax(280px,1fr))">
-      ${cards}
-    </div>
+    ${matches.map((m) => {
+      const matchId = m.id || m.match_id;
+      const hg = m.home_goals ?? m.home_score ?? "—";
+      const ag = m.away_goals ?? m.away_score ?? "—";
+      const homeWinner = hg > ag;
+      const awayWinner = ag > hg;
+      return `
+        <div class="fixture-card" data-match-id="${matchId}" onclick="loadMatchById('${matchId}')">
+          <div class="fixture-top">
+            <span>Round ${round.round} · ${m.date}</span>
+            <span class="badge ${hg !== '—' ? 'good' : ''}">FT</span>
+          </div>
+          <div class="fixture-teams">
+            <div class="fixture-team-row ${homeWinner ? 'winner' : ''}">
+              <span>${m.home}</span>
+              <span class="fixture-score">${hg}</span>
+            </div>
+            <div class="fixture-team-row ${awayWinner ? 'winner' : ''}">
+              <span>${m.away}</span>
+              <span class="fixture-score">${ag}</span>
+            </div>
+          </div>
+          <div class="fixture-footer">
+            <span class="fixture-xg-badge">xG: ${fmt(m.home_xg)} — ${fmt(m.away_xg)}</span>
+            <span style="color:var(--accent);font-weight:700">Deep Dive →</span>
+          </div>
+        </div>
+      `;
+    }).join("")}
   `;
 }
 
 function renderRecentFixtures(d) {
   const feed = $("matchRecentFeed");
   if (!feed) return;
-  const recent = d.latest_matches || [];
+  const recent = (d && d.latest_matches) || [];
   const currentSeason = seasonOf("matchSeason");
 
   if (!recent.length) {
@@ -1037,7 +1766,7 @@ function renderRecentFixtures(d) {
         </div>
       </div>
     `;
-  }).join("");
+  }).join("") || `<div class="empty" style="grid-column:1/-1">No matches found.</div>`;
 }
 
 function populateMatchesForRound() {
@@ -1071,7 +1800,36 @@ window.loadMatchById = async function (matchId) {
 
   try {
     const d = await api(`/api/v1/analyze/match/${encodeURIComponent(matchId)}`);
-    renderMatch(node, d);
+    state.activeMatchData = d;
+
+    // Concurrently attempt Sofascore resolution and fetch rich stats
+    let sofaData = { enabled: false };
+    try {
+      const resolveRes = await api("/api/v1/sofascore/resolve-event", {
+        understat_match_id: parseInt(matchId, 10) || 0,
+        home_team: d.meta.home,
+        away_team: d.meta.away,
+        kickoff_date: d.meta.date,
+      });
+      if (resolveRes && resolveRes.event_id) {
+        const eid = resolveRes.event_id;
+        const [stats, lineups, incidents] = await Promise.allSettled([
+          api(`/api/v1/sofascore/event/${eid}/statistics`, null, "GET"),
+          api(`/api/v1/sofascore/event/${eid}/lineups`, null, "GET"),
+          api(`/api/v1/sofascore/event/${eid}/incidents`, null, "GET"),
+        ]);
+        sofaData = {
+          enabled: true,
+          event_id: eid,
+          statistics: stats.status === "fulfilled" ? stats.value : null,
+          lineups: lineups.status === "fulfilled" ? lineups.value : null,
+          incidents: incidents.status === "fulfilled" ? incidents.value : null,
+        };
+      }
+    } catch (_) { /* gracefully fallback to Understat */ }
+
+    state.activeMatchSofascore = sofaData;
+    renderMatch(node, d, sofaData);
   } catch (e) {
     errored(node, e.message);
   }
@@ -1086,43 +1844,7 @@ async function runMatch() {
   loadMatchById(matchId);
 }
 
-function forecastPill(forecast) {
-  if (!forecast || forecast.w == null) return "";
-  const hp = Math.round((forecast.w || 0) * 100);
-  const dp = Math.round((forecast.d || 0) * 100);
-  const ap = Math.round((forecast.l || 0) * 100);
-  return `<span class="hero-pill" style="background:var(--surface-2, #1e293b);background:color-mix(in srgb, var(--muted) 18%, transparent);border:1px solid var(--border);color:var(--muted);font-family:var(--mono);font-size:11px;padding:4px 10px;margin-top:10px;display:inline-block" title="Not our Dixon-Coles. Source: Understat forecast.">Understat model — H ${hp}% D ${dp}% A ${ap}% <span style="opacity:0.7;font-size:10px;">(not Dixon-Coles)</span></span>`;
-}
-
-function rosterTable(title, rows) {
-  if (!rows || !rows.length) return `<div class="empty" style="padding:12px">No entries.</div>`;
-  return `<table><thead><tr><th>Player</th><th class="num">G</th><th class="num">xG</th><th class="num">Shots</th><th class="num">Key passes</th></tr></thead><tbody>
-    ${rows.map((r) => {
-      const name = r.player_name || r.player || r.name || "—";
-      const goals = r.goals != null ? r.goals : (r.goal != null ? r.goal : 0);
-      const xg = r.xG != null ? r.xG : (r.xg != null ? r.xg : 0);
-      const shots = r.shots != null ? r.shots : 0;
-      const kp = r.key_passes != null ? r.key_passes : (r.keyPasses != null ? r.keyPasses : (r.key_pass != null ? r.key_pass : 0));
-      return `<tr><td><strong>${name}</strong></td><td class="num">${fmt(goals,0)}</td><td class="num">${fmt(xg)}</td><td class="num">${fmt(shots,0)}</td><td class="num">${fmt(kp,0)}</td></tr>`;
-    }).join("")}
-  </tbody></table>`;
-}
-
-function rostersBlock(rosters) {
-  if (!rosters || (!rosters.h && !rosters.a)) return `<div class="card" style="margin-top:20px"><div class="card-header"><span class="card-title">Match Rosters & Player Ledgers</span></div><div class="empty" style="padding:16px">Rosters unavailable</div></div>`;
-  const hRows = rosters.h || [];
-  const aRows = rosters.a || [];
-  if (!hRows.length && !aRows.length) return `<div class="card" style="margin-top:20px"><div class="card-header"><span class="card-title">Match Rosters & Player Ledgers</span></div><div class="empty" style="padding:16px">Rosters unavailable</div></div>`;
-  return `<div class="card" style="margin-top:20px">
-    <div class="card-header"><span class="card-title">Match Rosters & Player Ledgers</span><span style="font-size:11px;color:var(--muted)">${hRows.length + aRows.length} players</span></div>
-    <div class="grid cols-2">
-      <div><div style="font-size:12px;font-weight:700;color:var(--accent);margin-bottom:8px">Home</div>${rosterTable("Home", hRows)}</div>
-      <div><div style="font-size:12px;font-weight:700;color:var(--accent-emerald);margin-bottom:8px">Away</div>${rosterTable("Away", aRows)}</div>
-    </div>
-  </div>`;
-}
-
-function renderMatch(node, d) {
+function renderMatch(node, d, sofaData = null) {
   const n = d.narrative;
   clear(node);
 
@@ -1131,81 +1853,108 @@ function renderMatch(node, d) {
   const allShots = [...homeShots, ...awayShots];
 
   node.innerHTML = `
-    <!-- Match Hero Scoreline Banner -->
+    <!-- Match Scoreline Hero Banner -->
     <div class="player-hero-card">
       <div class="hero-main" style="justify-content:center;text-align:center">
         <div>
-          <div style="font-size:11px;text-transform:uppercase;color:var(--accent);letter-spacing:1.2px;font-weight:800">
-            OFFICIAL MATCH INTELLIGENCE
+          <div style="font-size:11px;text-transform:uppercase;color:var(--accent);letter-spacing:1.4px;font-weight:800">
+            OFFICIAL MATCH INTELLIGENCE REPORT
           </div>
-          <div style="font-size:36px;font-weight:900;color:var(--text-bright);margin:8px 0;letter-spacing:-0.5px">
+          <div style="font-size:36px;font-weight:900;color:var(--text-bright);margin:10px 0;letter-spacing:-0.5px">
             ${n.scoreline.h} — ${n.scoreline.a}
           </div>
           <div style="font-size:15px;color:var(--accent);font-family:var(--mono);font-weight:700">
             Expected Goals (xG): ${fmt(n.xG.h)} vs ${fmt(n.xG.a)}
           </div>
-          ${forecastPill(d.forecast)}
-          <div class="hint" style="margin-top:10px;max-width:650px;margin-left:auto;margin-right:auto;font-size:13px">
+          <div class="hint" style="margin-top:12px;max-width:680px;margin-left:auto;margin-right:auto;font-size:13px;line-height:1.5">
             ${n.narrative}
           </div>
         </div>
       </div>
     </div>
 
-    <!-- Row 1: Full Pitch Shot Map vs Cumulative xG Flow Timeline -->
-    <div class="grid cols-2">
+    <!-- Tactical Formation & Lineup Board -->
+    ${renderMatchTacticalBoard(d, sofaData)}
+
+    <!-- 7-Category Sofascore Tactical Statistics -->
+    ${sofaData && sofaData.statistics ? renderSofascoreStatsSections(sofaData.statistics, d.meta.home, d.meta.away) : ""}
+
+    <!-- Chronological Incidents Timeline -->
+    ${sofaData && sofaData.incidents ? renderMatchIncidents(sofaData.incidents) : ""}
+
+    <!-- Row 1: Tactical 4-Tier Shot Map vs Cumulative xG Timeline Flow -->
+    <div class="grid cols-2" style="margin-top:20px">
       <div class="card">
         <div class="card-header">
-          <span class="card-title">
-            <svg class="card-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="m4.93 4.93 4.24 4.24M14.83 14.83l4.24 4.24"/></svg>
-            Full Pitch Tactical Shot Map & Heatmap
-          </span>
-          <span style="font-size:11px;color:var(--muted)">${allShots.length} total shots</span>
+          <div class="section-question">
+            <span class="question-title">Where were the match chances created?</span>
+            <span class="question-desc">Full pitch tactical 4-tier shot locations and Gaussian density heatmap</span>
+          </div>
         </div>
+        ${shotQualityRailHTML(allShots)}
         <div id="matchPitch"></div>
       </div>
 
       <div class="card">
         <div class="card-header">
-          <span class="card-title">
-            <svg class="card-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
-            Cumulative xG Timeline Flow
-          </span>
+          <div class="section-question">
+            <span class="question-title">How did match momentum accumulate?</span>
+            <span class="question-desc">Minute-by-minute step curve of cumulative expected goals</span>
+          </div>
         </div>
-        <div id="xgtl"></div>
+        <div id="xgtl" style="margin-top:14px"></div>
       </div>
     </div>
 
-     <!-- Row 2: Big Chance Inventory vs Situations Breakdown -->
-     <div class="grid cols-2" style="margin-top:20px">
-       <div class="card">
-         <div class="card-header">
-           <span class="card-title">Big Chance Inventory (xG ≥ ${d.big_chance_inventory.xG_threshold})</span>
-         </div>
-         ${bigChances(d.big_chance_inventory)}
-       </div>
+    <!-- Row 2: Big Chance Inventory vs Situations Breakdown -->
+    <div class="grid cols-2" style="margin-top:20px">
+      <div class="card">
+        <div class="card-header">
+          <div class="section-question">
+            <span class="question-title">Which high-probability chances decided the match?</span>
+            <span class="question-desc">Big Chance Inventory (xG ≥ ${d.big_chance_inventory.xG_threshold})</span>
+          </div>
+        </div>
+        ${bigChances(d.big_chance_inventory)}
+      </div>
 
-       <div class="card">
-         <div class="card-header">
-           <span class="card-title">Situations Breakdown (Open Play vs Set Pieces)</span>
-         </div>
-         ${situationBreakdown(d.situation_breakdown)}
-       </div>
-     </div>
+      <div class="card">
+        <div class="card-header">
+          <div class="section-question">
+            <span class="question-title">What was the tactical phase profile?</span>
+            <span class="question-desc">Open play versus corner, set piece, and penalty distribution</span>
+          </div>
+        </div>
+        ${situationBreakdown(d.situation_breakdown)}
+      </div>
+    </div>
 
-      ${rostersBlock(d.rosters)}
+    <!-- Row 3: Match Lineups / Individual Player Ratings -->
+    ${d.rosters ? `
+      <div class="card" style="margin-top:20px">
+        <div class="card-header">
+          <div class="section-question">
+            <span class="question-title">Who were the key individual performers?</span>
+            <span class="question-desc">Individual player minutes, shots, goals, and xG generation</span>
+          </div>
+        </div>
+        ${rostersBlock(d.rosters)}
+      </div>
+    ` : ""}
 
-      ${possessionDonutHTML(61, 39, "Aether", "Zenith", d.honest_note || "Sofascore not enabled (SOFASCORE_ENABLED unset) — showing illustrative 61%/39% (Aether vs Zenith reference from Image 1) — Understat-only match data has no ballPossession; enable SOFASCORE_ENABLED for live possession.")}
+    <div class="caveat"><strong>Limitations.</strong><ul>${d.limitations.map((l) => `<li>${l}</li>`).join("")}</ul></div>
+  `;
 
-      ${chipPitchHTML("Real Madrid", "Levante", "4-3-3", "4-4-2", "45:59+4 · 1:0", d.honest_note || "Sofascore not enabled (SOFASCORE_ENABLED unset) — showing illustrative Real Madrid 4-3-3 vs Levante 4-4-2 dotted pitch with ASIO 11 chips (Image 4 ref).")}
-
-      <div class="caveat"><strong>Limitations.</strong><ul>${d.limitations.map((l) => `<li>${l}</li>`).join("")}</ul></div>
-   `;
-
-  renderPitchHeatmap("matchPitch", allShots);
+  renderPitchHeatmap("matchPitch", { shots: allShots, sofa: sofaData }, { sofascore: sofaData });
   drawXgTimeline("xgtl", d.xg_timeline);
-  // Phase 5D: draw chip pitch after DOM inserted
-  setTimeout(()=>{ try{ drawChipPitch(); renderChipOverlay(); }catch(_){} }, 60);
+  setTimeout(() => {
+    const sofaLineups = sofaData && sofaData.lineups && sofaData.lineups.data;
+    const homePl = (sofaLineups && sofaLineups.home && sofaLineups.home.players) || (d.rosters && d.rosters.h) || [];
+    const awayPl = (sofaLineups && sofaLineups.away && sofaLineups.away.players) || (d.rosters && d.rosters.a) || [];
+    const homeF = (sofaLineups && sofaLineups.home && sofaLineups.home.formation) || "4-3-3";
+    const awayF = (sofaLineups && sofaLineups.away && sofaLineups.away.formation) || "4-2-3-1";
+    drawDottedTacticalPitch(homePl, awayPl, homeF, awayF);
+  }, 50);
 }
 
 function bigChances(inv) {
@@ -1222,6 +1971,36 @@ function situationBreakdown(sb) {
     `<table style="margin-top:14px"><thead><tr><th colspan=4 style="color:var(--accent-emerald)">Away Team</th></tr>${head}</thead><tbody>${rows(sb.away)}</tbody></table>`;
 }
 
+function rostersBlock(rosters) {
+  if (!rosters) return "";
+  const renderSide = (title, list) => {
+    if (!list || !list.length) return "";
+    return `
+      <div style="margin-top:14px">
+        <h4 style="font-size:12.5px;color:var(--accent);margin-bottom:8px">${title}</h4>
+        <table>
+          <thead><tr><th>Player</th><th>Pos</th><th class="num">Min</th><th class="num">Shots</th><th class="num">Goals</th><th class="num">xG</th><th class="num">xA</th><th class="num">xGChain</th></tr></thead>
+          <tbody>
+            ${list.map((p) => `
+              <tr>
+                <td><strong style="cursor:pointer" onclick="$('playerName').value='${p.player}';activateTab('player');runPlayer()">${p.player}</strong></td>
+                <td><span class="badge">${p.position || "—"}</span></td>
+                <td class="num">${p.time || 0}</td>
+                <td class="num">${p.shots || 0}</td>
+                <td class="num"><strong>${p.goals || 0}</strong></td>
+                <td class="num">${fmt(p.xG)}</td>
+                <td class="num">${fmt(p.xA)}</td>
+                <td class="num">${fmt(p.xGChain)}</td>
+              </tr>
+            `).join("")}
+          </tbody>
+        </table>
+      </div>
+    `;
+  };
+  return `<div class="grid cols-2">${renderSide("Home Squad", rosters.h)}${renderSide("Away Squad", rosters.a)}</div>`;
+}
+
 function drawXgTimeline(container, tl) {
   const el = document.getElementById(container); if (!el) return;
   const w = 1100, h = 260, padL = 56, pad = 30, x0 = padL, x1 = w - pad, y0 = 24, y1 = h - 40;
@@ -1230,22 +2009,24 @@ function drawXgTimeline(container, tl) {
   const minuteMax = Math.max(...home.map((p) => p.minute), ...away.map((p) => p.minute), 90);
   const x = (m) => x0 + (m / minuteMax) * (x1 - x0);
   const y = (v) => y1 - (v / allMax) * (y1 - y0);
+  const homeColor = getThemeColor("--accent") || "#1ed760";
+  const awayColor = getThemeColor("--neutral") || "#38bdf8";
   const path = (pts, color) => pts.length ? `<path d="${pts.map((p, i) => `${i ? "L" : "M"}${x(p.minute)},${y(p.cumulative_xG)}`).join(" ")}" fill="none" stroke="${color}" stroke-width="2.5"/>` : "";
   const dots = (pts, color) => pts.map((p) => hoverDot(x(p.minute), y(p.cumulative_xG), `${p.minute}' — Cumulative xG: ${fmt(p.cumulative_xG, 3)}`, color, 3.5)).join("");
 
   el.innerHTML = `<svg class="timeline-svg" viewBox="0 0 ${w} ${h}">
-    <line x1="${x0}" y1="${y1}" x2="${x1}" y2="${y1}" stroke="#1e293b"/>
-    <line x1="${x0}" y1="${y1}" x2="${x0}" y2="${y0}" stroke="#1e293b"/>
-    ${path(home, "#38bdf8")}${path(away, "#10b981")}
-    ${dots(home, "#38bdf8")}${dots(away, "#10b981")}
-    <text x="${x0}" y="${y0}" fill="#94a3b8" font-size="10.5"><tspan fill="#38bdf8">— Home</tspan>  <tspan fill="#10b981">— Away</tspan>  · Cumulative Match xG</text>
-    <text x="${x0 + (x1 - x0) / 2}" y="${h - 6}" fill="#94a3b8" font-size="10" text-anchor="middle">Minute →</text>
-    <text x="14" y="${y0 + (y1 - y0) / 2}" fill="#94a3b8" font-size="10" text-anchor="middle" transform="rotate(-90 14 ${y0 + (y1 - y0) / 2})">xG ↑</text>
+    <line x1="${x0}" y1="${y1}" x2="${x1}" y2="${y1}" stroke="var(--border)"/>
+    <line x1="${x0}" y1="${y1}" x2="${x0}" y2="${y0}" stroke="var(--border)"/>
+    ${path(home, homeColor)}${path(away, awayColor)}
+    ${dots(home, homeColor)}${dots(away, awayColor)}
+    <text x="${x0}" y="${y0}" fill="var(--muted)" font-size="10.5"><tspan fill="${homeColor}">● Home</tspan>  <tspan fill="${awayColor}">● Away</tspan>  · Cumulative Match xG Progression</text>
+    <text x="${x0 + (x1 - x0) / 2}" y="${h - 6}" fill="var(--muted)" font-size="10" text-anchor="middle">Match Minute →</text>
+    <text x="14" y="${y0 + (y1 - y0) / 2}" fill="var(--muted)" font-size="10" text-anchor="middle" transform="rotate(-90 14 ${y0 + (y1 - y0) / 2})">xG ↑</text>
   </svg>`;
 }
 
 // ==========================================================
-// PLAYER INTELLIGENCE & SCOUTING REPORT
+// PLAYER INTELLIGENCE & SCOUTING REPORT (IMAGE 1)
 // ==========================================================
 $("playerGo").addEventListener("click", runPlayer);
 $("playerCareerGo").addEventListener("click", runCareer);
@@ -1256,59 +2037,61 @@ async function runPlayer() {
   if (!name) return;
   const node = $("playerContent"); loading(node);
   $("playerResolved").textContent = "";
-  let season = seasonOf("playerSeasons");
-  let seasons = seasonsOf("playerSeasons");
-
   try {
-    let d;
-    try {
-      d = await api("/api/v1/analyze/player", {
-        player_name: name,
-        league_name: state.league,
-        season: season,
-        seasons: seasons,
-        start_date: dateOf("playerFrom"),
-        end_date: dateOf("playerTo"),
-      });
-    } catch (err) {
-      if (season === LATEST_SEASON) {
-        season = LATEST_SEASON - 1;
-        if ($("playerSeasons")) {
-          $("playerSeasons").value = String(season);
-          $("playerSeasons").dataset.seasons = JSON.stringify([season]);
-          const seasonBtn = $("playerSeasons").querySelector("[data-season-btn]");
-          if (seasonBtn) seasonBtn.textContent = String(season);
-          localStorage.setItem("prem_playerSeasons", JSON.stringify([season]));
-        }
-        d = await api("/api/v1/analyze/player", {
-          player_name: name,
-          league_name: state.league,
-          season: season,
-          seasons: [season],
-          start_date: dateOf("playerFrom"),
-          end_date: dateOf("playerTo"),
-        });
-      } else {
-        throw err;
-      }
-    }
-    const resolvedSeason = d.seasons && d.seasons.length > 1 ? ` · ${d.seasons.join("–")}` : ` · ${d.season || seasonOf("playerSeasons")}`;
-    $("playerResolved").textContent = `${d.player.name}${d.player.age != null ? ` (${d.player.age}y)` : ""} · ${d.player.team_title || "—"} · ${d.player.position || "—"}${resolvedSeason}`;
+    const d = await api("/api/v1/analyze/player", {
+      player_name: name,
+      league_name: state.league,
+      season: seasonOf("playerSeasons"),
+      seasons: seasonsOf("playerSeasons"),
+      start_date: dateOf("playerFrom"),
+      end_date: dateOf("playerTo"),
+    });
+    state.activePlayerData = d;
+    const seasonLabel = d.seasons && d.seasons.length > 1 ? ` · ${d.seasons.join("–")}` : ` · ${seasonOf("playerSeasons")}`;
+    $("playerResolved").textContent = `${d.player.name}${d.player.age != null ? ` (${d.player.age}y)` : ""} · ${d.player.team_title || "—"} · ${d.player.position || "—"}${seasonLabel}`;
     renderPlayer(node, d);
   } catch (e) { errored(node, e.message); }
+}
+
+function playerKPIStrip(d) {
+  const p = d.player || {};
+  const per90 = d.per90_breakdown || {};
+  const shotSel = d.shot_selection || {};
+  // Real metrics we have from Understat. Physical (distance/sprint/top-speed) require Sofascore.
+  const kpis = [
+    { label: "Goals", value: per90.goals != null ? fmt(per90.goals, 1) : null, unit: "/90", accent: "var(--accent)" },
+    { label: "Shots", value: per90.shots != null ? fmt(per90.shots, 1) : null, unit: "/90", accent: "var(--neutral)" },
+    { label: "Key Passes", value: per90.key_passes != null ? fmt(per90.key_passes, 1) : null, unit: "/90", accent: "var(--accent)" },
+    { label: "Shot Quality", value: shotSel.xG_per_shot != null ? fmt(shotSel.xG_per_shot, 3) : null, unit: "xG/shot", accent: "var(--warning)" },
+    { label: "Minutes", value: p.minutes != null ? fmt(p.minutes, 0) : null, unit: "played", accent: "var(--muted)" },
+  ];
+  const hasAny = kpis.some((k) => k.value != null);
+  if (!hasAny) return "";
+  return `
+    <div class="kpi-strip">
+      ${kpis.map((k) => `
+        <div class="kpi-card">
+          <div class="kpi-label">${k.label}</div>
+          <div class="kpi-value-row">
+            <span class="kpi-value" style="color:${k.accent}">${k.value != null ? k.value : "—"}</span>
+            <span class="kpi-unit">${k.unit}</span>
+          </div>
+        </div>
+      `).join("")}
+    </div>
+  `;
 }
 
 function renderPlayer(node, d) {
   clear(node);
   const p = d.player;
-  const raw = d.per90_breakdown.raw;
-  const p90 = d.per90_breakdown.per90;
   const radar = d.radar.profile.filter((item) => item.percentile > 0 || item.raw > 0);
   const shots = d.shots || [];
   const avgPct = radar.length ? Math.round(radar.reduce((acc, r) => acc + r.percentile, 0) / radar.length) : 50;
+  const watched = isWatched(p.id);
 
   node.innerHTML = `
-    <!-- Player Hero Header -->
+    <!-- Player Scouting Hero Header -->
     <div class="player-hero-card">
       <div class="hero-main">
         <div class="hero-identity">
@@ -1325,75 +2108,41 @@ function renderPlayer(node, d) {
             </div>
           </div>
         </div>
-        <div>
+        <div style="display:flex;gap:10px;align-items:center">
+          <button class="ghost" data-watch-player="${p.id}" onclick="toggleWatchlist(state.activePlayerData.player)" style="${watched ? 'color:var(--accent)' : ''}">
+            ${watched ? '★ Watched' : '☆ Watch'}
+          </button>
           <span class="hero-pill green" style="font-size:12.5px;padding:6px 14px">
             ⭐ ${avgPct}th Percentile vs Position Peers
           </span>
         </div>
       </div>
 
-      <!-- Headline KPI Grid -->
-      <div class="kpi-row">
-        <div class="kpi-card">
-          <span class="kpi-label">${term("goals")}</span>
-          <span class="kpi-value">${fmt(raw.goals, 0)}</span>
-          <span class="kpi-sub">${fmt(p90.goals, 2)} /90</span>
-        </div>
-        <div class="kpi-card">
-          <span class="kpi-label">${term("npxg")}</span>
-          <span class="kpi-value">${fmt(raw.npxG)}</span>
-          <span class="kpi-sub">${fmt(p90.npxG, 2)} /90</span>
-        </div>
-        <div class="kpi-card">
-          <span class="kpi-label">${term("assists")} / ${term("xa")}</span>
-          <span class="kpi-value">${fmt(raw.assists, 0)} <span style="font-size:14px;color:var(--muted)">(${fmt(raw.xA)})</span></span>
-          <span class="kpi-sub">${fmt(p90.xA, 2)} xA /90</span>
-        </div>
-        <div class="kpi-card">
-          <span class="kpi-label">${term("conversion")}</span>
-          <span class="kpi-value">${fmt(d.shot_selection.conversion || (raw.goals / Math.max(raw.shots, 1) * 100), 1)}%</span>
-          <span class="kpi-sub">${fmt(raw.shots, 0)} total shots</span>
-        </div>
-        <div class="kpi-card">
-          <span class="kpi-label">${term("xG_chain")}</span>
-          <span class="kpi-value">${fmt(p90.xGChain, 2)}</span>
-          <span class="kpi-sub">Possession involvement</span>
-        </div>
-        <div class="kpi-card">
-          <span class="kpi-label">${term("xG_buildup")}</span>
-          <span class="kpi-value">${fmt(p90.xGBuildup, 2)}</span>
-          <span class="kpi-sub">Deep buildup play</span>
-        </div>
-        <div class="kpi-card">
-          <span class="kpi-label">${term("g_minus_xg")}</span>
-          <span class="kpi-value ${d.finishing_overperformance.g_minus_xg >= 0 ? 'positive' : 'negative'}">
-            ${d.finishing_overperformance.g_minus_xg >= 0 ? '+' : ''}${fmt(d.finishing_overperformance.g_minus_xg)}
-          </span>
-          <span class="kpi-sub">${fmt(d.per90_breakdown.minutes, 0)} mins</span>
-        </div>
-      </div>
+      <!-- Layer 1: Decision Metrics Grid -->
+      ${decisionMetricsHTML(d.l1_metrics)}
+      ${playerKPIStrip(d)}
     </div>
 
-    <!-- Row 1: Tactical Pitch & Density Heatmap + Radar Pizza Chart -->
-    <div class="grid cols-2">
+    <!-- Row 1: Tactical 4-Tier Shot Map & Heatmap vs Pizza Radar -->
+    <div class="grid cols-2" style="margin-top:20px">
       <div class="card">
         <div class="card-header">
-          <span class="card-title">
-            <svg class="card-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="m4.93 4.93 4.24 4.24M14.83 14.83l4.24 4.24"/></svg>
-            Tactical Pitch Shot Map & Density Heatmap
-          </span>
+          <div class="section-question">
+            <span class="question-title">Where are shots taken from & how dangerous are they?</span>
+            <span class="question-desc">4-tier xG shot locations and thermal density heatmap</span>
+          </div>
           <span style="font-size:11px;color:var(--muted);font-family:var(--mono)">${shots.length} shots recorded</span>
         </div>
+        ${shotQualityRailHTML(shots)}
         <div id="playerPitch"></div>
       </div>
 
       <div class="card">
         <div class="card-header">
-          <span class="card-title">
-            <svg class="card-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
-            Percentile Radar Profile (vs ${d.radar.position_group} peers)
-          </span>
-          <span style="font-size:11px;color:var(--muted);font-family:var(--mono)">${d.radar.peer_count} peer players</span>
+          <div class="section-question">
+            <span class="question-title">How does the player compare to positional peers?</span>
+            <span class="question-desc">Percentile pizza radar vs ${d.radar.position_group} peers (${d.radar.peer_count} players)</span>
+          </div>
         </div>
         <div id="playerRadar"></div>
       </div>
@@ -1403,36 +2152,42 @@ function renderPlayer(node, d) {
     <div class="grid cols-2" style="margin-top:20px">
       <div class="card">
         <div class="card-header">
-          <span class="card-title">Finishing & Shot Quality Diagnostics</span>
+          <div class="section-question">
+            <span class="question-title">What is the player's finishing efficiency & shot selection?</span>
+            <span class="question-desc">Confidence intervals and non-penalty shot quality mix</span>
+          </div>
         </div>
         ${finishing(d.finishing_overperformance)}
-         <div style="margin-top:16px">${shotSelection(d.shot_selection, shots, d.shot_profile_detail)}</div>
-       </div>
+        <div style="margin-top:16px">${shotSelection(d.shot_selection)}</div>
+      </div>
 
-       <div class="card">
-         <div class="card-header">
-           <span class="card-title">Playmaking & Possession Involvement</span>
-         </div>
-         ${involvement(d.involvement_profile)}
-         ${d.creative_dominance ? `
-           <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border)">
-             <div class="kv">
-               <span class="k">${term("creative_dominance")}</span>
-               <span class="v" style="color:var(--accent);font-weight:700">${pct(d.creative_dominance.xA_share, 1)} of team xA</span>
-             </div>
-             <div class="hint">Generated ${fmt(d.creative_dominance.player_xA)} of ${d.creative_dominance.team_title}'s ${fmt(d.creative_dominance.team_xA)} total team xA.</div>
-           </div>
-         ` : ""}
-       </div>
-     </div>
+      <div class="card">
+        <div class="card-header">
+          <div class="section-question">
+            <span class="question-title">How does the player contribute to possession & buildup?</span>
+            <span class="question-desc">xG Chain, xG Buildup, and creative dominance in the squad</span>
+          </div>
+        </div>
+        ${involvement(d.involvement_profile)}
+        ${d.creative_dominance ? `
+          <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border)">
+            <div class="kv">
+              <span class="k">${term("creative_dominance")}</span>
+              <span class="v" style="color:var(--accent);font-weight:700">${pct(d.creative_dominance.xA_share, 1)} of team xA</span>
+            </div>
+            <div class="hint">Generated ${fmt(d.creative_dominance.player_xA)} of ${d.creative_dominance.team_title}'s ${fmt(d.creative_dominance.team_xA)} total team xA.</div>
+          </div>
+        ` : ""}
+      </div>
+    </div>
 
-     ${assistedNetworkBlock(d.assisted_network)}
-
-     <!-- Row 3: Similar Players Cluster -->
+    <!-- Row 3: Similar Players Cluster -->
     <div class="card" style="margin-top:20px">
       <div class="card-header">
-        <span class="card-title">Similar Player Profiles (Euclidean Peer Clustered)</span>
-        <span style="font-size:11px;color:var(--muted)">Pool: ${d.similar_players.pool_after_filters} players</span>
+        <div class="section-question">
+          <span class="question-title">Which players share a similar tactical profile?</span>
+          <span class="question-desc">Euclidean nearest-neighbor clones matched across ${d.similar_players.pool_after_filters} position peers</span>
+        </div>
       </div>
       ${similarCards(d.similar_players)}
     </div>
@@ -1440,26 +2195,31 @@ function renderPlayer(node, d) {
     <!-- Row 4: Percentile Rankings Table -->
     <div class="card" style="margin-top:20px">
       <div class="card-header">
-        <span class="card-title">Tactical Metrics & League Percentile Rankings</span>
+        <div class="section-question">
+          <span class="question-title">Tactical Metrics & League Percentile Rankings</span>
+          <span class="question-desc">Ranked breakdown normalized per 90 minutes</span>
+        </div>
       </div>
       ${percentileTable(radar, d.per90_breakdown)}
     </div>
 
     ${d.pressing_output ? `
       <div class="card" style="margin-top:20px">
-        <div class="card-header"><span class="card-title">Possession Regain & High-Press Output</span></div>
+        <div class="card-header">
+          <div class="section-question">
+            <span class="question-title">Possession Regain & High-Press Output</span>
+            <span class="question-desc">Conversion of attacking chances following possession regains</span>
+          </div>
+        </div>
         ${pressingBlock(d.pressing_output)}
       </div>
     ` : ""}
 
-    ${tierShotMapHTML(shots, "Understat X,Y,xG tiered — Poor #f87171 (<0.06), Average #fb923c (0.06–0.14), Good #facc15 (0.14–0.28), Great #a3be8c (≥0.28). Expected 51% vs Actual 57.9% left rail (Image 3) — filters Team/xG Category/Result/Buildup/Possession + date slider 3/16/2024—8/29/2024 illustrative.")}
-
     <div class="caveat"><strong>Limitations.</strong><ul>${d.limitations.map((l) => `<li>${l}</li>`).join("")}</ul></div>
-   `;
+  `;
 
   renderPitchHeatmap("playerPitch", shots);
   drawRadar("playerRadar", radar);
-  setTimeout(()=>{ try{ drawTierPitch(shots); }catch(_){} }, 80);
 }
 
 function similarCards(s) {
@@ -1476,7 +2236,7 @@ function similarCards(s) {
             <div>${m.team_title || "—"} · ${m.position || "—"}</div>
             <div>${m.age ? `${m.age} years old · ` : ""}${fmt(m.minutes, 0)} mins</div>
           </div>
-          <button class="ghost" style="padding:4px 8px;font-size:11px;margin-top:4px" onclick="$('playerName').value='${m.player_name}';runPlayer()">
+          <button class="ghost" style="padding:4px 8px;font-size:11px;margin-top:6px" onclick="$('playerName').value='${m.player_name}';runPlayer()">
             Analyze Profile →
           </button>
         </div>
@@ -1510,7 +2270,7 @@ function percentileTable(profile, b) {
                   <div class="pct-track"><div class="pct-fill ${tier}" style="width:${Math.max(4, p.percentile)}%"></div></div>
                 </div>
               </td>
-              <td class="num" style="font-weight:700;color:${p.percentile >= 80 ? 'var(--accent-emerald)' : 'var(--text)'}">
+              <td class="num" style="font-weight:700;color:${p.percentile >= 80 ? 'var(--accent)' : 'var(--text)'}">
                 ${Math.round(p.percentile)}%
               </td>
             </tr>
@@ -1550,7 +2310,12 @@ function renderCareer(node, d) {
   const present = d.seasons.filter((s) => s.present);
   node.innerHTML = `
     <div class="card">
-      <div class="card-header"><span class="card-title">Career Trajectory · ${d.player_name}</span></div>
+      <div class="card-header">
+        <div class="section-question">
+          <span class="question-title">How has output evolved across seasons?</span>
+          <span class="question-desc">Multi-season progression trajectory for ${d.player_name}</span>
+        </div>
+      </div>
       <div class="controls-row">
         <div class="field"><label>Metric</label>
           <select id="careerMetric">
@@ -1568,26 +2333,6 @@ function renderCareer(node, d) {
       </div>
       <div id="careerChart"></div>
     </div>
-
-    <!-- Dual Career Evolution Analytics -->
-    <div class="grid cols-2" style="margin-top:20px">
-      <div class="card">
-        <div class="card-header">
-          <span class="card-title">Finishing Evolution · Goals vs Expected Goals (xG)</span>
-          <span class="chart-subtitle">${present.length} active seasons</span>
-        </div>
-        <div id="careerGoalsVsXgChart"></div>
-      </div>
-
-      <div class="card">
-        <div class="card-header">
-          <span class="card-title">Role & Build-up Evolution · xGChain vs xGBuildup /90</span>
-          <span class="chart-subtitle">Progression vs Finishing Load</span>
-        </div>
-        <div id="careerInvolvementChart"></div>
-      </div>
-    </div>
-
     <div class="card" style="margin-top:20px">
       <div class="card-header"><span class="card-title">Multi-Season Records</span></div>
       <table><thead><tr><th>Season</th><th>Team</th><th>Pos</th><th class="num">Games</th><th class="num">Min</th><th class="num">${term("goals")}</th><th class="num">${term("xG")}</th><th class="num">${term("npxG")}</th><th class="num">${term("assists")}</th><th class="num">${term("xA")}</th><th class="num">${term("shots")}</th><th class="num">${term("xG_per_shot")}</th><th class="num">${term("conversion")}</th></tr></thead><tbody>
@@ -1606,8 +2351,6 @@ function renderCareer(node, d) {
   const draw = () => drawCareerChart("careerChart", present, $("careerMetric").value);
   $("careerMetric").addEventListener("change", draw);
   draw();
-  drawCareerGoalsVsXg("careerGoalsVsXgChart", present);
-  drawCareerInvolvementEvolution("careerInvolvementChart", present);
 }
 
 function drawCareerChart(container, rows, metricKey) {
@@ -1619,92 +2362,22 @@ function drawCareerChart(container, rows, metricKey) {
   const allMax = Math.max(...vals, 0.001);
   const x = (i) => x0 + (i * (x1 - x0)) / Math.max(rows.length - 1, 1);
   const y = (v) => y1 - (v / allMax) * (y1 - y0);
+  const strokeColor = getThemeColor("--accent") || "#1ed760";
   const path = vals.map((v, i) => `${i ? "L" : "M"}${x(i)},${y(v)}`).join(" ");
-  const dots = vals.map((v, i) => hoverDot(x(i), y(v), `${rows[i].season}: ${fmt(v, 3)}\n${rows[i].team || ""}\n${fmt(rows[i].minutes, 0)} min`, "#38bdf8")).join("");
-  const labels = rows.map((r, i) => `<text x="${x(i)}" y="${y1 + 16}" fill="#94a3b8" font-size="10" text-anchor="middle">${r.season}</text>`).join("");
-  const yTitleRaw = glossaryLabelForMetric(metricKey);
-  const yTitle = truncateLabel(yTitleRaw, 28);
-  const topLabel = truncateLabel(yTitleRaw, 28);
+  const dots = vals.map((v, i) => hoverDot(x(i), y(v), `${rows[i].season}: ${fmt(v, 3)}\n${rows[i].team || ""}\n${fmt(rows[i].minutes, 0)} min`, strokeColor)).join("");
+  const labels = rows.map((r, i) => `<text x="${x(i)}" y="${y1 + 16}" fill="var(--muted)" font-size="10" text-anchor="middle">${r.season}</text>`).join("");
+  const entry = GLOSSARY[metricKey] || {};
   el.innerHTML = `<svg class="timeline-svg" viewBox="0 0 ${w} ${h}">
-    <line x1="${x0}" y1="${y1}" x2="${x1}" y2="${y1}" stroke="#1e293b"/>
-    <line x1="${x0}" y1="${y1}" x2="${x0}" y2="${y0}" stroke="#1e293b"/>
-    <path d="${path}" fill="none" stroke="#38bdf8" stroke-width="2.5"/>${dots}
+    <line x1="${x0}" y1="${y1}" x2="${x1}" y2="${y1}" stroke="var(--border)"/>
+    <line x1="${x0}" y1="${y1}" x2="${x0}" y2="${y0}" stroke="var(--border)"/>
+    <path d="${path}" fill="none" stroke="${strokeColor}" stroke-width="2.5"/>${dots}
     ${labels}
-    <text x="${x0}" y="${y0}" fill="#94a3b8" font-size="11">${topLabel} by Season</text>
-    <text x="${(x0+x1)/2}" y="${h - 6}" fill="#94a3b8" font-size="10" text-anchor="middle">Season</text>
-    <text x="14" y="${(y0+y1)/2}" fill="#94a3b8" font-size="10" text-anchor="middle" transform="rotate(-90 14 ${(y0+y1)/2})">${yTitle}</text>
-  </svg>`;
-}
-
-function drawCareerGoalsVsXg(container, rows) {
-  const el = document.getElementById(container);
-  if (!el) return;
-  if (rows.length < 2) { el.innerHTML = `<div class="empty">Not enough seasons present.</div>`; return; }
-  const w = 540, h = 240, padL = 46, pad = 30, x0 = padL, x1 = w - pad, y0 = 24, y1 = h - 36;
-  const maxVal = Math.max(...rows.flatMap(r => [r.goals || 0, r.xG || 0]), 1);
-  const n = rows.length;
-  const colW = (x1 - x0) / n;
-  const barW = Math.min(22, colW * 0.45);
-
-  let bars = "", dots = "", labels = "";
-  const pts = [];
-
-  rows.forEach((r, i) => {
-    const cx = x0 + i * colW + colW / 2;
-    const gH = ((r.goals || 0) / maxVal) * (y1 - y0);
-    const gY = y1 - gH;
-    const xgY = y1 - ((r.xG || 0) / maxVal) * (y1 - y0);
-    const diff = (r.goals || 0) - (r.xG || 0);
-
-    bars += `<rect x="${cx - barW}" y="${gY}" width="${barW}" height="${gH}" fill="#38bdf8" rx="2"/>`;
-    pts.push({ x: cx, y: xgY });
-    dots += hoverDot(cx, xgY, `${r.season}: ${r.goals || 0} Goals · ${fmt(r.xG, 2)} xG (Gap: ${diff >= 0 ? '+' : ''}${fmt(diff, 2)})`, "#10b981", 4);
-    labels += `<text x="${cx}" y="${y1 + 16}" fill="#94a3b8" font-size="10" text-anchor="middle">${r.season}</text>`;
-  });
-
-  const path = pts.map((p, i) => `${i ? 'L' : 'M'}${p.x},${p.y}`).join(' ');
-  const xgLine = `<path d="${path}" fill="none" stroke="#10b981" stroke-width="2.5" stroke-dasharray="4 3"/>`;
-
-  el.innerHTML = `<svg class="timeline-svg" viewBox="0 0 ${w} ${h}">
-    <line x1="${x0}" y1="${y1}" x2="${x1}" y2="${y1}" stroke="#1e293b"/>
-    <line x1="${x0}" y1="${y1}" x2="${x0}" y2="${y0}" stroke="#1e293b"/>
-    ${bars}${xgLine}${dots}${labels}
-    <text x="${x0}" y="${y0 - 6}" fill="#94a3b8" font-size="10.5"><tspan fill="#38bdf8">■ Goals Scored</tspan>   <tspan fill="#10b981">- - Expected Goals (xG)</tspan></text>
-    <text x="${(x0+x1)/2}" y="${h - 6}" fill="#94a3b8" font-size="10" text-anchor="middle">Season</text>
-    <text x="14" y="${(y0+y1)/2}" fill="#94a3b8" font-size="10" text-anchor="middle" transform="rotate(-90 14 ${(y0+y1)/2})">Goals / xG</text>
-  </svg>`;
-}
-
-function drawCareerInvolvementEvolution(container, rows) {
-  const el = document.getElementById(container);
-  if (!el) return;
-  if (rows.length < 2) { el.innerHTML = `<div class="empty">Not enough seasons present.</div>`; return; }
-  const w = 540, h = 240, padL = 46, pad = 30, x0 = padL, x1 = w - pad, y0 = 24, y1 = h - 36;
-  const maxVal = Math.max(...rows.flatMap(r => [r.xGChain_per90 || 0, r.xGBuildup_per90 || 0]), 0.1);
-  const x = (i) => x0 + (i * (x1 - x0)) / Math.max(rows.length - 1, 1);
-  const y = (v) => y1 - ((v || 0) / maxVal) * (y1 - y0);
-
-  const chainPts = rows.map((r, i) => `${i ? 'L' : 'M'}${x(i)},${y(r.xGChain_per90)}`).join(' ');
-  const buildPts = rows.map((r, i) => `${i ? 'L' : 'M'}${x(i)},${y(r.xGBuildup_per90)}`).join(' ');
-
-  const chainDots = rows.map((r, i) => hoverDot(x(i), y(r.xGChain_per90), `${r.season}\nxGChain/90: ${fmt(r.xGChain_per90, 2)}`, "#38bdf8", 3.5)).join('');
-  const buildDots = rows.map((r, i) => hoverDot(x(i), y(r.xGBuildup_per90), `${r.season}\nxGBuildup/90: ${fmt(r.xGBuildup_per90, 2)}`, "#f59e0b", 3.5)).join('');
-  const labels = rows.map((r, i) => `<text x="${x(i)}" y="${y1 + 16}" fill="#94a3b8" font-size="10" text-anchor="middle">${r.season}</text>`).join('');
-
-  el.innerHTML = `<svg class="timeline-svg" viewBox="0 0 ${w} ${h}">
-    <line x1="${x0}" y1="${y1}" x2="${x1}" y2="${y1}" stroke="#1e293b"/>
-    <line x1="${x0}" y1="${y1}" x2="${x0}" y2="${y0}" stroke="#1e293b"/>
-    <path d="${chainPts}" fill="none" stroke="#38bdf8" stroke-width="2.5"/>
-    <path d="${buildPts}" fill="none" stroke="#f59e0b" stroke-width="2.5"/>
-    ${chainDots}${buildDots}${labels}
-    <text x="${x0}" y="${y0 - 6}" fill="#94a3b8" font-size="10.5"><tspan fill="#38bdf8">— xGChain /90</tspan>   <tspan fill="#f59e0b">— xGBuildup /90</tspan></text>
-    <text x="${(x0+x1)/2}" y="${h - 6}" fill="#94a3b8" font-size="10" text-anchor="middle">Season</text>
-    <text x="14" y="${(y0+y1)/2}" fill="#94a3b8" font-size="10" text-anchor="middle" transform="rotate(-90 14 ${(y0+y1)/2})">Per 90</text>
+    <text x="${x0}" y="${y0}" fill="var(--muted)" font-size="11">${entry.label || metricKey} by Season</text>
   </svg>`;
 }
 
 // ==========================================================
-// TEAM TACTICAL INTELLIGENCE
+// TEAM TACTICAL INTELLIGENCE (IMAGES 1, 2, 3)
 // ==========================================================
 $("teamGo").addEventListener("click", runTeam);
 $("teamName").addEventListener("keydown", (e) => { if (e.key === "Enter") runTeam(); });
@@ -1713,43 +2386,37 @@ async function runTeam() {
   const name = $("teamName").value.trim();
   if (!name) return;
   const node = $("teamContent"); loading(node);
-  let season = seasonOf("teamSeasons");
-  let seasons = seasonsOf("teamSeasons");
-
   try {
-    let d;
-    try {
-      d = await api("/api/v1/analyze/team", {
-        team_name: name, league_name: state.league, season: season,
-        seasons: seasons,
-        start_date: dateOf("teamFrom"), end_date: dateOf("teamTo"),
-      });
-    } catch (err) {
-      if (season === LATEST_SEASON) {
-        season = LATEST_SEASON - 1;
-        if ($("teamSeasons")) {
-          $("teamSeasons").value = String(season);
-          $("teamSeasons").dataset.seasons = JSON.stringify([season]);
-          const seasonBtn = $("teamSeasons").querySelector("[data-season-btn]");
-          if (seasonBtn) seasonBtn.textContent = String(season);
-          localStorage.setItem("prem_teamSeasons", JSON.stringify([season]));
-        }
-        d = await api("/api/v1/analyze/team", {
-          team_name: name, league_name: state.league, season: season,
-          seasons: [season],
-          start_date: dateOf("teamFrom"), end_date: dateOf("teamTo"),
-        });
-      } else {
-        throw err;
-      }
-    }
+    const d = await api("/api/v1/analyze/team", {
+      team_name: name, league_name: state.league, season: seasonOf("teamSeasons"),
+      seasons: seasonsOf("teamSeasons"),
+      start_date: dateOf("teamFrom"), end_date: dateOf("teamTo"),
+    });
+    state.activeTeamData = d;
     renderTeam(node, d);
   } catch (e) { errored(node, e.message); }
 }
 
+window.setTeamSubtab = function(tabName) {
+  state.teamSubtab = tabName;
+  document.querySelectorAll(".team-subnav .subnav-btn").forEach((btn) => {
+    btn.classList.toggle("active", btn.dataset.subtab === tabName);
+  });
+  renderTeamSubtab(tabName);
+};
+
 function renderTeam(node, d) {
   const s = d.style;
   clear(node);
+
+  const history = d.form_momentum && d.form_momentum.rolling_xgd ? d.form_momentum.rolling_xgd.map(r => r.rolling_xGD) : [];
+  const sparklines = {
+    xG_per_game: (d.metric_trends && d.metric_trends.xG_for) || history,
+    xGA_per_game: (d.metric_trends && d.metric_trends.xG_against) || history,
+    npxGD_per_game: (d.metric_trends && d.metric_trends.npxGD) || history,
+    PPDA: (d.metric_trends && d.metric_trends.PPDA) || [],
+    xPTS_per_game: (d.metric_trends && d.metric_trends.xPTS) || history,
+  };
 
   node.innerHTML = `
     <!-- Team Hero Header -->
@@ -1762,337 +2429,317 @@ function renderTeam(node, d) {
             <div class="hero-meta">
               <span class="hero-pill accent">${LEAGUE_LABEL[state.league] || state.league}</span>
               <span class="hero-pill">${s.matches} matches analyzed</span>
-              ${d.archetype ? `<span class="hero-pill" style="background:rgba(56,189,248,0.10);border:1px solid rgba(56,189,248,0.35);color:#7dd3fc" title="${(d.archetype.description || "").replace(/"/g, "&quot;")} — ${(d.archetype.honest_note || "").replace(/"/g, "&quot;")}">🧬 ${d.archetype.label}${d.archetype.confidence != null ? ` · ${Math.round(d.archetype.confidence * 100)}%` : ""}</span>` : ""}
+              ${d.archetype ? `<span class="hero-pill" title="Tactical Style Archetype">⚡ ${d.archetype.archetype_label}</span>` : ""}
               ${windowBadge(d)}
             </div>
           </div>
         </div>
       </div>
 
-      <!-- Headline KPI Cards -->
-      <div class="kpi-row">
-        <div class="kpi-card">
-          <span class="kpi-label">${term("xG")} / Game</span>
-          <span class="kpi-value">${fmt(s.xG_per_game)}</span>
-          <span class="kpi-sub">Attacking chance quality</span>
-        </div>
-        <div class="kpi-card">
-          <span class="kpi-label">${term("xGA")} / Game</span>
-          <span class="kpi-value">${fmt(s.xGA_per_game)}</span>
-          <span class="kpi-sub">Defensive concession</span>
-        </div>
-        <div class="kpi-card">
-          <span class="kpi-label">xG Difference</span>
-          <span class="kpi-value ${s.xG_diff_per_game >= 0 ? 'positive' : 'negative'}">
-            ${s.xG_diff_per_game >= 0 ? '+' : ''}${fmt(s.xG_diff_per_game)}
-          </span>
-          <span class="kpi-sub">${term("npxgd")}: ${fmt(s.npxGD)}</span>
-        </div>
-        <div class="kpi-card">
-          <span class="kpi-label">${term("ppda")} Pressing</span>
-          <span class="kpi-value">${fmt(s.PPDA)}</span>
-          <span class="kpi-sub">Opponent PPDA: ${fmt(s.OPPDA)}</span>
-        </div>
-        <div class="kpi-card">
-          <span class="kpi-label">${term("deep")} Passes</span>
-          <span class="kpi-value">${fmt(s.deep_completions, 0)}</span>
-          <span class="kpi-sub">Allowed: ${fmt(s.deep_completions_allowed, 0)}</span>
-        </div>
-        <div class="kpi-card">
-          <span class="kpi-label">${term("xpts")} Total</span>
-          <span class="kpi-value">${fmt(s.xPTS, 1)}</span>
-          <span class="kpi-sub">Expected points</span>
-        </div>
-      </div>
+      <!-- Layer 1: Decision Metrics Grid with Sparklines -->
+      ${decisionMetricsHTML(d.l1_metrics, sparklines)}
     </div>
 
-    <!-- Row 1: Attacking vs Defensive Shot Maps / Heatmaps -->
-    <div class="grid cols-2">
-      <div class="card">
-        <div class="card-header">
-          <span class="card-title">Attacking Shots Created</span>
-          <span id="teamForShotCount" style="font-size:11px;color:var(--muted)">Loading shots…</span>
-        </div>
-        <div id="teamForPitch"></div>
-      </div>
-      <div class="card">
-        <div class="card-header">
-          <span class="card-title">Defensive Shots Conceded</span>
-          <span id="teamAgainstShotCount" style="font-size:11px;color:var(--muted)">Loading shots…</span>
-        </div>
-        <div id="teamAgainstPitch"></div>
-      </div>
+    <!-- Team Subnav Navigation Bar -->
+    <div class="team-subnav" style="margin-top:20px">
+      <button class="subnav-btn ${state.teamSubtab === 'overview' ? 'active' : ''}" data-subtab="overview" onclick="setTeamSubtab('overview')">📊 Overview & Pitch</button>
+      <button class="subnav-btn ${state.teamSubtab === 'performance' ? 'active' : ''}" data-subtab="performance" onclick="setTeamSubtab('performance')">📈 Process & Momentum</button>
+      <button class="subnav-btn ${state.teamSubtab === 'possession' ? 'active' : ''}" data-subtab="possession" onclick="setTeamSubtab('possession')">⚽ Territory & Splits</button>
+      <button class="subnav-btn ${state.teamSubtab === 'chance' ? 'active' : ''}" data-subtab="chance" onclick="setTeamSubtab('chance')">🎯 Chance Creation</button>
+      <button class="subnav-btn ${state.teamSubtab === 'defence' ? 'active' : ''}" data-subtab="defence" onclick="setTeamSubtab('defence')">🛡️ Defence & Pressing</button>
     </div>
 
-    <!-- Row 2: Tactical DNA & Process Balance -->
-    <div class="grid cols-2" style="margin-top:20px">
-      <div class="card">
-        <div class="card-header">
-          <span class="card-title">Team Tactical DNA (6-Pillar Radar Profile)</span>
-          <span class="chart-subtitle">${d.archetype ? `🧬 ${d.archetype.label} · ${Math.round((d.archetype.confidence || 0) * 100)}%` : "Process Fingerprint vs League Scale"}</span>
-        </div>
-        <div id="teamTacticalRadar"></div>
-        ${d.archetype && d.archetype.peers && d.archetype.peers.length ? `
-          <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);display:flex;flex-wrap:wrap;gap:6px;align-items:center">
-            <span style="font-size:11px;color:var(--muted);font-weight:700">Archetype peers:</span>
-            ${d.archetype.peers.slice(0, 3).map((p) => `<button class="view-pill-btn" style="padding:3px 10px;font-size:11px" onclick="$('teamName').value='${p.team}';runTeam()">${p.team}</button>`).join("")}
-          </div>
-        ` : ""}
-      </div>
-      <div class="card">
-        <div class="card-header">
-          <span class="card-title">Tactical Process & Territorial Balance</span>
-          <span class="chart-subtitle">${s.matches} matches · Process ratios</span>
-        </div>
-        ${teamTacticalBreakdownHTML(s)}
-      </div>
-    </div>
-
-    <!-- Row 3: Matchday Progression Trajectory -->
-    ${seasonComparisonSection(d)}
-
-    <!-- Row 3: 5-Match Rolling Trend Charts -->
-    <div class="card" style="margin-top:20px">
-      <div class="card-header"><span class="card-title">5-Match Rolling Tactical Trends</span></div>
-      <div class="controls-row">
-        <div class="field"><label>Metric</label>
-          <select id="trendMetric">
-             <option value="npxGD">${term("npxgd")}</option>
-             <option value="xG_for">${term("xG")} For</option>
-             <option value="xG_against">${term("xGA")} Against</option>
-             <option value="goals_for">${term("goals")} For</option>
-             <option value="goals_against">Goals Against</option>
-             <option value="xPTS">${term("xpts")}</option>
-             <option value="PPDA">${term("ppda")}</option>
-             <option value="deep_for">Deep completions for</option>
-             <option value="deep_against">Deep completions against</option>
-           </select>
-        </div>
-      </div>
-      <div id="trendChart"></div>
-    </div>
-
-    <!-- Row 4: Splits & Luck Curve -->
-    <div class="grid cols-2" style="margin-top:20px">
-      <div class="card">
-        <div class="card-header"><span class="card-title">First vs Second Half Splits</span></div>
-        ${halfSplitTable(d.half_split)}
-      </div>
-      <div class="card">
-        <div class="card-header"><span class="card-title">Cumulative Finishing Luck Curve</span></div>
-        <div id="luckChart"></div>
-        <div class="hint">${d.luck_curve.interpretation}</div>
-      </div>
-    </div>
-
-    <!-- Row 5: Squad Roster & Creation Contributions -->
-    ${d.squad && d.squad.length ? `
-      <div class="card" style="margin-top:20px">
-        <div class="card-header">
-          <div>
-            <span class="card-title">Squad Performance & Creation Contributions</span>
-            <div style="font-size:11.5px;color:var(--muted);margin-top:2px">
-              Individual player underlying threat, creation, and progression metrics · Click any player to open full deep-dive profile
-            </div>
-          </div>
-          <span class="mono" style="font-size:11.5px;color:var(--muted)">${d.squad.length} Players</span>
-        </div>
-        <div class="table-responsive">
-          <table class="dense-table" id="teamSquadTable">
-            <thead>
-              <tr>
-                <th>Player</th>
-                <th>Pos</th>
-                <th class="num">Games</th>
-                <th class="num">Min</th>
-                <th class="num">G</th>
-                <th class="num">${term("xG")}</th>
-                <th class="num">${term("g_minus_xg", "G−xG")}</th>
-                <th class="num">${term("npxG")}</th>
-                <th class="num">A</th>
-                <th class="num">${term("xA")}</th>
-                <th class="num">${term("xG_chain", "xGChain")}</th>
-                <th class="num">${term("xG_buildup", "xGBuildup")}</th>
-                <th class="num">${term("npxG", "NPxG/90")}</th>
-                <th class="num">${term("xA", "xA/90")}</th>
-                <th class="num">${term("xG_chain", "Chain/90")}</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${[...d.squad].sort((a, b) => (b.xG || 0) - (a.xG || 0)).map(p => {
-                const min = p.minutes || 0;
-                const npxg90 = min > 0 ? ((p.npxG || 0) / min) * 90 : 0;
-                const xa90 = min > 0 ? ((p.xA || 0) / min) * 90 : 0;
-                const chain90 = min > 0 ? ((p.xGChain || 0) / min) * 90 : 0;
-                const gDiff = (p.goals || 0) - (p.xG || 0);
-
-                return `
-                  <tr>
-                    <td>
-                      <strong style="cursor:pointer;color:var(--text-bright)" onclick="$('playerName').value='${p.player_name}';activateTab('player');runPlayer()" title="Open ${p.player_name} Analytics">
-                        ${p.player_name}
-                      </strong>
-                    </td>
-                    <td><span class="badge">${p.position || '—'}</span></td>
-                    <td class="num">${p.games || 0}</td>
-                    <td class="num">${p.minutes || 0}</td>
-                    <td class="num"><strong>${p.goals || 0}</strong></td>
-                    <td class="num" style="color:var(--accent);font-weight:600">${fmt(p.xG, 2)}</td>
-                    <td class="num" style="color:${gDiff >= 0 ? 'var(--fg-good)' : 'var(--fg-bad)'}">${gDiff >= 0 ? '+' : ''}${fmt(gDiff, 2)}</td>
-                    <td class="num">${fmt(p.npxG, 2)}</td>
-                    <td class="num"><strong>${p.assists || 0}</strong></td>
-                    <td class="num">${fmt(p.xA, 2)}</td>
-                    <td class="num" style="color:var(--accent);font-weight:600">${fmt(p.xGChain, 2)}</td>
-                    <td class="num">${fmt(p.xGBuildup, 2)}</td>
-                    <td class="num" style="font-weight:700">${fmt(npxg90, 2)}</td>
-                    <td class="num">${fmt(xa90, 2)}</td>
-                    <td class="num">${fmt(chain90, 2)}</td>
-                  </tr>
-                `;
-              }).join("")}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    ` : ""}
-
-    ${pressureSectionHTML(d.honest_note || "Sofascore not enabled (SOFASCORE_ENABLED unset) — illustrative pressures (MyGamePlan 1.6 ref) — metric_primitives used where available, else static mock with 5/35 matches. Enable SOFASCORE_ENABLED for live TOTAL/LEFT/CENTER/RIGHT/AVG TIME.")}
+    <!-- Subnav Active Panel Content -->
+    <div id="teamSubtabContent"></div>
 
     <div class="caveat" style="margin-top:20px"><strong>Limitations.</strong><ul>${d.limitations.map((l) => `<li>${l}</li>`).join("")}</ul></div>
-   `;
+  `;
 
-  setTimeout(()=>{ try{ drawPressurePitch(); }catch(_){} }, 80);
-  (async () => {
-    try {
-      const shotsData = await api("/api/v1/analyze/team/shots", {
-        team_name: s.team, league_name: state.league, season: seasonOf("teamSeasons"),
-        seasons: seasonsOf("teamSeasons"), start_date: dateOf("teamFrom"), end_date: dateOf("teamTo"),
-      });
-      if ($("teamForShotCount")) $("teamForShotCount").textContent = `${shotsData.for_shots.length} shots · ${shotsData.for_goals} goals · ${fmt(shotsData.for_xG)} xG`;
-      if ($("teamAgainstShotCount")) $("teamAgainstShotCount").textContent = `${shotsData.against_shots.length} conceded · ${shotsData.against_goals} goals · ${fmt(shotsData.against_xG)} xGA`;
-      renderPitchHeatmap("teamForPitch", shotsData.for_shots);
-      renderPitchHeatmap("teamAgainstPitch", shotsData.against_shots);
-    } catch (_) {
-      if ($("teamForPitch")) $("teamForPitch").innerHTML = `<div class="empty">Shot map unavailable.</div>`;
-      if ($("teamAgainstPitch")) $("teamAgainstPitch").innerHTML = `<div class="empty">Shot map unavailable.</div>`;
-    }
-  })();
-
-  drawSeasonComparisonCharts(d);
-  drawLuckChart("luckChart", d.luck_curve);
-  drawTeamTacticalRadar("teamTacticalRadar", s);
-  const drawTrend = () => drawTrendChart("trendChart", d.metric_trends, $("trendMetric").value);
-  $("trendMetric").addEventListener("change", drawTrend);
-  drawTrend();
+  renderTeamSubtab(state.teamSubtab || "overview");
 }
 
-function teamTacticalBreakdownHTML(s) {
-  const m = Math.max(s.matches || 1, 1);
-  const npxgShare = (s.npxG && s.xG) ? (s.npxG / s.xG) * 100 : 90;
-  const dcRatio = (s.deep_completions && s.deep_completions_allowed) ? (s.deep_completions / (s.deep_completions + s.deep_completions_allowed)) * 100 : 50;
+function renderTeamSubtab(tabName) {
+  const container = $("teamSubtabContent");
+  if (!container || !state.activeTeamData) return;
+  const d = state.activeTeamData;
+  const s = d.style;
 
+  if (tabName === "overview") {
+    container.innerHTML = `
+      <!-- Attacking vs Defensive Shot Maps -->
+      <div class="grid cols-2">
+        <div class="card">
+          <div class="card-header">
+            <div class="section-question">
+              <span class="question-title">Attacking Chances Created</span>
+              <span class="question-desc">4-tier tactical shot map of chances taken by ${s.team}</span>
+            </div>
+            <span id="teamForShotCount" style="font-size:11px;color:var(--muted)">Loading shots…</span>
+          </div>
+          <div id="teamForPitch"></div>
+        </div>
+        <div class="card">
+          <div class="card-header">
+            <div class="section-question">
+              <span class="question-title">Defensive Chances Conceded</span>
+              <span class="question-desc">Tactical shot map of chances allowed to opponents</span>
+            </div>
+            <span id="teamAgainstShotCount" style="font-size:11px;color:var(--muted)">Loading shots…</span>
+          </div>
+          <div id="teamAgainstPitch"></div>
+        </div>
+      </div>
+
+      <!-- Matchday League Position Progression -->
+      ${seasonComparisonSection(d)}
+
+      <!-- Squad Breakdown Table (Layer 3 — collapsed by default) -->
+      ${d.squad && d.squad.length ? `
+        <div class="card" style="margin-top:20px">
+          <details class="layer3">
+            <summary><span class="card-title">${s.team} Squad Statistics & Profiles</span></summary>
+            <table style="margin-top:8px">
+              <thead><tr><th>Player</th><th>Role</th><th class="num">Games</th><th class="num">Min</th><th class="num">Goals</th><th class="num">xG</th><th class="num">Assists</th><th class="num">xA</th><th class="num">xGChain</th><th>Action</th></tr></thead>
+              <tbody>
+                ${d.squad.map((p) => `
+                  <tr>
+                    <td><strong style="cursor:pointer;color:var(--text-bright)" onclick="$('playerName').value='${p.player_name}';activateTab('player');runPlayer()">${p.player_name}</strong></td>
+                    <td><span class="badge">${p.position || "—"}</span></td>
+                    <td class="num">${p.games}</td>
+                    <td class="num">${p.minutes}</td>
+                    <td class="num"><strong>${p.goals}</strong></td>
+                    <td class="num">${fmt(p.xG)}</td>
+                    <td class="num">${p.assists}</td>
+                    <td class="num">${fmt(p.xA)}</td>
+                    <td class="num" style="color:var(--accent);font-weight:700">${fmt(p.xGChain)}</td>
+                    <td><button class="ghost" style="padding:2px 8px;font-size:11px" onclick="$('playerName').value='${p.player_name}';activateTab('player');runPlayer()">Scout →</button></td>
+                  </tr>
+                `).join("")}
+              </tbody>
+            </table>
+          </details>
+        </div>
+      ` : ""}
+    `;
+    fetchTeamShots(s.team);
+    drawSeasonComparisonCharts(d);
+  } else if (tabName === "performance") {
+    container.innerHTML = `
+      <!-- Performance Last 10 Curve -->
+      <div class="card">
+        <div class="card-header">
+          <div class="section-question">
+            <span class="question-title">Are we creating better chances than we concede?</span>
+            <span class="question-desc">Rolling 5-match tactical metrics and underlying process momentum</span>
+          </div>
+        </div>
+        <div class="controls-row">
+          <div class="field"><label>Select Metric</label>
+            <select id="trendMetric">
+              <option value="npxGD">${term("npxgd")}</option>
+              <option value="xG_for">${term("xG")} For</option>
+              <option value="xG_against">${term("xGA")} Against</option>
+              <option value="goals_for">${term("goals")} For</option>
+              <option value="goals_against">Goals Against</option>
+              <option value="xPTS">${term("xpts")}</option>
+              <option value="PPDA">${term("ppda")}</option>
+            </select>
+          </div>
+        </div>
+        <div id="trendChart"></div>
+      </div>
+
+      <!-- Last-5 vs Season benchmark bars -->
+      <div class="card" style="margin-top:20px">
+        <div class="card-header">
+          <div class="section-question">
+            <span class="question-title">Last Five vs Season Average</span>
+            <span class="question-desc">Shots, goals, and xG: recent form vs full-season benchmark</span>
+          </div>
+        </div>
+        <div id="last5Bars"></div>
+      </div>
+
+      <div class="grid cols-2" style="margin-top:20px">
+        <div class="card">
+          <div class="card-header">
+            <div class="section-question">
+              <span class="question-title">Finishing & Variance Luck Trajectory</span>
+              <span class="question-desc">Cumulative goals minus xG over time</span>
+            </div>
+          </div>
+          <div id="luckChart"></div>
+          <div class="hint">${d.luck_curve.interpretation}</div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <div class="section-question">
+              <span class="question-title">Flat-Track Bully & Strength of Schedule Check</span>
+              <span class="question-desc">Performance vs top-half vs bottom-half opponents</span>
+            </div>
+          </div>
+          ${strengthOfScheduleTable(d.strength_of_schedule)}
+        </div>
+      </div>
+    `;
+    drawLuckChart("luckChart", d.luck_curve);
+    const drawTrend = () => drawTrendChart("trendChart", d.metric_trends, $("trendMetric").value);
+    $("trendMetric").addEventListener("change", drawTrend);
+    drawTrend();
+    drawLast5Bars("last5Bars", d.metric_trends, s);
+  } else if (tabName === "possession") {
+    container.innerHTML = `
+      <div class="grid cols-2">
+        <div class="card">
+          <div class="card-header">
+            <div class="section-question">
+              <span class="question-title">First vs Second Half Splits</span>
+              <span class="question-desc">Pace and stamina breakdown across halves</span>
+            </div>
+          </div>
+          ${halfSplitTable(d.half_split)}
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <div class="section-question">
+              <span class="question-title">Home vs Away Venue Splits</span>
+              <span class="question-desc">Performance dependency on venue</span>
+            </div>
+          </div>
+          ${homeAwaySplitTable(d.home_away_splits)}
+        </div>
+      </div>
+    `;
+  } else if (tabName === "chance") {
+    container.innerHTML = `
+      <div class="grid cols-2">
+        <div class="card">
+          <div class="card-header">
+            <div class="section-question">
+              <span class="question-title">Shot Phase & Situation Breakdown</span>
+              <span class="question-desc">Open play vs Corner vs Set Piece reliance</span>
+            </div>
+          </div>
+          ${d.situational_xg_share ? situationShareTable(d.situational_xg_share) : `<div class="empty">Situation breakdown not available.</div>`}
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <div class="section-question">
+              <span class="question-title">Tactical Style Archetype</span>
+              <span class="question-desc">Profile classification vs league tactical baseline</span>
+            </div>
+          </div>
+          ${d.archetype ? archetypeBlock(d.archetype) : `<div class="empty">Archetype classification not computed.</div>`}
+        </div>
+      </div>
+    `;
+  } else if (tabName === "defence") {
+    container.innerHTML = `
+      <!-- Defensive Intensity & Zone Table -->
+      <div class="card">
+        <div class="card-header">
+          <div class="section-question">
+            <span class="question-title">Zone Pressure & Defensive Intensity</span>
+            <span class="question-desc">Pressing volume, pitch zone distribution, and recovery speed</span>
+          </div>
+        </div>
+        ${zonePressureTable(d)}
+      </div>
+
+      <div class="grid cols-2" style="margin-top:20px">
+        <div class="card">
+          <div class="card-header">
+            <div class="section-question">
+              <span class="question-title">Pressing Intensity (PPDA)</span>
+              <span class="question-desc">Home vs Away pressing intensity comparison</span>
+            </div>
+          </div>
+          <div class="kv">
+            <span class="k">Home PPDA</span><span class="v">${fmt(d.ppda_home_away.ppda_home, 1)} (${d.ppda_home_away.matches_home} matches)</span>
+            <span class="k">Away PPDA</span><span class="v">${fmt(d.ppda_home_away.ppda_away, 1)} (${d.ppda_home_away.matches_away} matches)</span>
+            <span class="k">Season Overall PPDA</span><span class="v" style="color:var(--accent);font-weight:700">${fmt(s.PPDA, 1)}</span>
+          </div>
+          <div class="hint">${d.ppda_home_away.interpretation}</div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <div class="section-question">
+              <span class="question-title">Defensive Suppression</span>
+              <span class="question-desc">Deep box entries and chances conceded</span>
+            </div>
+          </div>
+          <div class="kv">
+            <span class="k">xGA / Match</span><span class="v">${fmt(s.xGA_per_game)}</span>
+            <span class="k">Deep Passes Allowed</span><span class="v">${fmt(s.deep_completions_allowed, 0)}</span>
+            <span class="k">Opponent PPDA</span><span class="v">${fmt(s.OPPDA, 1)}</span>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+}
+
+function zonePressureTable(d) {
+  const s = d.style || {};
+  const ppda = s.PPDA, oppda = s.OPPDA;
+  const deepAllowed = s.deep_completions_allowed;
+  // Real defensive-intensity metrics we actually compute from Understat.
+  const hasReal = ppda != null || deepAllowed != null;
   return `
-    <div style="padding:4px 0">
-      <div class="pct-breakdown-row">
-        <div class="label-col"><span>⚽ Attack (xG/g)</span></div>
-        <div class="bar-col">
-          <div class="pct-track"><div class="pct-fill tier-elite" style="width:${Math.min(100, ((s.xG_per_game || 1.3) / 2.5) * 100)}%"></div></div>
-        </div>
-        <div class="val-col">${fmt(s.xG_per_game, 2)}</div>
-      </div>
-
-      <div class="pct-breakdown-row">
-        <div class="label-col"><span>🛡️ Defense (xGA/g)</span></div>
-        <div class="bar-col">
-          <div class="pct-track"><div class="pct-fill tier-good" style="width:${Math.min(100, Math.max(5, (2.5 - (s.xGA_per_game || 1.3)) / 2.0 * 100))}%"></div></div>
-        </div>
-        <div class="val-col">${fmt(s.xGA_per_game, 2)}</div>
-      </div>
-
-      <div class="pct-breakdown-row">
-        <div class="label-col"><span>⚡ Press (PPDA)</span></div>
-        <div class="bar-col">
-          <div class="pct-track"><div class="pct-fill tier-elite" style="width:${Math.min(100, Math.max(5, (18 - (s.PPDA || 12)) / 11 * 100))}%"></div></div>
-        </div>
-        <div class="val-col">${fmt(s.PPDA, 1)}</div>
-      </div>
-
-      <div class="pct-breakdown-row">
-        <div class="label-col"><span>🎯 Box Penetration</span></div>
-        <div class="bar-col">
-          <div class="pct-track"><div class="pct-fill tier-good" style="width:${Math.min(100, ((s.deep_completions || 0) / m / 12) * 100)}%"></div></div>
-        </div>
-        <div class="val-col">${fmt((s.deep_completions || 0) / m, 1)}/g</div>
-      </div>
-
-      <div class="pct-breakdown-row">
-        <div class="label-col"><span>📊 Open-Play Dominance</span></div>
-        <div class="bar-col">
-          <div class="pct-track"><div class="pct-fill tier-elite" style="width:${Math.min(100, Math.max(5, ((s.npxGD || 0) + 20) / 50 * 100))}%"></div></div>
-        </div>
-        <div class="val-col">${(s.npxGD || 0) >= 0 ? '+' : ''}${fmt(s.npxGD, 1)}</div>
-      </div>
-
-      <div class="hint" style="margin-top:12px">
-        Non-penalty open play represents <strong>${fmt(npxgShare, 0)}%</strong> of attacking threat. Box penetration control is <strong>${fmt(dcRatio, 1)}%</strong> (${s.deep_completions || 0} for vs ${s.deep_completions_allowed || 0} conceded).
-      </div>
-    </div>
+    <div class="empty-state" style="margin-bottom:14px">Zone-split pressure (Total / Left / Center / Right / Avg Time) is a proprietary Stats-Perform model — we don't fabricate it. Below are the pressing & defensive metrics we <em>do</em> compute.</div>
+    <table class="pressure-table">
+      <thead>
+        <tr>
+          <th>Defensive Metric</th>
+          <th class="num">Value</th>
+          <th>Interpretation</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>PPDA (Pressing Intensity)</strong></td>
+          <td class="num"><strong>${ppda != null ? fmt(ppda, 1) : "—"}</strong></td>
+          <td style="color:var(--muted)">Opposition passes per defensive action — lower = higher press</td>
+        </tr>
+        <tr>
+          <td><strong>OPPDA (vs Pressing)</strong></td>
+          <td class="num">${oppda != null ? fmt(oppda, 1) : "—"}</td>
+          <td style="color:var(--muted)">How intensely opponents press this team</td>
+        </tr>
+        <tr>
+          <td><strong>Deep Completions Allowed</strong></td>
+          <td class="num">${deepAllowed != null ? fmt(deepAllowed, 0) : "—"}</td>
+          <td style="color:var(--muted)">Box-entry passes conceded to opponents</td>
+        </tr>
+        <tr>
+          <td><strong>xGA per Match</strong></td>
+          <td class="num">${s.xGA_per_game != null ? fmt(s.xGA_per_game) : "—"}</td>
+          <td style="color:var(--muted)">Expected goals conceded — chance suppression</td>
+        </tr>
+      </tbody>
+    </table>
+    ${hasReal ? "" : `<div class="empty-state" style="margin-top:14px">No defensive data available for this team.</div>`}
   `;
 }
 
-function drawTeamTacticalRadar(container, style) {
-  const el = document.getElementById(container);
-  if (!el || !style) return;
-  const size = 320, cx = size / 2, cy = size / 2, r = 105;
-
-  const m = Math.max(style.matches || 1, 1);
-  const xgG = style.xG_per_game || (style.xG ? style.xG / m : 1.3);
-  const xgaG = style.xGA_per_game || (style.xGA ? style.xGA / m : 1.3);
-  const npxgd = style.npxGD || 0;
-  const ppda = style.PPDA || 12;
-  const oppda = style.OPPDA || 12;
-  const dcG = (style.deep_completions || 0) / m;
-
-  const clamp = (v) => Math.max(8, Math.min(96, v));
-  const metrics = [
-    { label: "Attack (xG)", pct: clamp((xgG / 2.5) * 100) },
-    { label: "Defense (xGA)", pct: clamp(((2.5 - xgaG) / 2.0) * 100) },
-    { label: "NPxGD Process", pct: clamp(((npxgd + 20) / 50) * 100) },
-    { label: "Press (PPDA)", pct: clamp(((18 - ppda) / 11) * 100) },
-    { label: "Press Resist", pct: clamp(((oppda - 7) / 11) * 100) },
-    { label: "Box Threat (DC)", pct: clamp((dcG / 12) * 100) },
-  ];
-
-  const n = metrics.length;
-  const ang = (i) => -Math.PI / 2 + (i * 2 * Math.PI) / n;
-  const pt = (i, rad) => [cx + rad * Math.cos(ang(i)), cy + rad * Math.sin(ang(i))];
-
-  let rings = "", spokes = "", labels = "";
-  for (let g = 1; g <= 4; g++) {
-    const rr = r * g / 4;
-    let pts = ""; for (let i = 0; i < n; i++) { const [x, y] = pt(i, rr); pts += `${x},${y} `; }
-    rings += `<polygon points="${pts}" fill="none" stroke="#1e293b" stroke-width="1"/>`;
+async function fetchTeamShots(teamName) {
+  try {
+    const shotsData = await api("/api/v1/analyze/team/shots", {
+      team_name: teamName, league_name: state.league, season: seasonOf("teamSeasons"),
+      seasons: seasonsOf("teamSeasons"), start_date: dateOf("teamFrom"), end_date: dateOf("teamTo"),
+    });
+    if ($("teamForShotCount")) $("teamForShotCount").textContent = `${shotsData.for_shots.length} shots · ${shotsData.for_goals} goals · ${fmt(shotsData.for_xG)} xG`;
+    if ($("teamAgainstShotCount")) $("teamAgainstShotCount").textContent = `${shotsData.against_shots.length} conceded · ${shotsData.against_goals} goals · ${fmt(shotsData.against_xG)} xGA`;
+    renderPitchHeatmap("teamForPitch", shotsData.for_shots);
+    renderPitchHeatmap("teamAgainstPitch", shotsData.against_shots);
+  } catch (_) {
+    if ($("teamForPitch")) $("teamForPitch").innerHTML = `<div class="empty">Shot map unavailable.</div>`;
+    if ($("teamAgainstPitch")) $("teamAgainstPitch").innerHTML = `<div class="empty">Shot map unavailable.</div>`;
   }
-  for (let i = 0; i < n; i++) {
-    const [x, y] = pt(i, r);
-    spokes += `<line x1="${cx}" y1="${cy}" x2="${x}" y2="${y}" stroke="#1e293b" stroke-width="1"/>`;
-    const [lx, ly] = pt(i, r + 18);
-    labels += `<text x="${lx}" y="${ly}" fill="#94a3b8" font-size="9.5" font-weight="600" text-anchor="middle" dominant-baseline="middle">${metrics[i].label}</text>`;
-  }
-
-  let poly = ""; const vals = [];
-  for (let i = 0; i < n; i++) {
-    const rr = r * metrics[i].pct / 100;
-    const [x, y] = pt(i, rr);
-    poly += `${x},${y} `;
-    vals.push(`<circle cx="${x}" cy="${y}" r="3.5" fill="#38bdf8"/>`);
-  }
-
-  el.innerHTML = `<svg class="radar-svg" viewBox="0 0 ${size} ${size}">
-    ${rings}${spokes}
-    <polygon points="${poly}" fill="rgba(56,189,248,0.25)" stroke="#38bdf8" stroke-width="2.5"/>
-    ${labels}${vals.join("")}
-  </svg>`;
 }
 
 function halfSplitTable(hs) {
@@ -2109,10 +2756,42 @@ function halfSplitTable(hs) {
   </tbody></table><div class="hint">${hs.interpretation}</div>`;
 }
 
-function drawSeasonComparisonCharts(d) {
-  if (!d.season_trends) return;
-  drawSeasonLines("seasonPoints", d.season_trends, "points", { invert: false });
-  drawSeasonLines("seasonRank", d.season_trends, "rank", { invert: true, ymax: Math.max(...Object.values(d.season_trends).map((t) => t.n_teams), 2) });
+function homeAwaySplitTable(ha) {
+  if (!ha || !ha.home) return `<div class="empty">Venue split not available.</div>`;
+  const h = ha.home, a = ha.away;
+  const row = (label, hv, av) => `<tr><td>${label}</td><td class="num">${hv}</td><td class="num">${av}</td></tr>`;
+  return `<table><thead><tr><th>Metric</th><th class="num">Home</th><th class="num">Away</th></tr></thead><tbody>
+    ${row("Matches", h.matches, a.matches)}
+    ${row("Win Rate", pct(h.win_rate), pct(a.win_rate))}
+    ${row("Points / Match", fmt(h.points_per_game), fmt(a.points_per_game))}
+    ${row("xG / Match", fmt(h.xG_per_game), fmt(a.xG_per_game))}
+    ${row("xGA / Match", fmt(h.xGA_per_game), fmt(a.xGA_per_game))}
+  </tbody></table><div class="hint">${ha.interpretation}</div>`;
+}
+
+function strengthOfScheduleTable(sos) {
+  if (!sos || !sos.available) return `<div class="empty">Strength of schedule split not available.</div>`;
+  const top = sos.vs_stronger_opponents, bot = sos.vs_weaker_opponents;
+  return `<table><thead><tr><th>Opponent Tier</th><th class="num">Matches</th><th class="num">Pts / Match</th><th class="num">xGD / Match</th></tr></thead><tbody>
+    <tr><td>Vs Top Half (Positive xGD)</td><td class="num">${top.matches}</td><td class="num">${fmt(top.points_per_game)}</td><td class="num">${fmt(top.xGD_per_game)}</td></tr>
+    <tr><td>Vs Bottom Half (Negative xGD)</td><td class="num">${bot.matches}</td><td class="num">${fmt(bot.points_per_game)}</td><td class="num">${fmt(bot.xGD_per_game)}</td></tr>
+  </tbody></table><div class="hint">${sos.interpretation}</div>`;
+}
+
+function situationShareTable(sit) {
+  const shares = sit.by_situation || {};
+  return `<table><thead><tr><th>Phase</th><th class="num">xG</th><th class="num">Share</th></tr></thead><tbody>
+    ${Object.entries(shares).map(([k, v]) => `<tr><td><strong>${k}</strong></td><td class="num">${fmt(v.xG)}</td><td class="num">${pct(v.share)}</td></tr>`).join("")}
+  </tbody></table><div class="hint">Set Piece xG Share: <strong>${pct(sit.set_piece_xG_share)}</strong></div>`;
+}
+
+function archetypeBlock(arch) {
+  return `
+    <div style="padding:14px;background:var(--panel-2);border-radius:var(--radius-sm);border:1px solid var(--border)">
+      <div style="font-size:16px;font-weight:800;color:var(--accent);margin-bottom:6px">⚡ ${arch.archetype_label}</div>
+      <div style="font-size:13px;color:var(--text);line-height:1.4">${arch.narrative || arch.description}</div>
+    </div>
+  `;
 }
 
 function seasonComparisonSection(d) {
@@ -2125,6 +2804,12 @@ function seasonComparisonSection(d) {
   </div>`;
 }
 
+function drawSeasonComparisonCharts(d) {
+  if (!d.season_trends) return;
+  drawSeasonLines("seasonPoints", d.season_trends, "points", { invert: false });
+  drawSeasonLines("seasonRank", d.season_trends, "rank", { invert: true, ymax: Math.max(...Object.values(d.season_trends).map((t) => t.n_teams), 2) });
+}
+
 function drawSeasonLines(container, trends, metric, opts) {
   const el = document.getElementById(container);
   if (!el) return;
@@ -2135,7 +2820,7 @@ function drawSeasonLines(container, trends, metric, opts) {
   let lines = "", dots = "";
 
   for (const [s, t] of entries) {
-    const color = "#38bdf8";
+    const color = getThemeColor("--accent") || "#1ed760";
     const vals = t.matchdays.map((m) => m[metric]);
     if (opts.invert) {
       const y = (v) => y0 + ((v - 1) / (opts.ymax - 1)) * (y1 - y0);
@@ -2153,15 +2838,13 @@ function drawSeasonLines(container, trends, metric, opts) {
     }
   }
 
-  const axisLabelRaw = opts.invert ? "Rank (1 = top)" : "Points";
-  const axisLabel = truncateLabel(axisLabelRaw, 28);
+  const axisLabel = opts.invert ? "Table Rank (1 = Top)" : "Points";
   el.innerHTML = `<svg class="timeline-svg" viewBox="0 0 ${w} ${h}">
-    <line x1="${x0}" y1="${y1}" x2="${x1}" y2="${y1}" stroke="#1e293b"/>
-    <line x1="${x0}" y1="${y1}" x2="${x0}" y2="${y0}" stroke="#1e293b"/>
+    <line x1="${x0}" y1="${y1}" x2="${x1}" y2="${y1}" stroke="var(--border)"/>
+    <line x1="${x0}" y1="${y1}" x2="${x0}" y2="${y0}" stroke="var(--border)"/>
     ${lines}${dots}
-    <text x="14" y="${(y0+y1)/2}" fill="#94a3b8" font-size="10" text-anchor="middle" transform="rotate(-90 14 ${(y0+y1)/2})">${axisLabel}</text>
-    <text x="${(x0+x1)/2}" y="${h - 6}" fill="#94a3b8" font-size="10" text-anchor="middle">Matchday →</text>
-    <text x="${x0}" y="${y0}" fill="#94a3b8" font-size="10">${axisLabel}</text>
+    <text x="${x0}" y="${y0}" fill="var(--muted)" font-size="10">${axisLabel}</text>
+    <text x="${x0 + (x1 - x0) / 2}" y="${h - 6}" fill="var(--muted)" font-size="10" text-anchor="middle">Matchday →</text>
   </svg>`;
 }
 
@@ -2174,18 +2857,17 @@ function drawLuckChart(container, lc) {
   const x = (i) => x0 + (i * (x1 - x0)) / Math.max(vals.length - 1, 1);
   const y = (v) => y1 - ((v - lo) / span) * (y1 - y0);
   const path = vals.map((v, i) => `${i ? "L" : "M"}${x(i)},${y(v)}`).join(" ");
-  const dots = lc.points.map((p, i) => hoverDot(x(i), y(p.cumulative_g_minus_xg), `${p.date}\nCumulative G − xG: ${fmt(p.cumulative_g_minus_xg, 2)}`, lc.final >= 0 ? "#10b981" : "#f43f5e", 3.5)).join("");
+  const goodColor = getThemeColor("--accent") || "#1ed760";
+  const badColor = getThemeColor("--fg-bad") || "#f43f5e";
+  const dots = lc.points.map((p, i) => hoverDot(x(i), y(p.cumulative_g_minus_xg), `${p.date}\nCumulative G − xG: ${fmt(p.cumulative_g_minus_xg, 2)}`, lc.final >= 0 ? goodColor : badColor, 3.5)).join("");
   const zero = y(0);
 
-  const luckYTitle = truncateLabel("Cumulative G − xG", 28);
   el.innerHTML = `<svg class="timeline-svg" viewBox="0 0 ${w} ${h}">
-    <line x1="${x0}" y1="${y1}" x2="${x1}" y2="${y1}" stroke="#1e293b"/>
-    <line x1="${x0}" y1="${y1}" x2="${x0}" y2="${y0}" stroke="#1e293b"/>
-    <line x1="${x0}" y1="${zero}" x2="${x1}" y2="${zero}" stroke="#1e293b" stroke-dasharray="3 4"/>
-    <path d="${path}" fill="none" stroke="${lc.final >= 0 ? '#10b981' : '#f43f5e'}" stroke-width="2.5"/>${dots}
-    <text x="${x0}" y="${y0}" fill="#94a3b8" font-size="9.5">Cumulative Goals − xG Overperformance</text>
-    <text x="${(x0+x1)/2}" y="${h - 6}" fill="#94a3b8" font-size="10" text-anchor="middle">Match (chronological)</text>
-    <text x="14" y="${(y0+y1)/2}" fill="#94a3b8" font-size="10" text-anchor="middle" transform="rotate(-90 14 ${(y0+y1)/2})">${luckYTitle}</text>
+    <line x1="${x0}" y1="${y1}" x2="${x1}" y2="${y1}" stroke="var(--border)"/>
+    <line x1="${x0}" y1="${y1}" x2="${x0}" y2="${y0}" stroke="var(--border)"/>
+    <line x1="${x0}" y1="${zero}" x2="${x1}" y2="${zero}" stroke="var(--border)" stroke-dasharray="3 4"/>
+    <path d="${path}" fill="none" stroke="${lc.final >= 0 ? goodColor : badColor}" stroke-width="2.5"/>${dots}
+    <text x="${x0}" y="${y0}" fill="var(--muted)" font-size="9.5">Cumulative Goals − xG Overperformance</text>
   </svg>`;
 }
 
@@ -2197,22 +2879,62 @@ function drawTrendChart(container, mt, key) {
   const allMax = Math.max(...vals.map(Math.abs), 0.001);
   const x = (i) => x0 + (i * (x1 - x0)) / Math.max(vals.length - 1, 1);
   const y = (v) => y1 - ((v + allMax) / (2 * allMax)) * (y1 - y0);
+  const strokeColor = getThemeColor("--accent") || "#1ed760";
   const path = vals.map((v, i) => `${i ? "L" : "M"}${x(i)},${y(v)}`).join(" ");
-  const dots = vals.map((v, i) => hoverDot(x(i), y(v), `${mt.dates[i]}\n${key}: ${fmt(v, 2)}`, "#38bdf8", 3.5)).join("");
+  const dots = vals.map((v, i) => hoverDot(x(i), y(v), `${mt.dates[i]}\n${key}: ${fmt(v, 2)}`, strokeColor, 3.5)).join("");
   const zero = y(0);
-  const baseLabelRaw = glossaryLabelForMetric(key);
-  const baseLabel = truncateLabel(baseLabelRaw, 28);
-  const yLabelRaw = `${baseLabelRaw} (5-match avg)`;
-  const yLabel = truncateLabel(yLabelRaw, 28);
-  const xLabel = "Match date (5-match rolling avg)";
+  const entry = GLOSSARY[key] || {};
+
   el.innerHTML = `<svg class="timeline-svg" viewBox="0 0 ${w} ${h}">
-    <line x1="${x0}" y1="${y1}" x2="${x1}" y2="${y1}" stroke="#1e293b"/>
-    <line x1="${x0}" y1="${y1}" x2="${x0}" y2="${y0}" stroke="#1e293b"/>
-    <line x1="${x0}" y1="${zero}" x2="${x1}" y2="${zero}" stroke="#1e293b" stroke-dasharray="3 4"/>
-    <path d="${path}" fill="none" stroke="#38bdf8" stroke-width="2.5"/>${dots}
-    <text x="${x0}" y="${y0}" fill="#94a3b8" font-size="10.5">Rolling 5-Match ${baseLabel}</text>
-    <text x="${(x0+x1)/2}" y="${h - 6}" fill="#94a3b8" font-size="10" text-anchor="middle">${xLabel}</text>
-    <text x="14" y="${(y0+y1)/2}" fill="#94a3b8" font-size="10" text-anchor="middle" transform="rotate(-90 14 ${(y0+y1)/2})">${yLabel}</text>
+    <line x1="${x0}" y1="${y1}" x2="${x1}" y2="${y1}" stroke="var(--border)"/>
+    <line x1="${x0}" y1="${y1}" x2="${x0}" y2="${y0}" stroke="var(--border)"/>
+    <line x1="${x0}" y1="${zero}" x2="${x1}" y2="${zero}" stroke="var(--border)" stroke-dasharray="3 4"/>
+    <path d="${path}" fill="none" stroke="${strokeColor}" stroke-width="2.5"/>${dots}
+    <text x="${x0}" y="${y0}" fill="var(--muted)" font-size="10.5">Rolling 5-Match ${entry.label || key}</text>
+  </svg>`;
+}
+
+function drawLast5Bars(container, mt, style) {
+  const el = document.getElementById(container);
+  if (!el || !mt || !mt.dates || !mt.dates.length) { if (el) el.innerHTML = `<div class="empty">No recent data.</div>`; return; }
+  const lastN = Math.min(5, mt.dates.length);
+  const series = [
+    { label: "Shots", key: "shots_for", color: "var(--accent)" },
+    { label: "Goals", key: "goals_for", color: "var(--tier-good)" },
+    { label: "xG", key: "xG_for", color: "var(--neutral)" },
+  ];
+  const w = 1100, h = 240, padL = 50, pad = 34, x0 = padL, x1 = w - pad, y0 = 18, y1 = h - 44;
+  const dates = mt.dates.slice(-lastN);
+  const benches = {};
+  series.forEach((sr) => { const arr = mt[sr.key] || []; benches[sr.key] = style && style[sr.key] != null ? style[sr.key] : (arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0); });
+  const vals = series.flatMap((sr) => (mt[sr.key] || []).slice(-lastN).concat([benches[sr.key]]));
+  const maxV = Math.max(...vals.filter((v) => v !== null && v !== undefined), 0.001);
+  const y = (v) => y1 - (v / maxV) * (y1 - y0);
+  const groupW = (x1 - x0) / dates.length;
+  const barW = Math.min(26, groupW * 0.22);
+  let bars = "", dots = "", xgLabels = "";
+  dates.forEach((dt, i) => {
+    const gx = x0 + i * groupW + groupW / 2;
+    series.forEach((sr, si) => {
+      const arr = (mt[sr.key] || []).slice(-lastN);
+      const v = arr[i];
+      if (v == null) return;
+      const bx = gx - barW * 1.5 + si * barW;
+      const by = y(v);
+      bars += `<rect x="${bx}" y="${by}" width="${barW - 2}" height="${y1 - by}" rx="2" fill="${sr.color}" opacity="0.85"><title>${dt} · ${sr.label}: ${fmt(v, 1)}</title></rect>`;
+    });
+    // benchmark line per group
+    const benchX = gx - barW * 1.5;
+    const benchY = y(benches[series[0].key]);
+    xgLabels += `<text x="${gx}" y="${y1 + 14}" fill="var(--muted)" font-size="9.5" text-anchor="middle">${String(dt).slice(5)}</text>`;
+    dots += `<line x1="${benchX}" y1="${benchY}" x2="${benchX + barW * 3}" y2="${benchY}" stroke="var(--border-hover)" stroke-dasharray="3 3" stroke-width="1"/>`;
+  });
+  el.innerHTML = `<svg class="timeline-svg" viewBox="0 0 ${w} ${h}">
+    <line x1="${x0}" y1="${y1}" x2="${x1}" y2="${y1}" stroke="var(--border)"/>
+    <line x1="${x0}" y1="${y1}" x2="${x0}" y2="${y0}" stroke="var(--border)"/>
+    ${bars}${dots}${xgLabels}
+    <text x="${x0}" y="${y0}" fill="var(--muted)" font-size="10">Shots · Goals · xG (last ${lastN}) — dashed = season avg</text>
+    <text x="${x0 + (x1 - x0) / 2}" y="${h - 8}" fill="var(--muted)" font-size="9.5" text-anchor="middle">Match →</text>
   </svg>`;
 }
 
@@ -2235,136 +2957,12 @@ function finishing(f) {
   </div><div class="hint">${f.interpretation}</div>`;
 }
 
-function shotSelection(s, shots = [], detail = null) {
+function shotSelection(s) {
   return `<div class="kv">
     <span class="k">${term("shots")}</span><span class="v">${fmt(s.shots, 0)} · ${fmt(s.shots_per90, 2)}/90</span>
     <span class="k">${term("xG_per_shot")}</span><span class="v">${s.xG_per_shot == null ? "N/A" : fmt(s.xG_per_shot, 3)}</span>
     <span class="k">Non-Penalty xG / Shot</span><span class="v">${s.npxG_per_shot == null ? "N/A" : fmt(s.npxG_per_shot, 3)}</span>
-  </div>
-  ${playerShotMixBars(shots)}
-  ${playerZoneTypeBars(detail)}
-  <div class="hint" style="margin-top:10px">${s.interpretation}</div>`;
-}
-
-function playerZoneTypeBars(detail) {
-  const emptyHtml = `<div class="empty" style="padding:12px">Zone/type breakdown unavailable for this season — Understat groups missing</div>`;
-  if (!detail || (detail.zones == null && detail.types == null && detail.role_split == null)) return emptyHtml;
-  const colors = ["#38bdf8", "#10b981", "#f59e0b", "#a855f7", "#ec4899", "#64748b"];
-  function barBlock(title, items, labelKey = "name") {
-    if (!items || !items.length) return "";
-    const total = items.reduce((a, b) => a + (Number(b.shots) || 0), 0) || 1;
-    const sitItems = items.map((r) => {
-      const name = r[labelKey] || r.name || r.shotZones || r.shotTypes || "—";
-      return [name, Number(r.shots) || 0, r.xG_share];
-    });
-    const filtered = sitItems.filter(([, c]) => c > 0);
-    if (!filtered.length) return "";
-    return `
-      <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border)">
-        <div style="font-size:11.5px;font-weight:700;color:var(--text);margin-bottom:6px">${title}</div>
-        <div style="display:flex;gap:3px;margin-bottom:8px;height:9px;border-radius:var(--radius-full);overflow:hidden;background:var(--bg)">
-          ${filtered.map(([name, count], idx) => {
-            const p = (count / total) * 100;
-            return `<div style="width:${p}%;background:${colors[idx % colors.length]};height:100%" title="${name}: ${count} (${fmt(p, 1)}%)"></div>`;
-          }).join("")}
-        </div>
-        <div style="display:flex;flex-wrap:wrap;gap:10px;font-size:11px;color:var(--muted)">
-          ${filtered.map(([name, count, xG_share], idx) => {
-            const share = xG_share != null ? ` · xG share ${pct(xG_share, 0)}` : "";
-            return `<span style="display:flex;align-items:center;gap:4px"><span style="display:inline-block;width:7px;height:7px;border-radius:2px;background:${colors[idx % colors.length]}"></span>${name}: <strong>${fmt((count / total) * 100, 0)}%</strong> (${count})${share}</span>`;
-          }).join("")}
-        </div>
-      </div>
-    `;
-  }
-  const zonesHtml = barBlock("Shot Zones (InsideBox / OutsideBox)", detail.zones);
-  const typesHtml = barBlock("Shot Types (Foot / Head)", detail.types);
-  let roleHtml = "";
-  if (detail.role_split && detail.role_split.length) {
-    roleHtml = `<div style="margin-top:12px;font-size:11px;color:var(--muted)"><strong style="color:var(--text)">Role split:</strong> ${detail.role_split.map((r) => `${r.role || r.position || "—"}: ${r.games || 0}g · ${r.minutes || r.time || 0} min`).join(" · ")}</div>`;
-  }
-  if (!zonesHtml && !typesHtml && !roleHtml) return emptyHtml;
-  return zonesHtml + typesHtml + roleHtml;
-}
-
-function assistedNetworkBlock(an) {
-  if (!an || ((!an.top_assisters || !an.top_assisters.length) && (!an.top_assisted || !an.top_assisted.length))) {
-    return `<div class="card" style="margin-top:20px">
-      <div class="card-header"><span class="card-title">Assisted Network (Understat shot assists)</span></div>
-      <div class="empty" style="padding:16px">No assist data</div>
-      ${an && an.honest_note ? `<div class="hint" style="margin-top:8px">${an.honest_note}</div>` : `<div class="hint" style="margin-top:8px">Aggregated from shots.player_assisted (Understat shot assists, not Opta key passes).</div>`}
-    </div>`;
-  }
-  const assisters = an.top_assisters || [];
-  const assisted = an.top_assisted || [];
-  const honest = an.honest_note || "Aggregated from shots.player_assisted (Understat shot assists, not Opta key passes).";
-  function rowsFor(list, keyName) {
-    if (!list.length) return `<tr><td colspan="3" style="color:var(--muted);text-align:center;padding:10px">—</td></tr>`;
-    return list.map((r) => {
-      const name = r.assister || r.assisted || r[keyName] || r.player || "—";
-      const cnt = r.count != null ? r.count : 0;
-      const xg = r.assists_xG != null ? r.assists_xG : (r.xG != null ? r.xG : 0);
-      return `<tr><td><strong>${name}</strong></td><td class="num">${fmt(cnt,0)}</td><td class="num">${fmt(xg)}</td></tr>`;
-    }).join("");
-  }
-  let badgeText = "";
-  if (!assisted.length && assisters.length) {
-    badgeText = `${assisters.length} inbound`;
-  } else if (!assisters.length && assisted.length) {
-    badgeText = `${assisted.length} outbound`;
-  } else {
-    const total = assisters.length + assisted.length;
-    badgeText = `${total} ${total === 1 ? "link" : "links"}`;
-  }
-  return `<div class="card" style="margin-top:20px">
-    <div class="card-header"><span class="card-title">Assisted Network</span><span style="font-size:11px;color:var(--muted)">${badgeText}</span></div>
-    <div class="grid cols-2">
-      <div>
-        <div style="font-size:11.5px;font-weight:700;color:var(--text);margin-bottom:8px">Top assisters → you</div>
-        <table><thead><tr><th>Assister</th><th class="num">Count</th><th class="num">Assists xG</th></tr></thead><tbody>${rowsFor(assisters, "assister")}</tbody></table>
-      </div>
-      <div>
-        <div style="font-size:11.5px;font-weight:700;color:var(--text);margin-bottom:8px">You assisted → teammates</div>
-        <table><thead><tr><th>Assisted</th><th class="num">Count</th><th class="num">xG</th></tr></thead><tbody>${rowsFor(assisted, "assisted")}</tbody></table>
-      </div>
-    </div>
-    <div class="hint" style="margin-top:10px">${honest}</div>
-  </div>`;
-}
-
-function playerShotMixBars(shots) {
-  if (!shots || !shots.length) return "";
-  const counts = { "Open Play": 0, "From Corner": 0, "Set Piece": 0, "Direct FK": 0, "Penalty": 0 };
-  shots.forEach(s => {
-    const sit = s.situation === "OpenPlay" ? "Open Play" :
-                s.situation === "FromCorner" ? "From Corner" :
-                s.situation === "SetPiece" ? "Set Piece" :
-                s.situation === "DirectFreekick" ? "Direct FK" :
-                s.situation === "Penalty" ? "Penalty" : s.situation;
-    counts[sit] = (counts[sit] || 0) + 1;
-  });
-  const total = shots.length;
-  const sitItems = Object.entries(counts).filter(([_, c]) => c > 0);
-  if (!sitItems.length) return "";
-
-  const colors = ["#38bdf8", "#10b981", "#f59e0b", "#a855f7", "#ec4899", "#64748b"];
-
-  return `
-    <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border)">
-      <div style="font-size:11.5px;font-weight:700;color:var(--text);margin-bottom:6px">Shot Situations & Creation Mix</div>
-      <div style="display:flex;gap:3px;margin-bottom:8px;height:9px;border-radius:var(--radius-full);overflow:hidden;background:var(--bg)">
-        ${sitItems.map(([sit, count], idx) => {
-          const p = (count / total) * 100;
-          return `<div style="width:${p}%;background:${colors[idx % colors.length]};height:100%" title="${sit}: ${count} (${fmt(p, 1)}%)"></div>`;
-        }).join("")}
-      </div>
-      <div style="display:flex;flex-wrap:wrap;gap:10px;font-size:11px;color:var(--muted)">
-        ${sitItems.map(([sit, count], idx) => {
-          return `<span style="display:flex;align-items:center;gap:4px"><span style="display:inline-block;width:7px;height:7px;border-radius:2px;background:${colors[idx % colors.length]}"></span>${sit}: <strong>${fmt((count / total) * 100, 0)}%</strong> (${count})</span>`;
-        }).join("")}
-      </div>
-    </div>
-  `;
+  </div><div class="hint">${s.interpretation}</div>`;
 }
 
 const RADAR_LABEL_KEYS = { Goals: "goals", xG: "xG", "NP xG": "npxG", Assists: "assists", xA: "xA", Shots: "shots", "Key passes": "key_passes", xGChain: "xG_chain", xGBuildup: "xG_buildup" };
@@ -2382,26 +2980,27 @@ function drawRadar(container, profile) {
   for (let g = 1; g <= 4; g++) {
     const rr = r * g / 4;
     let pts = ""; for (let i = 0; i < n; i++) { const [x, y] = pt(i, rr); pts += `${x},${y} `; }
-    rings += `<polygon points="${pts}" fill="none" stroke="#1e293b" stroke-width="1"/>`;
+    rings += `<polygon points="${pts}" fill="none" stroke="var(--border)" stroke-width="1"/>`;
   }
   let spokes = "", labels = "";
   for (let i = 0; i < n; i++) {
     const [x, y] = pt(i, r);
-    spokes += `<line x1="${cx}" y1="${cy}" x2="${x}" y2="${y}" stroke="#1e293b" stroke-width="1"/>`;
+    spokes += `<line x1="${cx}" y1="${cy}" x2="${x}" y2="${y}" stroke="var(--border)" stroke-width="1"/>`;
     const [lx, ly] = pt(i, r + 18);
-    labels += `<text x="${lx}" y="${ly}" fill="#94a3b8" font-size="10.5" font-weight="600" text-anchor="middle" dominant-baseline="middle">${profile[i].label}</text>`;
+    labels += `<text x="${lx}" y="${ly}" fill="var(--muted)" font-size="10.5" font-weight="600" text-anchor="middle" dominant-baseline="middle">${profile[i].label}</text>`;
   }
   let poly = ""; const vals = [];
+  const accentColor = getThemeColor("--accent") || "#1ed760";
   for (let i = 0; i < n; i++) {
-    const pct = profile[i].percentile;
-    const rr = r * pct / 100;
+    const pctVal = profile[i].percentile;
+    const rr = r * pctVal / 100;
     const [x, y] = pt(i, rr);
     poly += `${x},${y} `;
-    vals.push(`<circle cx="${x}" cy="${y}" r="3.5" fill="#38bdf8"/>`);
+    vals.push(`<circle cx="${x}" cy="${y}" r="3.5" fill="${accentColor}"/>`);
   }
   el.innerHTML = `<svg class="radar-svg" viewBox="0 0 ${size} ${size}">
     ${rings}${spokes}
-    <polygon points="${poly}" fill="rgba(56,189,248,0.2)" stroke="#38bdf8" stroke-width="2.5"/>
+    <polygon points="${poly}" fill="${accentColor}33" stroke="${accentColor}" stroke-width="2.5"/>
     ${labels}${vals.join("")}
   </svg>`;
 }
@@ -2428,7 +3027,6 @@ async function runLeague() {
     let rows = (d.is_lying && d.is_lying.rows) || [];
     let notice = "";
 
-    // If active season has 0 matches played for this league, automatically fall back to previous season
     if (!rows.length && season === LATEST_SEASON) {
       season = LATEST_SEASON - 1;
       if ($("leagueSeason")) $("leagueSeason").value = String(season);
@@ -2448,16 +3046,12 @@ async function runLeague() {
   }
 }
 
-let leagueDataCache = null;
-let leagueTableState = { sortKey: "rank", sortDir: "asc", viewMode: "all" };
-
 function renderLeague(node, d, notice = "") {
   clear(node);
-  leagueDataCache = d;
-  const rawRows = d.table || (d.is_lying && d.is_lying.table_order_rows) || (d.is_lying && d.is_lying.rows) || [];
+  const rows = (d.is_lying && d.is_lying.rows) || [];
   const curSeason = seasonOf("leagueSeason");
 
-  if (!rawRows.length) {
+  if (!rows.length) {
     node.innerHTML = `
       <div class="empty" style="padding:48px 16px">
         <div class="empty-title">${LEAGUE_LABEL[state.league] || state.league} ${curSeason} Has No Completed Matches</div>
@@ -2472,510 +3066,66 @@ function renderLeague(node, d, notice = "") {
     return;
   }
 
-  // Calculate high-water marks for KPI cards
-  const sortedByPts = [...rawRows].sort((a, b) => b.points - a.points);
-  const sortedByXPts = [...rawRows].sort((a, b) => (b.xPTS || 0) - (a.xPTS || 0));
-  const sortedByNPxGD = [...rawRows].sort((a, b) => (b.npxGD || 0) - (a.npxGD || 0));
-  const sortedByPPDA = [...rawRows].filter(r => (r.PPDA || 0) > 0).sort((a, b) => a.PPDA - b.PPDA);
-  const sortedByDC = [...rawRows].sort((a, b) => (b.deep_completions || 0) - (a.deep_completions || 0));
-  const overperformer = d.is_lying && d.is_lying.biggest_overperformer;
-  const underperformer = d.is_lying && d.is_lying.biggest_underperformer;
-
-  const leader = sortedByPts[0] || {};
-  const xptsLeader = sortedByXPts[0] || {};
-  const npxgdLeader = sortedByNPxGD[0] || {};
-  const pressLeader = sortedByPPDA[0] || {};
-  const dcLeader = sortedByDC[0] || {};
-
   node.innerHTML = `
     ${notice ? `<div style="margin-bottom:16px"><span class="hero-pill accent">${notice}</span></div>` : ""}
 
-    <!-- League KPI Overview Strip -->
-    <div class="kpi-row" style="margin-bottom:20px">
-      <div class="kpi-card" style="cursor:pointer" onclick="$('teamName').value='${leader.team || ''}';activateTab('team');runTeam()">
-        <span class="kpi-label">🏆 Table Leader</span>
-        <span class="kpi-value" style="font-size:18px">${leader.team || '—'}</span>
-        <span class="kpi-sub">${leader.points || 0} pts · ${leader.matches || 0} matches</span>
-      </div>
-      <div class="kpi-card" style="cursor:pointer" onclick="$('teamName').value='${xptsLeader.team || ''}';activateTab('team');runTeam()">
-        <span class="kpi-label">⚡ ${term("xpts", "xPTS")} Leader</span>
-        <span class="kpi-value" style="font-size:18px">${xptsLeader.team || '—'}</span>
-        <span class="kpi-sub">${fmt(xptsLeader.xPTS, 1)} expected pts</span>
-      </div>
-      <div class="kpi-card" style="cursor:pointer" onclick="$('teamName').value='${npxgdLeader.team || ''}';activateTab('team');runTeam()">
-        <span class="kpi-label">🛡️ Best ${term("npxgd", "NPxGD")} Process</span>
-        <span class="kpi-value" style="font-size:18px">${npxgdLeader.team || '—'}</span>
-        <span class="kpi-sub">${fmt(npxgdLeader.npxGD, 1)} open-play diff</span>
-      </div>
-      <div class="kpi-card" style="cursor:pointer" onclick="$('teamName').value='${pressLeader.team || ''}';activateTab('team');runTeam()">
-        <span class="kpi-label">🔥 Most Intense ${term("ppda", "PPDA")}</span>
-        <span class="kpi-value" style="font-size:18px">${pressLeader.team || '—'}</span>
-        <span class="kpi-sub">${fmt(pressLeader.PPDA, 1)} passes allowed / action</span>
-      </div>
-      <div class="kpi-card" style="cursor:pointer" onclick="$('teamName').value='${dcLeader.team || ''}';activateTab('team');runTeam()">
-        <span class="kpi-label">🎯 Box Penetration (${term("dc", "DC")})</span>
-        <span class="kpi-value" style="font-size:18px">${dcLeader.team || '—'}</span>
-        <span class="kpi-sub">${dcLeader.deep_completions || 0} deep box passes</span>
-      </div>
-      ${overperformer ? `
-      <div class="kpi-card" style="cursor:pointer" onclick="$('teamName').value='${overperformer.team || ''}';activateTab('team');runTeam()">
-        <span class="kpi-label">🎲 Luck / Flattery Gap</span>
-        <span class="kpi-value" style="font-size:18px;color:${overperformer.xPTS_gap > 0 ? 'var(--fg-good)' : 'var(--fg-bad)'}">
-          ${overperformer.team} (+${fmt(overperformer.xPTS_gap, 1)})
-        </span>
-        <span class="kpi-sub">PTS outrunning xG process</span>
-      </div>
-      ` : ""}
-    </div>
-
-    <!-- Complete 19-Metric Team League Table -->
+    <!-- Full Width xPTS Is-Lying Table -->
     <div class="card">
-      <div class="card-header" style="flex-wrap:wrap;gap:12px;align-items:center">
-        <div>
-          <span class="card-title">Comprehensive League Intelligence & Process Table</span>
-          <div style="font-size:11.5px;color:var(--muted);margin-top:2px">
-            All 19 official Understat match & process metrics · Click any column header to sort · Hover headers for metric definitions
-          </div>
-        </div>
-        <span class="mono" style="font-size:11.5px;color:var(--muted)">${LEAGUE_LABEL[state.league] || state.league} · ${curSeason}</span>
-      </div>
-
-      <!-- View Preset Switchers -->
-      <div class="view-pills-row">
-        <span style="font-size:11.5px;color:var(--muted);font-weight:700;margin-right:4px">Table View:</span>
-        <button class="view-pill-btn ${leagueTableState.viewMode === 'all' ? 'active' : ''}" onclick="setLeagueViewMode('all')">Full 19-Metric Board</button>
-        <button class="view-pill-btn ${leagueTableState.viewMode === 'standard' ? 'active' : ''}" onclick="setLeagueViewMode('standard')">Standings & Results (M, W, D, L, G, GA, PTS)</button>
-        <button class="view-pill-btn ${leagueTableState.viewMode === 'expected' ? 'active' : ''}" onclick="setLeagueViewMode('expected')">Expected Goals Process (xG, NPxG, xGA, NPxGA, NPxGD, xPTS)</button>
-        <button class="view-pill-btn ${leagueTableState.viewMode === 'pressing' ? 'active' : ''}" onclick="setLeagueViewMode('pressing')">Pressing & Penetration (PPDA, OPPDA, DC, ODC)</button>
-      </div>
-
-      <div class="table-responsive" id="leagueTableContainer">
-        ${renderLeagueTableHTML(rawRows, leagueTableState.viewMode, leagueTableState.sortKey, leagueTableState.sortDir)}
-      </div>
-
-      <!-- Metric Glossary & Quick Cheat-Sheet -->
-      <div class="metric-legend-card">
-        <div class="metric-legend-item">
-          <strong>№ / M / W / D / L:</strong> <span>Rank, Matches Played, Wins (3pts), Draws (1pt), Losses (0pts).</span>
-        </div>
-        <div class="metric-legend-item">
-          <strong>G / GA / GD / PTS:</strong> <span>Goals Scored, Goals Against, Goal Diff, Actual Championship Points.</span>
-        </div>
-        <div class="metric-legend-item">
-          <strong>xG / NPxG:</strong> <span>Expected Goals from all shots; NPxG excludes penalties (0.76 xG each) for open-play truth.</span>
-        </div>
-        <div class="metric-legend-item">
-          <strong>xGA / NPxGA:</strong> <span>Expected Goals Against conceded; NPxGA measures non-penalty defensive quality.</span>
-        </div>
-        <div class="metric-legend-item">
-          <strong>NPxGD:</strong> <span>Non-Penalty Expected Goal Diff (NPxG − NPxGA) — single best underlying strength metric.</span>
-        </div>
-        <div class="metric-legend-item">
-          <strong>PPDA / OPPDA:</strong> <span>Passes Allowed per Defensive Action in attacking 60%. Lower = intense press; OPPDA = press resistance.</span>
-        </div>
-        <div class="metric-legend-item">
-          <strong>DC / ODC:</strong> <span>Deep Completions (non-cross passes within 20yd of goal) and ODC (deep completions conceded).</span>
-        </div>
-        <div class="metric-legend-item">
-          <strong>xPTS / Gap:</strong> <span>Expected Points simulated from chance distributions; Gap = PTS − xPTS (table flattery vs harshness).</span>
+      <div class="card-header">
+        <div class="section-question">
+          <span class="question-title">Expected Points (xPTS) Diagnostic & "Is-Lying" Table</span>
+          <span class="question-desc">${LEAGUE_LABEL[state.league] || state.league} · ${curSeason} season</span>
         </div>
       </div>
-
+      <table>
+        <thead>
+          <tr>
+            <th>Rank</th>
+            <th>Team</th>
+            <th class="num">Points</th>
+            <th class="num">${term("xpts")}</th>
+            <th class="num">Pts Gap</th>
+            <th class="num">${term("g_minus_xg")}</th>
+            <th class="num">xGA − GA</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows.map((r, i) => {
+            const gapCls = r.xPTS_gap > 0 ? "good" : r.xPTS_gap < 0 ? "bad" : "";
+            const isTop4 = i < 4;
+            return `
+              <tr>
+                <td><span class="rank-badge ${isTop4 ? 'top4' : ''}">${i + 1}</span></td>
+                <td><strong style="cursor:pointer;color:var(--text-bright)" onclick="$('teamName').value='${r.team}';activateTab('team');runTeam()">${r.team}</strong></td>
+                <td class="num"><strong>${r.points}</strong></td>
+                <td class="num" style="color:var(--accent);font-weight:700">${fmt(r.xPTS, 1)}</td>
+                <td class="num"><span class="badge ${gapCls}">${r.xPTS_gap >= 0 ? "+" : ""}${fmt(r.xPTS_gap, 1)}</span></td>
+                <td class="num" style="color:${r.g_minus_xg >= 0 ? 'var(--fg-good)' : 'var(--fg-bad)'}">${r.g_minus_xg >= 0 ? '+' : ''}${fmt(r.g_minus_xg)}</td>
+                <td class="num">${fmt(r.xga_minus_ga)}</td>
+              </tr>
+            `;
+          }).join("")}
+        </tbody>
+      </table>
       <div class="hint" style="margin-top:12px">${d.is_lying.interpretation}</div>
     </div>
 
-    <!-- Tactical Archetypes Summary -->
-    ${d.archetypes ? `
+    <!-- Row 2: PPDA Pressing Rankings -->
+    ${d.ppda_ranking && d.ppda_ranking.ranking && d.ppda_ranking.ranking.length ? `
       <div class="card" style="margin-top:20px">
-        <div class="card-header" style="flex-wrap:wrap;gap:10px;justify-content:space-between;align-items:center">
-          <div>
-            <span class="card-title">Tactical Archetypes</span>
-            <div style="font-size:11.5px;color:var(--muted);margin-top:2px">${d.archetypes.honest_note}</div>
+        <div class="card-header">
+          <div class="section-question">
+            <span class="question-title">PPDA Pressing Intensity Rankings</span>
+            <span class="question-desc">Division pressing pace and deep box penetration</span>
           </div>
-          <span class="mono" style="font-size:11.5px;color:var(--muted)">${Object.keys(d.archetypes.by_team || {}).length} teams classified</span>
         </div>
-        <div style="display:flex;flex-wrap:wrap;gap:18px;padding:14px 16px 16px">
-          ${Object.entries(d.archetypes.counts || {}).sort((a, b) => b[1] - a[1]).map(([label, n]) => `
-            <div style="min-width:210px">
-              <div style="font-weight:800;font-size:12px;color:var(--accent);margin-bottom:7px">${label} <span style="color:var(--muted);font-weight:600">· ${n}</span></div>
-              <div style="display:flex;flex-wrap:wrap;gap:5px">
-                ${Object.entries(d.archetypes.by_team || {}).filter(([, l]) => l === label).map(([team]) => `
-                  <button class="view-pill-btn" style="padding:3px 10px;font-size:11px" onclick="$('teamName').value='${team}';activateTab('team');runTeam()">${team}</button>
-                `).join("")}
-              </div>
-            </div>
-          `).join("")}
-        </div>
+        <table><thead><tr><th>Rank</th><th>Team</th><th class="num">PPDA (Att)</th><th class="num">OPPDA (Def)</th><th class="num">Deep Completions</th></tr></thead><tbody>
+          ${d.ppda_ranking.ranking.slice(0, 14).map((p, i) => `<tr><td>#${i+1}</td><td><strong style="cursor:pointer" onclick="$('teamName').value='${p.team}';activateTab('team');runTeam()">${p.team}</strong></td><td class="num"><strong>${fmt(p.PPDA)}</strong></td><td class="num">${fmt(p.OPPDA)}</td><td class="num">${p.deep_completions}</td></tr>`).join("")}
+        </tbody></table>
       </div>
     ` : ""}
 
-    <!-- Row 2: Divergence Waterfall Chart (Dedicated Full-Width Card) -->
-    <div class="card" style="margin-top:20px">
-      <div class="card-header" style="flex-wrap:wrap;gap:10px;justify-content:space-between;align-items:center">
-        <div>
-          <span class="card-title">Points vs xPTS Divergence (Table Flattery vs Harshness)</span>
-          <div class="chart-subtitle">
-            <span style="color:#10b981;font-weight:700">■ Green Bars</span> = Actual Points outrunning expected quality (flattering table) · 
-            <span style="color:#f43f5e;font-weight:700">■ Red Bars</span> = Points trailing underlying process (unrewarded / harsh table)
-          </div>
-        </div>
-        <span class="mono" style="font-size:11.5px;color:var(--muted)">Sorted by Flattery Gap (PTS − xPTS)</span>
-      </div>
-      <div id="leagueDivergenceChart" style="width:100%;overflow-x:auto;padding-top:10px"></div>
-    </div>
-
-    <!-- Row 3: Tactical Landscape Quadrant (Dedicated Full-Width Card) -->
-    <div class="card" style="margin-top:20px">
-      <div class="card-header" style="flex-wrap:wrap;gap:10px;justify-content:space-between;align-items:center">
-        <div>
-          <span class="card-title">Tactical Landscape · Pressing Intensity vs Deep Box Penetration</span>
-          <div class="chart-subtitle">
-            Passes per Defensive Action (PPDA, inverted for aggressive press on right) vs Non-Cross Passes within 20 Yards (DC)
-          </div>
-        </div>
-        <span class="mono" style="font-size:11.5px;color:var(--muted)">League Baseline Crosshairs</span>
-      </div>
-      <div id="leaguePressQuadrant" style="width:100%;overflow-x:auto;padding-top:10px"></div>
-    </div>
-
-    <!-- Row 4: Finishing & Defensive Variance Breakdown -->
-    ${d.variance ? `
-      <div class="grid cols-2" style="margin-top:20px">
-        <div class="card">
-          <div class="card-header"><span class="card-title">Finishing Variance & Luck Analysis</span></div>
-          <div class="kpi-row" style="margin-bottom:12px">
-            <div class="kpi-card">
-              <span class="kpi-label">Mean ${term("g_minus_xg", "G − xG")}</span>
-              <span class="kpi-value">${fmt(d.variance.finishing_variance.mean_g_minus_xg)}</span>
-              <span class="kpi-sub">League finishing baseline</span>
-            </div>
-            <div class="kpi-card">
-              <span class="kpi-label">Finishing Spread (StDev)</span>
-              <span class="kpi-value">${fmt(d.variance.finishing_variance.stdev_g_minus_xg)}</span>
-              <span class="kpi-sub">Dispersion of finishing luck</span>
-            </div>
-          </div>
-          <div class="hint">${d.variance.interpretation}</div>
-        </div>
-
-        <div class="card">
-          <div class="card-header"><span class="card-title">League Process Pace</span></div>
-          <div class="kpi-row" style="margin-bottom:12px">
-            <div class="kpi-card">
-              <span class="kpi-label">Average xG / Game</span>
-              <span class="kpi-value">${fmt(d.pace ? d.pace.xG_per_game : 0)}</span>
-              <span class="kpi-sub">Total chance volume pace</span>
-            </div>
-            <div class="kpi-card">
-              <span class="kpi-label">Matches Completed</span>
-              <span class="kpi-value">${d.pace ? d.pace.matches : 0}</span>
-              <span class="kpi-sub">Sample size</span>
-            </div>
-          </div>
-          <div class="hint">${d.pace ? d.pace.interpretation : ''}</div>
-        </div>
-      </div>
-    ` : ""}
-
-    <!-- Limitations -->
-    <div class="caveat" style="margin-top:20px"><strong>Limitations & Analytical Honesty.</strong><ul>${d.limitations.map((l) => `<li>${l}</li>`).join("")}</ul></div>
-  `;
-
-  drawLeagueDivergenceChart("leagueDivergenceChart", rawRows);
-  drawLeagueTacticalQuadrant("leaguePressQuadrant", rawRows);
-}
-
-function drawLeagueDivergenceChart(container, rows) {
-  const el = document.getElementById(container);
-  if (!el || !rows || !rows.length) return;
-  const sorted = [...rows].sort((a, b) => (b.xPTS_gap || 0) - (a.xPTS_gap || 0));
-  const maxGap = Math.max(...sorted.map(r => Math.abs(r.xPTS_gap || 0)), 1.5);
-  const w = 1100, rowH = 38, h = sorted.length * rowH + 70;
-  const padL = 250, padR = 160, x0 = padL, x1 = w - padR;
-  const midX = (x0 + x1) / 2;
-
-  let bars = "", labels = "", lines = "";
-  sorted.forEach((r, i) => {
-    const y = 48 + i * rowH;
-    const gap = r.xPTS_gap || 0;
-    const isOver = gap >= 0;
-    const barLen = (Math.abs(gap) / maxGap) * ((x1 - x0) / 2 - 25);
-    const barX = isOver ? midX : midX - barLen;
-    const color = isOver ? "#10b981" : "#f43f5e";
-
-    // Row divider
-    lines += `<line x1="${x0}" y1="${y + rowH/2 - 2}" x2="${x1}" y2="${y + rowH/2 - 2}" stroke="#1e293b" stroke-dasharray="3 4"/>`;
-
-    // Bar
-    if (Math.abs(gap) > 0.05) {
-      bars += `<rect x="${barX}" y="${y - 11}" width="${Math.max(barLen, 3)}" height="22" fill="${color}" rx="4" opacity="0.95"/>`;
-    } else {
-      bars += `<circle cx="${midX}" cy="${y}" r="4" fill="#64748b"/>`;
-    }
-
-    // Team Label
-    labels += `<g style="cursor:pointer" onclick="$('teamName').value='${r.team}';activateTab('team');runTeam()">
-      <text x="${x0 - 16}" y="${y - 1}" fill="#f8fafc" font-size="13.5" font-weight="700" text-anchor="end">${r.team}</text>
-      <text x="${x0 - 16}" y="${y + 14}" fill="#64748b" font-size="11" font-family="var(--mono)" text-anchor="end">${r.points || 0} pts · ${fmt(r.xPTS, 1)} xPTS</text>
-    </g>`;
-
-    // Gap Badge
-    if (isOver && Math.abs(gap) > 0.05) {
-      labels += `<rect x="${midX + barLen + 10}" y="${y - 11}" width="66" height="22" rx="4" fill="rgba(16, 185, 129, 0.18)" stroke="rgba(16, 185, 129, 0.45)"/>
-        <text x="${midX + barLen + 43}" y="${y + 5}" fill="#34d399" font-size="12.5" font-weight="800" font-family="var(--mono)" text-anchor="middle">+${fmt(gap, 1)} pts</text>`;
-    } else if (!isOver && Math.abs(gap) > 0.05) {
-      labels += `<rect x="${midX - barLen - 76}" y="${y - 11}" width="66" height="22" rx="4" fill="rgba(244, 63, 94, 0.18)" stroke="rgba(244, 63, 94, 0.45)"/>
-        <text x="${midX - barLen - 43}" y="${y + 5}" fill="#fb7185" font-size="12.5" font-weight="800" font-family="var(--mono)" text-anchor="middle">${fmt(gap, 1)} pts</text>`;
-    } else {
-      labels += `<text x="${midX + 14}" y="${y + 5}" fill="#94a3b8" font-size="12" font-family="var(--mono)" font-weight="700">0.0 pts</text>`;
-    }
-  });
-
-  el.innerHTML = `<svg class="chart-svg-divergence" viewBox="0 0 ${w} ${h}">
-    <!-- Zone Tints -->
-    <rect x="${x0}" y="28" width="${midX - x0}" height="${h - 42}" fill="rgba(244, 63, 94, 0.03)" rx="6"/>
-    <rect x="${midX}" y="28" width="${x1 - midX}" height="${h - 42}" fill="rgba(16, 185, 129, 0.03)" rx="6"/>
-
-    <!-- Grid lines -->
-    ${lines}
-
-    <!-- Center Line -->
-    <line x1="${midX}" y1="28" x2="${midX}" y2="${h - 14}" stroke="#475569" stroke-width="2" stroke-dasharray="4 4"/>
-
-    <!-- Header Banners -->
-    <text x="${x0 + (midX - x0)/2}" y="20" fill="#fb7185" font-size="12" font-weight="800" text-anchor="middle">← HARSH TABLE (Unrewarded Process / Bad Luck)</text>
-    <text x="${midX + (x1 - midX)/2}" y="20" fill="#34d399" font-size="12" font-weight="800" text-anchor="middle">FLATTERING TABLE (Points Outrunning xPTS) →</text>
-
-    <!-- Bars & Labels -->
-    ${bars}${labels}
-    <text x="${(x0+x1)/2}" y="${h - 6}" fill="#94a3b8" font-size="10" text-anchor="middle">Points gap (PTS − xPTS)</text>
-    <text x="14" y="${h/2}" fill="#94a3b8" font-size="10" text-anchor="middle" transform="rotate(-90 14 ${h/2})">Team (sorted by gap)</text>
-  </svg>`;
-}
-
-function drawLeagueTacticalQuadrant(container, rows) {
-  const el = document.getElementById(container);
-  if (!el || !rows || !rows.length) return;
-  const valid = rows.filter(r => (r.PPDA || 0) > 0 && (r.deep_completions || 0) > 0);
-  if (valid.length < 3) { el.innerHTML = `<div class="empty">Not enough team match data for tactical landscape.</div>`; return; }
-
-  const w = 1100, h = 600, padL = 100, padR = 90, padT = 70, padB = 70;
-  const x0 = padL, x1 = w - padR, y0 = padT, y1 = h - padB;
-
-  const ppdas = valid.map(r => r.PPDA);
-  const dcs = valid.map(r => r.deep_completions);
-  const minPPDA = Math.max(3, Math.min(...ppdas) - 1.2), maxPPDA = Math.max(...ppdas) + 1.5;
-  const minDC = Math.max(0, Math.min(...dcs) - 12), maxDC = Math.max(Math.max(...dcs) + 20, 25);
-
-  const avgPPDA = ppdas.reduce((a, b) => a + b, 0) / ppdas.length;
-  const avgDC = dcs.reduce((a, b) => a + b, 0) / dcs.length;
-
-  const x = (ppda) => x1 - ((ppda - minPPDA) / (maxPPDA - minPPDA)) * (x1 - x0);
-  const y = (dc) => y1 - ((dc - minDC) / (maxDC - minDC)) * (y1 - y0);
-
-  const midX = x(avgPPDA);
-  const midY = y(avgDC);
-
-  let dots = "", tags = "";
-  valid.forEach(r => {
-    const px = x(r.PPDA);
-    const py = y(r.deep_completions);
-    const name = r.team;
-    const tagW = Math.max(70, name.length * 7.5 + 20);
-
-    dots += `
-      <g style="cursor:pointer" onclick="$('teamName').value='${r.team}';activateTab('team');runTeam()">
-        <circle cx="${px}" cy="${py}" r="9" fill="rgba(56, 189, 248, 0.35)"/>
-        <circle cx="${px}" cy="${py}" r="5.5" fill="#38bdf8" stroke="#ffffff" stroke-width="2"/>
-      </g>
-    `;
-
-    // Clean pill label with background
-    tags += `
-      <g style="cursor:pointer" onclick="$('teamName').value='${r.team}';activateTab('team');runTeam()">
-        <rect x="${px - tagW/2}" y="${py - 26}" width="${tagW}" height="19" rx="4" fill="rgba(15, 23, 42, 0.92)" stroke="#334155" stroke-width="1.2"/>
-        <text x="${px}" y="${py - 13}" fill="#f8fafc" font-size="11" font-weight="700" text-anchor="middle">${name}</text>
-      </g>
-    `;
-  });
-
-  el.innerHTML = `<svg class="chart-svg-quadrant" viewBox="0 0 ${w} ${h}">
-    <!-- Quadrant Background Zones -->
-    <rect x="${midX}" y="${y0}" width="${x1 - midX}" height="${midY - y0}" fill="rgba(16, 185, 129, 0.07)" rx="4"/>
-    <rect x="${x0}" y="${y0}" width="${midX - x0}" height="${midY - y0}" fill="rgba(56, 189, 248, 0.06)" rx="4"/>
-    <rect x="${midX}" y="${midY}" width="${x1 - midX}" height="${y1 - midY}" fill="rgba(245, 158, 11, 0.06)" rx="4"/>
-    <rect x="${x0}" y="${midY}" width="${midX - x0}" height="${y1 - midY}" fill="rgba(100, 116, 139, 0.06)" rx="4"/>
-
-    <!-- Crosshair Reference Lines -->
-    <line x1="${x0}" y1="${midY}" x2="${x1}" y2="${midY}" stroke="#64748b" stroke-width="1.5" stroke-dasharray="4 4"/>
-    <line x1="${midX}" y1="${y0}" x2="${midX}" y2="${y1}" stroke="#64748b" stroke-width="1.5" stroke-dasharray="4 4"/>
-
-    <!-- Main Axis Border -->
-    <line x1="${x0}" y1="${y1}" x2="${x1}" y2="${y1}" stroke="#475569" stroke-width="2"/>
-    <line x1="${x0}" y1="${y1}" x2="${x0}" y2="${y0}" stroke="#475569" stroke-width="2"/>
-
-    <!-- Quadrant Header Badges -->
-    <rect x="${x1 - 210}" y="${y0 + 10}" width="200" height="26" rx="4" fill="rgba(16, 185, 129, 0.25)" stroke="#10b981"/>
-    <text x="${x1 - 110}" y="${y0 + 27}" fill="#34d399" font-size="12" font-weight="800" text-anchor="middle">👑 Dominant & High Press</text>
-
-    <rect x="${x0 + 10}" y="${y0 + 10}" width="200" height="26" rx="4" fill="rgba(56, 189, 248, 0.25)" stroke="#38bdf8"/>
-    <text x="${x0 + 110}" y="${y0 + 27}" fill="#7dd3fc" font-size="12" font-weight="800" text-anchor="middle">⚡ Direct / Counter Threat</text>
-
-    <rect x="${x0 + 10}" y="${y1 - 36}" width="210" height="26" rx="4" fill="rgba(100, 116, 139, 0.25)" stroke="#64748b"/>
-    <text x="${x0 + 115}" y="${y1 - 19}" fill="#cbd5e1" font-size="12" font-weight="800" text-anchor="middle">🛡️ Low Block & Low Infiltration</text>
-
-    <rect x="${x1 - 230}" y="${y1 - 36}" width="220" height="26" rx="4" fill="rgba(245, 158, 11, 0.25)" stroke="#f59e0b"/>
-    <text x="${x1 - 120}" y="${y1 - 19}" fill="#fcd34d" font-size="12" font-weight="800" text-anchor="middle">⚠️ High Press / Inefficient Threat</text>
-
-    <!-- Crosshair Badges -->
-    <text x="${x1 - 10}" y="${midY - 8}" fill="#94a3b8" font-size="11" font-family="var(--mono)" font-weight="700" text-anchor="end">League Avg DC: ${fmt(avgDC, 1)}</text>
-    <text x="${midX + 8}" y="${y0 + 52}" fill="#94a3b8" font-size="11" font-family="var(--mono)" font-weight="700">League Avg PPDA: ${fmt(avgPPDA, 1)}</text>
-
-    <!-- Club Nodes and Tags -->
-    ${dots}${tags}
-
-    <!-- Axis Labels -->
-    <text x="${x0 + (x1 - x0)/2}" y="${h - 20}" fill="#e2e8f0" font-size="13" font-weight="800" text-anchor="middle">
-      ← Passive Pressing (Higher PPDA) ································ Aggressive High Press (Lower PPDA) →
-    </text>
-    <text x="28" y="${y0 + (y1 - y0)/2}" fill="#e2e8f0" font-size="13" font-weight="800" text-anchor="middle" transform="rotate(-90 28 ${y0 + (y1 - y0)/2})">
-      Deep Box Completions (DC) ↑
-    </text>
-    <text x="${(x0+x1)/2}" y="${h - 6}" fill="#94a3b8" font-size="10" text-anchor="middle">PPDA (lower = higher press, inverted →)</text>
-    <text x="14" y="${(y0+y1)/2}" fill="#94a3b8" font-size="10" text-anchor="middle" transform="rotate(-90 14 ${(y0+y1)/2})">Deep completions / game</text>
-  </svg>`;
-}
-
-function setLeagueViewMode(mode) {
-  leagueTableState.viewMode = mode;
-  const rawRows = (leagueDataCache && leagueDataCache.table) ||
-                  (leagueDataCache && leagueDataCache.is_lying && leagueDataCache.is_lying.table_order_rows) ||
-                  (leagueDataCache && leagueDataCache.is_lying && leagueDataCache.is_lying.rows) || [];
-  const container = $("leagueTableContainer");
-  if (container) {
-    container.innerHTML = renderLeagueTableHTML(rawRows, leagueTableState.viewMode, leagueTableState.sortKey, leagueTableState.sortDir);
-  }
-  document.querySelectorAll(".view-pill-btn").forEach(btn => {
-    btn.classList.toggle("active", btn.getAttribute("onclick").includes(`'${mode}'`));
-  });
-}
-
-function sortLeagueTable(key) {
-  if (leagueTableState.sortKey === key) {
-    leagueTableState.sortDir = leagueTableState.sortDir === "asc" ? "desc" : "asc";
-  } else {
-    leagueTableState.sortKey = key;
-    // Default descending for points/goals/metrics, ascending for rank/PPDA
-    leagueTableState.sortDir = (key === "rank" || key === "PPDA" || key === "OPPDA" || key === "losses" || key === "goals_against" || key === "xGA" || key === "npxGA" || key === "deep_completions_allowed") ? "asc" : "desc";
-  }
-  const rawRows = (leagueDataCache && leagueDataCache.table) ||
-                  (leagueDataCache && leagueDataCache.is_lying && leagueDataCache.is_lying.table_order_rows) ||
-                  (leagueDataCache && leagueDataCache.is_lying && leagueDataCache.is_lying.rows) || [];
-  const container = $("leagueTableContainer");
-  if (container) {
-    container.innerHTML = renderLeagueTableHTML(rawRows, leagueTableState.viewMode, leagueTableState.sortKey, leagueTableState.sortDir);
-  }
-}
-
-function renderLeagueTableHTML(rows, viewMode, sortKey, sortDir) {
-  const sorted = [...rows].sort((a, b) => {
-    let valA = a[sortKey] !== undefined ? a[sortKey] : 0;
-    let valB = b[sortKey] !== undefined ? b[sortKey] : 0;
-    if (typeof valA === "string") valA = valA.toLowerCase();
-    if (typeof valB === "string") valB = valB.toLowerCase();
-    if (valA < valB) return sortDir === "asc" ? -1 : 1;
-    if (valA > valB) return sortDir === "asc" ? 1 : -1;
-    // Tiebreaker: Points desc, then GD desc, then Goals desc
-    if (b.points !== a.points) return b.points - a.points;
-    if ((b.gd || 0) !== (a.gd || 0)) return (b.gd || 0) - (a.gd || 0);
-    return (b.goals || 0) - (a.goals || 0);
-  });
-
-  const dirArrow = sortDir === "asc" ? "▲" : "▼";
-  const th = (key, label, dataTerm, isNum = true, isSticky = "") => {
-    const active = sortKey === key;
-    return `
-      <th class="${isNum ? 'num' : ''} sortable ${active ? 'sort-active' : ''} ${isSticky}"
-          onclick="sortLeagueTable('${key}')"
-          title="Click to sort by ${label}">
-        ${term(dataTerm, label)}
-        ${active ? `<span style="font-size:10px;margin-left:2px">${dirArrow}</span>` : ''}
-      </th>
-    `;
-  };
-
-  return `
-    <table class="dense-table">
-      <thead>
-        <tr>
-          ${th("rank", "№", "rank", false, "table-sticky-rank")}
-          ${th("team", "Team", "team", false, "table-sticky-team")}
-          ${(viewMode === 'all' || viewMode === 'standard' || viewMode === 'expected' || viewMode === 'pressing') ? th("matches", "M", "matches") : ''}
-          ${(viewMode === 'all' || viewMode === 'standard') ? th("wins", "W", "wins") : ''}
-          ${(viewMode === 'all' || viewMode === 'standard') ? th("draws", "D", "draws") : ''}
-          ${(viewMode === 'all' || viewMode === 'standard') ? th("losses", "L", "losses") : ''}
-          ${(viewMode === 'all' || viewMode === 'standard') ? th("goals", "G", "goals") : ''}
-          ${(viewMode === 'all' || viewMode === 'standard') ? th("goals_against", "GA", "ga") : ''}
-          ${(viewMode === 'all' || viewMode === 'standard') ? th("gd", "GD", "gd") : ''}
-          ${(viewMode === 'all' || viewMode === 'standard' || viewMode === 'expected') ? th("points", "PTS", "pts") : ''}
-          ${(viewMode === 'all' || viewMode === 'expected' || viewMode === 'pressing') ? th("xG", "xG", "xG") : ''}
-          ${(viewMode === 'all' || viewMode === 'expected') ? th("npxG", "NPxG", "npxG") : ''}
-          ${(viewMode === 'all' || viewMode === 'expected' || viewMode === 'pressing') ? th("xGA", "xGA", "xGA") : ''}
-          ${(viewMode === 'all' || viewMode === 'expected') ? th("npxGA", "NPxGA", "npxga") : ''}
-          ${(viewMode === 'all' || viewMode === 'expected' || viewMode === 'pressing') ? th("npxGD", "NPxGD", "npxgd") : ''}
-          ${(viewMode === 'all' || viewMode === 'pressing') ? th("PPDA", "PPDA", "ppda") : ''}
-          ${(viewMode === 'all' || viewMode === 'pressing') ? th("OPPDA", "OPPDA", "oppda") : ''}
-          ${(viewMode === 'all' || viewMode === 'pressing') ? th("deep_completions", "DC", "dc") : ''}
-          ${(viewMode === 'all' || viewMode === 'pressing') ? th("deep_completions_allowed", "ODC", "odc") : ''}
-          ${(viewMode === 'all' || viewMode === 'expected') ? th("xPTS", "xPTS", "xpts") : ''}
-          ${(viewMode === 'all' || viewMode === 'expected') ? th("xPTS_gap", "Pts Gap", "xpts_gap") : ''}
-          ${(viewMode === 'expected') ? th("g_minus_xg", "G − xG", "g_minus_xg") : ''}
-          ${(viewMode === 'expected') ? th("xga_minus_ga", "xGA − GA", "xga_minus_ga") : ''}
-        </tr>
-      </thead>
-      <tbody>
-        ${sorted.map((r, i) => {
-          const isTop4 = r.rank <= 4;
-          const isRelegation = r.rank >= (sorted.length - 2);
-          const gapCls = (r.xPTS_gap || 0) > 0 ? "good" : (r.xPTS_gap || 0) < 0 ? "bad" : "";
-          const gd = r.gd !== undefined ? r.gd : (r.goals - r.goals_against);
-
-          return `
-            <tr>
-              <td class="table-sticky-rank">
-                <span class="rank-badge ${isTop4 ? 'top4' : isRelegation ? 'relegation' : ''}">${r.rank}</span>
-              </td>
-              <td class="table-sticky-team">
-                <strong style="cursor:pointer;color:var(--text-bright)" onclick="$('teamName').value='${r.team}';activateTab('team');runTeam()" title="View ${r.team} Team Analytics">
-                  ${r.team}
-                </strong>
-              </td>
-              ${(viewMode === 'all' || viewMode === 'standard' || viewMode === 'expected' || viewMode === 'pressing') ? `<td class="num">${r.matches}</td>` : ''}
-              ${(viewMode === 'all' || viewMode === 'standard') ? `<td class="num">${r.wins}</td>` : ''}
-              ${(viewMode === 'all' || viewMode === 'standard') ? `<td class="num">${r.draws}</td>` : ''}
-              ${(viewMode === 'all' || viewMode === 'standard') ? `<td class="num">${r.losses}</td>` : ''}
-              ${(viewMode === 'all' || viewMode === 'standard') ? `<td class="num">${r.goals}</td>` : ''}
-              ${(viewMode === 'all' || viewMode === 'standard') ? `<td class="num">${r.goals_against}</td>` : ''}
-              ${(viewMode === 'all' || viewMode === 'standard') ? `<td class="num" style="color:${gd >= 0 ? 'var(--text)' : 'var(--fg-bad)'};font-weight:600">${gd > 0 ? '+' : ''}${gd}</td>` : ''}
-              ${(viewMode === 'all' || viewMode === 'standard' || viewMode === 'expected') ? `<td class="num"><strong>${r.points}</strong></td>` : ''}
-              ${(viewMode === 'all' || viewMode === 'expected' || viewMode === 'pressing') ? `<td class="num" style="color:var(--accent);font-weight:600">${fmt(r.xG, 2)}</td>` : ''}
-              ${(viewMode === 'all' || viewMode === 'expected') ? `<td class="num">${fmt(r.npxG, 2)}</td>` : ''}
-              ${(viewMode === 'all' || viewMode === 'expected' || viewMode === 'pressing') ? `<td class="num">${fmt(r.xGA, 2)}</td>` : ''}
-              ${(viewMode === 'all' || viewMode === 'expected') ? `<td class="num">${fmt(r.npxGA, 2)}</td>` : ''}
-              ${(viewMode === 'all' || viewMode === 'expected' || viewMode === 'pressing') ? `<td class="num" style="color:${(r.npxGD || 0) >= 0 ? 'var(--fg-good)' : 'var(--fg-bad)'};font-weight:700">${(r.npxGD || 0) >= 0 ? '+' : ''}${fmt(r.npxGD, 2)}</td>` : ''}
-              ${(viewMode === 'all' || viewMode === 'pressing') ? `<td class="num"><strong>${fmt(r.PPDA, 2)}</strong></td>` : ''}
-              ${(viewMode === 'all' || viewMode === 'pressing') ? `<td class="num">${fmt(r.OPPDA, 2)}</td>` : ''}
-              ${(viewMode === 'all' || viewMode === 'pressing') ? `<td class="num">${r.deep_completions || 0}</td>` : ''}
-              ${(viewMode === 'all' || viewMode === 'pressing') ? `<td class="num">${r.deep_completions_allowed || 0}</td>` : ''}
-              ${(viewMode === 'all' || viewMode === 'expected') ? `<td class="num" style="color:var(--accent);font-weight:700">${fmt(r.xPTS, 2)}</td>` : ''}
-              ${(viewMode === 'all' || viewMode === 'expected') ? `<td class="num"><span class="badge ${gapCls}">${(r.xPTS_gap || 0) >= 0 ? '+' : ''}${fmt(r.xPTS_gap, 2)}</span></td>` : ''}
-              ${(viewMode === 'expected') ? `<td class="num" style="color:${(r.g_minus_xg || 0) >= 0 ? 'var(--fg-good)' : 'var(--fg-bad)'}">${(r.g_minus_xg || 0) >= 0 ? '+' : ''}${fmt(r.g_minus_xg, 2)}</td>` : ''}
-              ${(viewMode === 'expected') ? `<td class="num">${fmt(r.xga_minus_ga, 2)}</td>` : ''}
-            </tr>
-          `;
-        }).join("")}
-      </tbody>
-    </table>
+    <div class="caveat"><strong>Limitations.</strong><ul>${d.limitations.map((l) => `<li>${l}</li>`).join("")}</ul></div>
   `;
 }
 
@@ -2984,98 +3134,23 @@ function renderLeagueTableHTML(rows, viewMode, sortKey, sortDir) {
 // ==========================================================
 $("discoverGo").addEventListener("click", runDiscover);
 
-// keep Rank By disabled when template active
-function syncTemplateRankByState() {
-  const tpl = document.getElementById("templatePlayer");
-  const sel = document.getElementById("discoverOrderBy");
-  if (!tpl || !sel) return;
-  const hasTpl = tpl.value && tpl.value.trim().length > 0;
-  sel.disabled = !!hasTpl;
-  sel.style.opacity = hasTpl ? "0.45" : "1";
-  sel.title = hasTpl ? "Ranking by similarity to template, not by npxG" : "";
-}
-document.addEventListener("DOMContentLoaded", () => {
-  const tpl = document.getElementById("templatePlayer");
-  if (tpl) { tpl.addEventListener("input", syncTemplateRankByState); syncTemplateRankByState(); }
-  updateWatchlistPill();
-});
-setTimeout(() => { const tpl = document.getElementById("templatePlayer"); if (tpl) { tpl.addEventListener("input", syncTemplateRankByState); syncTemplateRankByState(); } updateWatchlistPill(); }, 300);
-
 async function runDiscover() {
-  const dollar = window.$ || ((id) => document.getElementById(id));
-  const node = dollar("discoverContent"); if (!node) return; loading(node);
+  const node = $("discoverContent"); loading(node);
   try {
-    const per90 = document.getElementById("per90_tgl") ? document.getElementById("per90_tgl").checked : false;
-    const npxG_thr_raw = document.getElementById("thresh_npxG") ? document.getElementById("thresh_npxG").value : "";
-    const xA_thr_raw = document.getElementById("thresh_xA") ? document.getElementById("thresh_xA").value : "";
-    const tpl_raw = document.getElementById("templatePlayer") ? document.getElementById("templatePlayer").value.trim() : "";
-    const body = {
+    const d = await api("/api/v1/discover/players", {
       league_name: state.league, season: seasonOf("discoverSeasons"),
       seasons: seasonsOf("discoverSeasons"),
       positions: selectedPositionValues("discoverPositions"),
-      minimum_minutes: parseFloat(document.getElementById("discoverMinutes").value) || 900,
-      order_by: document.getElementById("discoverOrderBy").value,
-      limit: parseInt(document.getElementById("discoverLimit").value, 10) || 20,
-      min_age: document.getElementById("discoverMinAge").value ? parseInt(document.getElementById("discoverMinAge").value, 10) : null,
-      max_age: document.getElementById("discoverMaxAge").value ? parseInt(document.getElementById("discoverMaxAge").value, 10) : null,
+      minimum_minutes: parseFloat($("discoverMinutes").value) || 900,
+      order_by: $("discoverOrderBy").value,
+      limit: parseInt($("discoverLimit").value, 10) || 20,
+      min_age: $("discoverMinAge").value ? parseInt($("discoverMinAge").value, 10) : null,
+      max_age: $("discoverMaxAge").value ? parseInt($("discoverMaxAge").value, 10) : null,
       start_date: dateOf("discoverFrom"), end_date: dateOf("discoverTo"),
-      per90_sort: per90,
-    };
-    if (npxG_thr_raw !== "" && !isNaN(parseFloat(npxG_thr_raw))) body.min_npxG_per90 = parseFloat(npxG_thr_raw);
-    if (xA_thr_raw !== "" && !isNaN(parseFloat(xA_thr_raw))) body.min_xA_per90 = parseFloat(xA_thr_raw);
-    // optional chain/buildup thresholds if inputs present
-    const chainEl = document.getElementById("thresh_xGChain");
-    const buildEl = document.getElementById("thresh_xGBuildup");
-    if (chainEl && chainEl.value !== "" && !isNaN(parseFloat(chainEl.value))) body.min_xGChain_per90 = parseFloat(chainEl.value);
-    if (buildEl && buildEl.value !== "" && !isNaN(parseFloat(buildEl.value))) body.min_xGBuildup_per90 = parseFloat(buildEl.value);
-    if (tpl_raw) body.template_player_name = tpl_raw;
-    const d = await api("/api/v1/discover/players", body);
+    });
     renderDiscover(node, d);
   } catch (e) { errored(node, e.message); }
 }
-window.runDiscover = runDiscover;
-
-function sparklineHTML(sparkline) {
-  if (!sparkline) return `<span style="color:var(--muted);font-size:11px">Sparkline unavailable — player_data missing</span>`;
-  if (!Array.isArray(sparkline) || !sparkline.length) return `<span style="color:var(--muted);font-size:11px">Sparkline unavailable — player_data missing</span>`;
-  const maxXg = Math.max(...sparkline.map((s) => Number(s.xG) || 0), 0.05);
-  return `<div style="display:flex;gap:2px;height:18px;align-items:flex-end">${sparkline.map((s) => {
-    const h = Math.max(3, (Number(s.xG) || 0) / maxXg * 18);
-    const gold = (s.goals || 0) > 0 ? "border:1px solid #f59e0b;" : "border:1px solid transparent;";
-    const tip = `${s.date || ""} — ${fmt(s.xG,2)} xG ${s.goals||0} goals`;
-    return `<div data-tip="${tip}" style="width:6px;height:${h}px;background:#38bdf8;${gold}border-radius:2px"></div>`;
-  }).join("")}</div>`;
-}
-
-function drawAgeScatter(containerId, ageScatter) {
-  const el = document.getElementById(containerId);
-  if (!el) return;
-  if (!ageScatter || !Array.isArray(ageScatter) || !ageScatter.length) {
-    el.innerHTML = `<div class="empty" style="padding:16px">Age data unavailable for scatter — add min age filter?</div><div style="color:var(--muted);font-size:11px">Age data unavailable</div>`;
-    return;
-  }
-  const w = 1100, h = 320, padL = 56, padR = 30, padT = 24, padB = 40;
-  const x0 = padL, x1 = w - padR, y0 = padT, y1 = h - padB;
-  const maxPer90 = Math.max(...ageScatter.map((d) => Number(d.npxG_per90) || 0), 0.1);
-  const x = (age) => x0 + (Number(age) - 15) / (35 - 15) * (x1 - x0);
-  const y = (v) => y1 - (Number(v) / maxPer90) * (y1 - y0);
-  const colorFor = (pg) => pg === "F" ? "#38bdf8" : pg === "M" ? "#10b981" : pg === "D" ? "#f59e0b" : "#94a3b8";
-  const dots = ageScatter.map((d) => {
-    const cx = x(d.age);
-    const cy = y(d.npxG_per90);
-    const col = colorFor(d.position_group);
-    const tip = `${d.name || d.player_name || "—"} — ${d.age}y — ${fmt(d.npxG_per90,2)}/90`;
-    return `<circle cx="${cx}" cy="${cy}" r="12" fill="transparent" data-tip="${tip}"/><circle cx="${cx}" cy="${cy}" r="4" fill="${col}" stroke="#0f172a" stroke-width="1"/>`;
-  }).join("");
-  el.innerHTML = `<svg role="img" aria-label="Age vs npxG per 90 scatter" viewBox="0 0 ${w} ${h}" class="timeline-svg">
-    <line x1="${x0}" y1="${y1}" x2="${x1}" y2="${y1}" stroke="#1e293b"/>
-    <line x1="${x0}" y1="${y1}" x2="${x0}" y2="${y0}" stroke="#1e293b"/>
-    ${dots}
-    <text x="${(x0+x1)/2}" y="${h - 6}" fill="#94a3b8" font-size="10" text-anchor="middle">Age (years)</text>
-    <text x="14" y="${(y0+y1)/2}" fill="#94a3b8" font-size="10" text-anchor="middle" transform="rotate(-90 14 ${(y0+y1)/2})">npxG /90</text>
-  </svg>`;
-}
-window.drawAgeScatter = drawAgeScatter;
 
 function renderDiscover(node, d) {
   clear(node);
@@ -3085,114 +3160,58 @@ function renderDiscover(node, d) {
         <div class="empty-title">No Players Match Current Filters</div>
         <div class="empty-sub">If this season has just started or has low minutes, try reducing the Min Minutes filter or switching to the previous season.</div>
       </div>
-      <div class="card" style="margin-top:16px"><div class="card-header"><span class="card-title">Age vs npxG/90</span></div><div id="discoverAgeScatter" role="img" aria-label="Age vs npxG per 90 scatter"></div></div>
-      <div style="margin-top:12px;display:flex;gap:8px"><button class="ghost" id="exportWatchlistBtn" onclick="exportWatchlistCSV()">Export CSV</button><button class="ghost" id="clearWatchlistBtn" onclick="clearWatchlist()">Clear watchlist</button></div>
     `;
-    drawAgeScatter("discoverAgeScatter", d.age_scatter);
     return;
   }
 
-  const isPer90 = !!(d.per90_sort || (document.getElementById("per90_tgl") && document.getElementById("per90_tgl").checked));
-  const hasTemplate = !!(d.template && d.template.name) || d.players.some((p) => p.similarity != null);
-  _lastDiscoverPlayers = d.players || [];
-
   node.innerHTML = `
     <div class="card">
-      <div class="card-header"><span class="card-title">Ranked Discovery Pool (${d.players.length} players found)</span><span class="hero-pill" style="font-size:11px">Watchlist: ${getWatchlist().length}</span></div>
-      <div class="table-responsive">
-        <table class="dense-table">
-          <thead>
-            <tr>
-              <th>Player</th>
-              <th>Team</th>
-              <th>Role</th>
-              <th class="num">Age</th>
-              <th class="num">Min</th>
-              <th class="num">${term("goals")}</th>
-              <th class="num">${term("g_minus_xg", "G−xG")}</th>
-              <th class="num">${term("npxg")}</th>
-              <th class="num">${term("npxg", "NPxG/90")}</th>
-              <th class="num">${term("assists")}</th>
-              <th class="num">${term("xa")}</th>
-              <th class="num">${term("xa", "xA/90")}</th>
-              <th class="num">${term("xG_chain")}</th>
-              <th class="num">${term("xG_chain", "Chain/90")}</th>
-              <th class="num">${term("xG_buildup")}</th>
-              <th class="num">${term("xG_buildup", "Buildup/90")}</th>
-              <th>Sparkline</th>
-              <th>Scout</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${d.players.map((p) => {
-              const pid = p.id;
-              const pName = p.player_name || p.name || "—";
-              const pTeam = p.team_title || p.team || "—";
-              const pPos = p.position || p.favorite_position || "—";
-              const min = p.time != null ? p.time : (p.minutes != null ? p.minutes : 0);
-              const pAge = p.age;
-              const pGoals = p.goals;
-              const pGMinusXg = p.g_minus_xg;
-              const pNpxG = p.npxG;
-              const pAssists = p.assists;
-              const pXA = p.xA;
-              const pChain = p.xGChain;
-              const pBuild = p.xGBuildup;
-              const npxg90 = p.npxG_per90 != null ? p.npxG_per90 : (min > 0 ? ((pNpxG || 0) / min) * 90 : 0);
-              const xa90 = p.xA_per90 != null ? p.xA_per90 : (min > 0 ? ((pXA || 0) / min) * 90 : 0);
-              const chain90 = p.xGChain_per90 != null ? p.xGChain_per90 : (min > 0 ? ((pChain || 0) / min) * 90 : 0);
-              const build90 = p.xGBuildup_per90 != null ? p.xGBuildup_per90 : (min > 0 ? ((pBuild || 0) / min) * 90 : 0);
-              const npxgCell = isPer90 ? `${fmt(pNpxG,1)} · ${fmt(npxg90,2)}/90` : fmt(pNpxG, 2);
-              const simBadge = p.similarity != null ? `<span class="similar-badge" style="margin-left:6px">${Math.round(p.similarity*100)}% match</span>` : "";
-              const watched = isWatched(pid);
-              const wColor = watched ? "#f59e0b" : "";
-              const wLabel = watched ? "★ Watched" : "☆ Watch";
-              const starBtn = `<button class="ghost" data-watch-toggle="${pid}" style="padding:3px 8px;font-size:11px;color:${wColor}" onclick="toggleWatchlistById(${pid})">${wLabel}</button>`;
-              const safeName = String(pName).replace(/'/g,"\\'");
-              return `
-                <tr>
-                  <td><strong style="cursor:pointer;color:var(--text-bright)" onclick="$('playerName').value='${safeName}';activateTab('player');runPlayer()">${pName}</strong>${simBadge}${isPer90 ? `<div style="font-size:11px;color:var(--muted)">${fmt(pNpxG,1)} · ${fmt(npxg90,2)}/90</div>` : ""}</td>
-                  <td>${pTeam}</td>
-                  <td><span class="badge">${pPos}</span></td>
-                  <td class="num">${pAge ?? "—"}</td>
-                  <td class="num">${fmt(min, 0)}</td>
-                  <td class="num"><strong>${fmt(pGoals, 0)}</strong></td>
-                  <td class="num" style="color:${(pGMinusXg || 0) >= 0 ? 'var(--fg-good)' : 'var(--fg-bad)'}">${(pGMinusXg || 0) >= 0 ? '+' : ''}${fmt(pGMinusXg, 2)}</td>
-                  <td class="num">${npxgCell}</td>
-                  <td class="num" style="font-weight:700">${fmt(npxg90, 2)}</td>
-                  <td class="num"><strong>${fmt(pAssists, 0)}</strong></td>
-                  <td class="num">${fmt(pXA, 2)}</td>
-                  <td class="num" style="font-weight:700">${fmt(xa90, 2)}</td>
-                  <td class="num" style="color:var(--accent);font-weight:600">${fmt(pChain, 2)}</td>
-                  <td class="num">${fmt(chain90, 2)}</td>
-                  <td class="num">${fmt(pBuild, 2)}</td>
-                  <td class="num">${fmt(build90, 2)}</td>
-                  <td>${sparklineHTML(p.sparkline)}</td>
-                  <td>
-                    <div style="display:flex;gap:6px;flex-wrap:wrap">
-                      <button class="ghost" style="padding:3px 10px;font-size:11.5px" onclick="$('playerName').value='${safeName}';activateTab('player');runPlayer()">Profile →</button>
-                      ${starBtn}
-                    </div>
-                  </td>
-                </tr>
-              `;
-            }).join("")}
-          </tbody>
-        </table>
+      <div class="card-header">
+        <div class="section-question">
+          <span class="question-title">Ranked Discovery Pool (${d.players.length} players found)</span>
+          <span class="question-desc">Filtered by position role, minutes threshold, and involvement metric</span>
+        </div>
       </div>
-    </div>
-    <div class="card" style="margin-top:16px">
-      <div class="card-header"><span class="card-title">Age vs npxG/90</span><span style="font-size:11px;color:var(--muted)">${(d.age_scatter||[]).length} points</span></div>
-      <div id="discoverAgeScatter" role="img" aria-label="Age vs npxG per 90 scatter"></div>
-    </div>
-    <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
-      <button class="ghost" id="exportWatchlistBtn" onclick="exportWatchlistCSV()">Export CSV</button>
-      <button class="ghost" id="clearWatchlistBtn" onclick="clearWatchlist()">Clear watchlist</button>
+      <table>
+        <thead>
+          <tr>
+            <th>Player</th>
+            <th>Team</th>
+            <th>Role</th>
+            <th class="num">Age</th>
+            <th class="num">Min</th>
+            <th class="num">${term("goals")}</th>
+            <th class="num">${term("npxg")}</th>
+            <th class="num">${term("assists")}</th>
+            <th class="num">${term("xa")}</th>
+            <th class="num">${term("xG_chain")}</th>
+            <th class="num">${term("xG_buildup")}</th>
+            <th>Scout</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${d.players.map((p) => `
+            <tr>
+              <td><strong style="cursor:pointer;color:var(--text-bright)" onclick="$('playerName').value='${p.name}';activateTab('player');runPlayer()">${p.name}</strong></td>
+              <td>${p.team || "—"}</td>
+              <td><span class="badge">${p.position || "—"}</span></td>
+              <td class="num">${p.age ?? "—"}</td>
+              <td class="num">${fmt(p.minutes, 0)}</td>
+              <td class="num"><strong>${fmt(p.goals, 0)}</strong></td>
+              <td class="num">${fmt(p.npxG)}</td>
+              <td class="num">${fmt(p.assists, 0)}</td>
+              <td class="num">${fmt(p.xA)}</td>
+              <td class="num" style="color:var(--accent);font-weight:700">${fmt(p.xGChain)}</td>
+              <td class="num">${fmt(p.xGBuildup)}</td>
+              <td>
+                <button class="ghost" style="padding:3px 10px;font-size:11.5px" onclick="$('playerName').value='${p.name}';activateTab('player');runPlayer()">Profile →</button>
+              </td>
+            </tr>
+          `).join("")}
+        </tbody>
+      </table>
     </div>
   `;
-  drawAgeScatter("discoverAgeScatter", d.age_scatter);
-  updateWatchlistPill();
-  syncTemplateRankByState();
 }
 
 // ==========================================================
@@ -3231,26 +3250,18 @@ function renderComparePlayers(node, d) {
         <div id="compareRadar"></div>
       </div>
       <div class="card">
-        <div class="card-header"><span class="card-title">Head-to-Head Comprehensive Metrics</span></div>
-        <div class="table-responsive">
-          <table class="dense-table">
-            <thead><tr><th>Metric</th><th class="num">${names[0]}</th><th class="num">${names[1]}</th></tr></thead>
-            <tbody>
-              <tr><td>${term("goals", "Goals")}</td><td class="num"><strong>${fmt(p1.raw.goals, 0)}</strong></td><td class="num"><strong>${fmt(p2.raw.goals, 0)}</strong></td></tr>
-              <tr><td>${term("xG", "Expected Goals (xG)")}</td><td class="num" style="color:var(--accent);font-weight:600">${fmt(p1.raw.xG, 2)}</td><td class="num" style="color:var(--accent-emerald);font-weight:600">${fmt(p2.raw.xG, 2)}</td></tr>
-              <tr><td>${term("npxG", "Non-Penalty xG (NPxG)")}</td><td class="num">${fmt(p1.raw.npxG, 2)}</td><td class="num">${fmt(p2.raw.npxG, 2)}</td></tr>
-              <tr><td>${term("npxG", "NPxG / 90")}</td><td class="num" style="font-weight:700">${fmt(p1.per90.npxG, 2)}</td><td class="num" style="font-weight:700">${fmt(p2.per90.npxG, 2)}</td></tr>
-              <tr><td>${term("assists", "Assists")}</td><td class="num"><strong>${fmt(p1.raw.assists, 0)}</strong></td><td class="num"><strong>${fmt(p2.raw.assists, 0)}</strong></td></tr>
-              <tr><td>${term("xA", "Expected Assists (xA)")}</td><td class="num">${fmt(p1.raw.xA, 2)}</td><td class="num">${fmt(p2.raw.xA, 2)}</td></tr>
-              <tr><td>${term("xA", "xA / 90")}</td><td class="num" style="font-weight:700">${fmt(p1.per90.xA, 2)}</td><td class="num" style="font-weight:700">${fmt(p2.per90.xA, 2)}</td></tr>
-              <tr><td>${term("shots", "Shots")}</td><td class="num">${fmt(p1.raw.shots, 0)}</td><td class="num">${fmt(p2.raw.shots, 0)}</td></tr>
-              <tr><td>${term("key_passes", "Key Passes")}</td><td class="num">${fmt(p1.raw.key_passes, 0)}</td><td class="num">${fmt(p2.raw.key_passes, 0)}</td></tr>
-              <tr><td>${term("xG_chain", "xGChain / 90")}</td><td class="num" style="color:var(--accent);font-weight:600">${fmt(p1.per90.xGChain, 2)}</td><td class="num" style="color:var(--accent-emerald);font-weight:600">${fmt(p2.per90.xGChain, 2)}</td></tr>
-              <tr><td>${term("xG_buildup", "xGBuildup / 90")}</td><td class="num">${fmt(p1.per90.xGBuildup, 2)}</td><td class="num">${fmt(p2.per90.xGBuildup, 2)}</td></tr>
-              <tr><td>${term("minutes", "Minutes Played")}</td><td class="num">${fmt(p1.minutes, 0)}</td><td class="num">${fmt(p2.minutes, 0)}</td></tr>
-            </tbody>
-          </table>
-        </div>
+        <div class="card-header"><span class="card-title">Head-to-Head Statistics</span></div>
+        <table>
+          <thead><tr><th>Metric</th><th class="num">${names[0]}</th><th class="num">${names[1]}</th></tr></thead>
+          <tbody>
+            <tr><td>Goals</td><td class="num"><strong>${fmt(p1.raw.goals, 0)}</strong></td><td class="num"><strong>${fmt(p2.raw.goals, 0)}</strong></td></tr>
+            <tr><td>NP xG</td><td class="num">${fmt(p1.raw.npxG)}</td><td class="num">${fmt(p2.raw.npxG)}</td></tr>
+            <tr><td>Assists / xA</td><td class="num">${fmt(p1.raw.assists, 0)} (${fmt(p1.raw.xA)})</td><td class="num">${fmt(p2.raw.assists, 0)} (${fmt(p2.raw.xA)})</td></tr>
+            <tr><td>xGChain /90</td><td class="num">${fmt(p1.per90.xGChain, 2)}</td><td class="num">${fmt(p2.per90.xGChain, 2)}</td></tr>
+            <tr><td>xGBuildup /90</td><td class="num">${fmt(p1.per90.xGBuildup, 2)}</td><td class="num">${fmt(p2.per90.xGBuildup, 2)}</td></tr>
+            <tr><td>Minutes</td><td class="num">${fmt(p1.minutes, 0)}</td><td class="num">${fmt(p2.minutes, 0)}</td></tr>
+          </tbody>
+        </table>
       </div>
     </div>
   `;
@@ -3269,58 +3280,46 @@ function drawCompareRadar(container, r1, r2, name1, name2) {
   for (let g = 1; g <= 4; g++) {
     const rr = r * g / 4;
     let pts = ""; for (let i = 0; i < n; i++) { const [x, y] = pt(i, rr); pts += `${x},${y} `; }
-    rings += `<polygon points="${pts}" fill="none" stroke="#1e293b" stroke-width="1"/>`;
+    rings += `<polygon points="${pts}" fill="none" stroke="var(--border)" stroke-width="1"/>`;
   }
   let poly1 = "", poly2 = "", labels = "";
+  const color1 = getThemeColor("--accent") || "#1ed760";
+  const color2 = getThemeColor("--neutral") || "#38bdf8";
+
   for (let i = 0; i < n; i++) {
     const [x1, y1] = pt(i, r * r1[i].percentile / 100);
     const [x2, y2] = pt(i, r * (r2[i] ? r2[i].percentile : 50) / 100);
     poly1 += `${x1},${y1} `;
     poly2 += `${x2},${y2} `;
     const [lx, ly] = pt(i, r + 18);
-    labels += `<text x="${lx}" y="${ly}" fill="#94a3b8" font-size="10" text-anchor="middle">${r1[i].label}</text>`;
+    labels += `<text x="${lx}" y="${ly}" fill="var(--muted)" font-size="10" text-anchor="middle">${r1[i].label}</text>`;
   }
   el.innerHTML = `<svg class="radar-svg" viewBox="0 0 ${size} ${size}">
     ${rings}
-    <polygon points="${poly1}" fill="rgba(56,189,248,0.2)" stroke="#38bdf8" stroke-width="2"/>
-    <polygon points="${poly2}" fill="rgba(16,185,129,0.2)" stroke="#10b981" stroke-width="2"/>
+    <polygon points="${poly1}" fill="${color1}33" stroke="${color1}" stroke-width="2"/>
+    <polygon points="${poly2}" fill="${color2}33" stroke="${color2}" stroke-width="2"/>
     ${labels}
-    <text x="16" y="24" fill="#38bdf8" font-size="11">● ${name1}</text>
-    <text x="16" y="42" fill="#10b981" font-size="11">● ${name2}</text>
+    <text x="16" y="24" fill="${color1}" font-size="11">● ${name1}</text>
+    <text x="16" y="42" fill="${color2}" font-size="11">● ${name2}</text>
   </svg>`;
 }
 
 function renderCompareTeams(node, d) {
   clear(node);
   const t1 = d.team_1, t2 = d.team_2;
-  const s1 = t1.style || {}, s2 = t2.style || {};
-
   node.innerHTML = `
     <div class="card">
-      <div class="card-header"><span class="card-title">${t1.team} vs ${t2.team} Tactical & Process Comparison</span></div>
-      <div class="table-responsive">
-        <table class="dense-table">
-          <thead><tr><th>Metric</th><th class="num">${t1.team}</th><th class="num">${t2.team}</th></tr></thead>
-          <tbody>
-            <tr><td>${term("pts", "Points (PTS)")}</td><td class="num"><strong>${s1.points ?? '—'}</strong></td><td class="num"><strong>${s2.points ?? '—'}</strong></td></tr>
-            <tr><td>${term("xpts", "Expected Points (xPTS)")}</td><td class="num" style="color:var(--accent);font-weight:700">${fmt(s1.xPTS, 1)}</td><td class="num" style="color:var(--accent-emerald);font-weight:700">${fmt(s2.xPTS, 1)}</td></tr>
-            <tr><td>${term("xpts_gap", "PTS − xPTS Gap")}</td><td class="num">${(s1.xPTS_gap || 0) >= 0 ? '+' : ''}${fmt(s1.xPTS_gap, 1)}</td><td class="num">${(s2.xPTS_gap || 0) >= 0 ? '+' : ''}${fmt(s2.xPTS_gap, 1)}</td></tr>
-            <tr><td>${term("goals", "Goals Scored (G)")}</td><td class="num">${s1.goals ?? '—'}</td><td class="num">${s2.goals ?? '—'}</td></tr>
-            <tr><td>${term("xG", "Expected Goals (xG)")}</td><td class="num">${fmt(s1.xG, 2)}</td><td class="num">${fmt(s2.xG, 2)}</td></tr>
-            <tr><td>${term("npxG", "Non-Penalty xG (NPxG)")}</td><td class="num">${fmt(s1.npxG, 2)}</td><td class="num">${fmt(s2.npxG, 2)}</td></tr>
-            <tr><td>${term("xG", "xG / Game")}</td><td class="num" style="font-weight:600">${fmt(s1.xG_per_game, 2)}</td><td class="num" style="font-weight:600">${fmt(s2.xG_per_game, 2)}</td></tr>
-            <tr><td>${term("ga", "Goals Against (GA)")}</td><td class="num">${s1.goals_against ?? '—'}</td><td class="num">${s2.goals_against ?? '—'}</td></tr>
-            <tr><td>${term("xGA", "Expected Goals Against (xGA)")}</td><td class="num">${fmt(s1.xGA, 2)}</td><td class="num">${fmt(s2.xGA, 2)}</td></tr>
-            <tr><td>${term("npxga", "Non-Penalty xGA (NPxGA)")}</td><td class="num">${fmt(s1.npxGA, 2)}</td><td class="num">${fmt(s2.npxGA, 2)}</td></tr>
-            <tr><td>${term("xGA", "xGA / Game")}</td><td class="num" style="font-weight:600">${fmt(s1.xGA_per_game, 2)}</td><td class="num" style="font-weight:600">${fmt(s2.xGA_per_game, 2)}</td></tr>
-            <tr><td>${term("npxgd", "Non-Penalty xGD (NPxGD)")}</td><td class="num" style="font-weight:700;color:${(s1.npxGD || 0) >= 0 ? 'var(--fg-good)' : 'var(--fg-bad)'}">${(s1.npxGD || 0) >= 0 ? '+' : ''}${fmt(s1.npxGD, 2)}</td><td class="num" style="font-weight:700;color:${(s2.npxGD || 0) >= 0 ? 'var(--fg-good)' : 'var(--fg-bad)'}">${(s2.npxGD || 0) >= 0 ? '+' : ''}${fmt(s2.npxGD, 2)}</td></tr>
-            <tr><td>${term("ppda", "PPDA Pressing Intensity")}</td><td class="num"><strong>${fmt(s1.PPDA, 2)}</strong></td><td class="num"><strong>${fmt(s2.PPDA, 2)}</strong></td></tr>
-            <tr><td>${term("oppda", "OPPDA Press Resistance")}</td><td class="num">${fmt(s1.OPPDA, 2)}</td><td class="num">${fmt(s2.OPPDA, 2)}</td></tr>
-            <tr><td>${term("dc", "Deep Completions (DC)")}</td><td class="num">${s1.deep_completions ?? 0}</td><td class="num">${s2.deep_completions ?? 0}</td></tr>
-            <tr><td>${term("odc", "Opponent Deep Completions (ODC)")}</td><td class="num">${s1.deep_completions_allowed ?? 0}</td><td class="num">${s2.deep_completions_allowed ?? 0}</td></tr>
-          </tbody>
-        </table>
-      </div>
+      <div class="card-header"><span class="card-title">${t1.name} vs ${t2.name} Tactical Comparison</span></div>
+      <table>
+        <thead><tr><th>Metric</th><th class="num">${t1.name}</th><th class="num">${t2.name}</th></tr></thead>
+        <tbody>
+          <tr><td>xG / match</td><td class="num">${fmt(t1.report.style.xG_per_game)}</td><td class="num">${fmt(t2.report.style.xGA_per_game)}</td></tr>
+          <tr><td>xGA / match</td><td class="num">${fmt(t1.report.style.xGA_per_game)}</td><td class="num">${fmt(t2.report.style.xGA_per_game)}</td></tr>
+          <tr><td>xGD / match</td><td class="num">${fmt(t1.report.style.xG_diff_per_game)}</td><td class="num">${fmt(t2.report.style.xG_diff_per_game)}</td></tr>
+          <tr><td>PPDA Pressing</td><td class="num">${fmt(t1.report.style.PPDA)}</td><td class="num">${fmt(t2.report.style.PPDA)}</td></tr>
+          <tr><td>Deep Box Passes</td><td class="num">${fmt(t1.report.style.deep_completions, 0)}</td><td class="num">${fmt(t2.report.style.deep_completions, 0)}</td></tr>
+        </tbody>
+      </table>
     </div>
   `;
 }
@@ -3338,143 +3337,87 @@ async function runPredict() {
   const home = $("predHome").value.trim(), away = $("predAway").value.trim();
   if (!home || !away) return;
   const node = $("predictContent"); loading(node);
-  let season = seasonOf("predSeason");
   try {
-    let d;
-    try {
-      d = await api("/api/v1/predict/match", {
-        home_team: home, away_team: away, league_name: state.league,
-        season: season, use_xg: $("predUseXg").checked,
-      });
-    } catch (err) {
-      if (season === LATEST_SEASON) {
-        season = LATEST_SEASON - 1;
-        if ($("predSeason")) $("predSeason").value = String(season);
-        d = await api("/api/v1/predict/match", {
-          home_team: home, away_team: away, league_name: state.league,
-          season: season, use_xg: $("predUseXg").checked,
-        });
-      } else {
-        throw err;
-      }
-    }
+    const d = await api("/api/v1/predict/match", {
+      home_team: home, away_team: away, league_name: state.league,
+      season: seasonOf("predSeason"), use_xg: $("predUseXg").checked,
+    });
     renderPredict(node, d);
   } catch (e) { errored(node, e.message); }
 }
 
 function renderPredict(node, d) {
   clear(node);
-  const m = d.model || {}, en = m.ensemble || {}, dc = m.dixon_coles || {}, elo = m.elo || {}, mt = d.match || {};
-  const homeName = mt.home || "Home", awayName = mt.away || "Away";
-  const scoreline = Array.isArray(dc.most_likely_score)
-    ? dc.most_likely_score.join("-")
-    : dc.most_likely_score;
-
-  let barHtml;
-  if (en.available === false || en.p_home == null || en.p_draw == null || en.p_away == null) {
-    barHtml = `<div class="hint" style="margin:18px 0 4px">Ensemble unavailable for this fixture — see the Dixon-Coles figures below.</div>`;
-  } else {
-    barHtml = `
-      <div class="prob-bar-container">
-        <div class="prob-bar">
-          <div class="seg home" style="width:${en.p_home*100}%"><span class="seg-pct">${pct(en.p_home)}</span><span class="seg-name">${homeName}</span></div>
-          <div class="seg draw" style="width:${en.p_draw*100}%"><span class="seg-pct">${pct(en.p_draw)}</span><span class="seg-name">Draw</span></div>
-          <div class="seg away" style="width:${en.p_away*100}%"><span class="seg-pct">${pct(en.p_away)}</span><span class="seg-name">${awayName}</span></div>
-        </div>
-      </div>
-    `;
-  }
-
+  const p = d.ensemble;
   node.innerHTML = `
     <div class="card">
-      <div class="card-header"><span class="card-title">Forecast Outcome Probabilities</span></div>
-      ${barHtml}
-      <div class="kv" style="margin-top:16px">
-        <span class="k">Expected Goals (Lambda)</span><span class="v">${fmt(dc.lambda_home)} (Home) — ${fmt(dc.lambda_away)} (Away)</span>
-        <span class="k">Most Probable Scoreline</span><span class="v">${scoreline != null ? scoreline : "—"} (${pct(dc.most_likely_score_prob)})</span>
-        ${elo.p_home != null ? `<span class="k">Elo Probabilities</span><span class="v">${pct(elo.p_home)} / ${pct(elo.p_draw)} / ${pct(elo.p_away)}</span>` : ""}
+      <div class="card-header">
+        <div class="section-question">
+          <span class="question-title">Bivariate Dixon-Coles Match Forecast</span>
+          <span class="question-desc">Simulated outcome probabilities and expected goal intensities</span>
+        </div>
       </div>
-      ${d.interpretation ? `<div class="hint" style="margin-top:14px">${d.interpretation}</div>` : ""}
-      ${Array.isArray(d.limitations) && d.limitations.length ? `<div class="caveat"><strong>Limitations.</strong><ul>${d.limitations.map((l) => `<li>${l}</li>`).join("")}</ul></div>` : ""}
+      <div class="prob-bar-container">
+        <div class="prob-bar">
+          <div class="seg home" style="width:${p.p_home*100}%"><span class="seg-pct">${pct(p.p_home)}</span><span class="seg-name">${d.home_team}</span></div>
+          <div class="seg draw" style="width:${p.p_draw*100}%"><span class="seg-pct">${pct(p.p_draw)}</span><span class="seg-name">Draw</span></div>
+          <div class="seg away" style="width:${p.p_away*100}%"><span class="seg-pct">${pct(p.p_away)}</span><span class="seg-name">${d.away_team}</span></div>
+        </div>
+      </div>
+      <div class="kv" style="margin-top:16px">
+        <span class="k">Expected Goals (Lambda)</span><span class="v">${fmt(d.dixon_coles.lambda_home)} (Home) — ${fmt(d.dixon_coles.lambda_away)} (Away)</span>
+        <span class="k">Most Probable Scorelines</span><span class="v">${d.dixon_coles.most_likely_scorelines.map((s)=>`${s.score} (${pct(s.probability)})`).join(" · ")}</span>
+      </div>
     </div>
   `;
 }
 
 async function runSim() {
   const node = $("predictContent"); loading(node);
-  let season = seasonOf("simSeason");
   try {
-    let d;
-    try {
-      d = await api("/api/v1/predict/season", {
-        league_name: state.league, season: season,
-        n_sims: parseInt($("simCount").value, 10) || 2000,
-      });
-    } catch (err) {
-      if (season === LATEST_SEASON) {
-        season = LATEST_SEASON - 1;
-        if ($("simSeason")) $("simSeason").value = String(season);
-        d = await api("/api/v1/predict/season", {
-          league_name: state.league, season: season,
-          n_sims: parseInt($("simCount").value, 10) || 2000,
-        });
-      } else {
-        throw err;
-      }
-    }
+    const d = await api("/api/v1/predict/season-simulation", {
+      league_name: state.league, season: seasonOf("simSeason"),
+      n_sims: parseInt($("simCount").value, 10) || 2000,
+    });
     renderSim(node, d);
   } catch (e) { errored(node, e.message); }
 }
 
 function renderSim(node, d) {
   clear(node);
-  const teams = Object.keys(d.expected_points || {});
   node.innerHTML = `
     <div class="card">
-      <div class="card-header"><span class="card-title">Rest-of-Season Simulation (${d.n_sims ?? 0} runs)</span></div>
-      <div class="table-responsive">
-        <table>
-          <thead><tr><th>Team</th><th class="num">Current Pts</th><th class="num">Simulated Pts</th><th class="num">Title %</th><th class="num">Top 4 %</th><th class="num">Relegation %</th></tr></thead>
-          <tbody>
-            ${teams.map((t) => `
-              <tr>
-                <td><strong>${t}</strong></td>
-                <td class="num">${(d.current_points || {})[t] ?? "—"}</td>
-                <td class="num" style="color:var(--accent);font-weight:700">${fmt(d.expected_points[t], 1)}</td>
-                <td class="num">${pct((d.p_champion || {})[t])}</td>
-                <td class="num">${pct((d.p_top_4 || {})[t])}</td>
-                <td class="num" style="color:${((d.p_relegation || {})[t] || 0) > 0.5 ? 'var(--fg-bad)' : 'var(--text)'}">${pct((d.p_relegation || {})[t])}</td>
-              </tr>
-            `).join("")}
-          </tbody>
-        </table>
+      <div class="card-header">
+        <div class="section-question">
+          <span class="question-title">Rest-of-Season Monte Carlo Simulation (${d.simulations} runs)</span>
+          <span class="question-desc">Projected points, title probabilities, top 4 finish, and relegation risk</span>
+        </div>
       </div>
-      ${d.interpretation ? `<div class="hint" style="margin-top:14px">${d.interpretation}</div>` : ""}
-      ${Array.isArray(d.limitations) && d.limitations.length ? `<div class="caveat"><strong>Limitations.</strong><ul>${d.limitations.map((l) => `<li>${l}</li>`).join("")}</ul></div>` : ""}
+      <table>
+        <thead><tr><th>Team</th><th class="num">Current Pts</th><th class="num">Simulated Pts</th><th class="num">Title %</th><th class="num">Top 4 %</th><th class="num">Relegation %</th></tr></thead>
+        <tbody>
+          ${d.projections.map((p) => `
+            <tr>
+              <td><strong>${p.team}</strong></td>
+              <td class="num">${p.current_points}</td>
+              <td class="num" style="color:var(--accent);font-weight:700">${fmt(p.simulated_points, 1)}</td>
+              <td class="num">${pct(p.champion_probability)}</td>
+              <td class="num">${pct(p.top_4_probability)}</td>
+              <td class="num" style="color:${p.relegation_probability>0.5?'var(--fg-bad)':'var(--text)'}">${pct(p.relegation_probability)}</td>
+            </tr>
+          `).join("")}
+        </tbody>
+      </table>
     </div>
   `;
 }
 
 async function runCal() {
   const node = $("predictContent"); loading(node);
-  let season = seasonOf("calSeason");
   try {
-    let d;
-    try {
-      d = await api("/api/v1/predict/calibration", {
-        league_name: state.league, season: season,
-      });
-    } catch (err) {
-      if (season === LATEST_SEASON) {
-        season = LATEST_SEASON - 1;
-        if ($("calSeason")) $("calSeason").value = String(season);
-        d = await api("/api/v1/predict/calibration", {
-          league_name: state.league, season: season,
-        });
-      } else {
-        throw err;
-      }
-    }
+    const d = await api("/api/v1/predict/calibration", {
+      league_name: state.league, season: seasonOf("calSeason"),
+    });
     renderCal(node, d);
   } catch (e) { errored(node, e.message); }
 }
@@ -3483,7 +3426,12 @@ function renderCal(node, d) {
   clear(node);
   node.innerHTML = `
     <div class="card">
-      <div class="card-header"><span class="card-title">Walk-Forward Model Calibration Benchmarks</span></div>
+      <div class="card-header">
+        <div class="section-question">
+          <span class="question-title">Walk-Forward Model Calibration Benchmarks</span>
+          <span class="question-desc">Evaluating probability accuracy, Brier Score, Log Loss, and RPS</span>
+        </div>
+      </div>
       <table>
         <thead><tr><th>Model</th><th class="num">Accuracy</th><th class="num">Brier Score</th><th class="num">Log Loss</th><th class="num">RPS</th></tr></thead>
         <tbody>
@@ -3500,390 +3448,6 @@ function renderCal(node, d) {
       </table>
     </div>
   `;
-}
-
-// ==========================================================
-// PHASE 5D — Inspiration Helpers (Images 1–4)
-// Reuse Pitch primitive thin 1px #24292E, Metric primitives for deltas.
-// Honest placeholders when SOFASCORE_ENABLED unset.
-// ==========================================================
-const TIER_COLORS = { Poor:"#f87171", Average:"#fb923c", Good:"#facc15", Great:"#a3be8c" };
-function tierFromXg(xg) {
-  const v = Number(xg)||0;
-  if (v >= 0.28) return "Great";
-  if (v >= 0.14) return "Good";
-  if (v >= 0.06) return "Average";
-  return "Poor";
-}
-function tierColor(xg) { return TIER_COLORS[tierFromXg(xg)] || "#94a3b8"; }
-
-function possessionDonutHTML(homePct, awayPct, homeName, awayName, honestNote) {
-  const total = (homePct||0)+(awayPct||0);
-  const h = total? Math.round((homePct/total)*100):61;
-  const a = 100-h;
-  const accent = (typeof getThemeColor==="function" && getThemeColor("--accent")) || "#1ed760";
-  const muted = "#24292E";
-  const r=66, circ=2*Math.PI*r;
-  const hLen=(h/100)*circ, aLen=circ-hLen;
-  return `
-  <div class="card" id="matchPossessionDonut" style="margin-top:20px">
-    <div class="card-header">
-      <span class="card-title">Possession Control — Donut + Distribution (Image 1)</span>
-      <span class="chart-subtitle">Thin 1px #24292E pitch line · Metric deltas</span>
-    </div>
-    <div class="possession-donut-wrap">
-      <div style="text-align:center">
-        <svg class="donut-svg" viewBox="0 0 160 160" role="img" aria-label="Possession donut">
-          <circle cx="80" cy="80" r="${r}" fill="none" stroke="${muted}" stroke-width="12"/>
-          <circle cx="80" cy="80" r="${r}" fill="none" stroke="${accent}" stroke-width="12" stroke-linecap="round"
-            stroke-dasharray="${hLen.toFixed(1)} ${aLen.toFixed(1)}" transform="rotate(-90 80 80)" />
-          <text x="80" y="76" text-anchor="middle" fill="var(--text-bright)" font-family="var(--mono)" font-size="22" font-weight="900">Possession: ${h}%</text>
-          <text x="80" y="96" text-anchor="middle" fill="var(--muted)" font-size="11" font-weight="700">${escapeHtml(homeName)} control</text>
-        </svg>
-        <div style="margin-top:8px;font-size:11.5px;color:var(--muted);font-family:var(--mono)"><span style="color:var(--accent)">● ${escapeHtml(homeName)} ${h}%</span>  ·  <span style="color:var(--muted)">● ${escapeHtml(awayName)} ${a}%</span></div>
-      </div>
-      <div>
-        <div style="font-size:12px;font-weight:800;color:var(--text-bright);margin-bottom:8px">Distribution bar — ${escapeHtml(homeName)} ${h}% / ${escapeHtml(awayName)} ${a}%</div>
-        <div class="possession-bar">
-          <div class="possession-bar-seg" style="width:${h}%;background:${accent}">${h}%</div>
-          <div class="possession-bar-seg" style="width:${a}%;background:#2E343B;color:#8B939D">${a}%</div>
-        </div>
-        <div class="possession-legend">
-          <span><span class="dot" style="background:${accent}"></span> ${escapeHtml(homeName)} ${h}%</span>
-          <span><span class="dot" style="background:#2E343B;border:1px solid #3A414A"></span> ${escapeHtml(awayName)} ${a}%</span>
-        </div>
-        <div style="margin-top:12px;display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
-          <div class="kpi-card" style="padding:10px 12px"><span class="kpi-label">Home</span><span class="kpi-value" style="font-size:18px">${h}%</span><span class="kpi-sub">+8.2% vs avg 52.8%</span></div>
-          <div class="kpi-card" style="padding:10px 12px"><span class="kpi-label">Away</span><span class="kpi-value" style="font-size:18px">${a}%</span><span class="kpi-sub">−8.2% vs avg</span></div>
-          <div class="kpi-card" style="padding:10px 12px"><span class="kpi-label">Territory</span><span class="kpi-value" style="font-size:18px">${h>50?"Home":"Away"}</span><span class="kpi-sub">tilt >60% = green</span></div>
-        </div>
-        <div class="honest-note"><strong>Honest note.</strong> ${escapeHtml(honestNote||"Sofascore not enabled (SOFASCORE_ENABLED unset) — showing illustrative 61%/39% (Aether vs Zenith reference from Image 1) — enable SOFASCORE_ENABLED for live ballPossession.")}</div>
-      </div>
-    </div>
-  </div>`;
-}
-function escapeHtml(s){ return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
-
-function pressureSectionHTML(honestNote) {
-  // Mock static data matching Image 2 vibe (MyGamePlan Pressure)
-  const matches = [
-    { opponent:"vs ARS (H)", total:42, left:12, center:18, right:12, avg:"5.2s", zones:[12,18,12] },
-    { opponent:"@ MCI (A)", total:38, left:10, center:15, right:13, avg:"4.8s", zones:[10,15,13] },
-    { opponent:"vs LIV (H)", total:51, left:16, center:20, right:15, avg:"5.6s", zones:[16,20,15] },
-    { opponent:"@ CHE (A)", total:34, left:9, center:14, right:11, avg:"4.3s", zones:[9,14,11] },
-    { opponent:"vs TOT (H)", total:47, left:14, center:19, right:14, avg:"5.1s", zones:[14,19,14] },
-  ];
-  const maxTotal = Math.max(...matches.map(m=>m.total));
-  const pressurePoints = [
-    {x:0.32,y:0.62,type:"Pressure"}, {x:0.55,y:0.48,type:"Pressure"}, {x:0.41,y:0.71,type:"Shot-Ending"}, {x:0.68,y:0.35,type:"Pressure"}, {x:0.38,y:0.44,type:"Goal-Ending"}, {x:0.71,y:0.58,type:"Pressure"}, {x:0.22,y:0.52,type:"Pressure"}, {x:0.6,y:0.72,type:"Shot-Ending"},
-  ];
-  return `
-  <div class="card" id="teamPressingCard" style="margin-top:20px">
-    <div class="card-header">
-      <span class="card-title">Pressing Intensity — Zone Pressure (Image 2)</span>
-      <span class="chart-subtitle">TOTAL / LEFT / CENTER / RIGHT / AVG TIME + stacked bars + pitch scatter</span>
-    </div>
-    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px">
-      <span class="hero-pill accent">Pressing 1.6 per 90</span>
-      <span class="view-pills-row" style="margin:0">
-        <button class="view-pill-btn active">Matches (5/35)</button>
-        <button class="view-pill-btn">Scattering</button>
-        <button class="view-pill-btn">Heat Map</button>
-        <button class="view-pill-btn">Statistics Per 90'</button>
-      </span>
-    </div>
-    <div class="table-responsive">
-      <table class="pressure-table">
-        <thead><tr><th style="text-align:left">Match</th><th>TOTAL</th><th>LEFT</th><th>CENTER</th><th>RIGHT</th><th>AVG TIME</th><th style="min-width:140px">Zone split</th></tr></thead>
-        <tbody>
-          ${matches.map(m=>`
-            <tr>
-              <td style="text-align:left;font-weight:700">${m.opponent}</td>
-              <td class="num">${m.total}</td><td class="num">${m.left}</td><td class="num">${m.center}</td><td class="num">${m.right}</td><td class="num">${m.avg}</td>
-              <td><div class="stacked-bar-row">
-                <div class="stacked-seg" style="width:${(m.left/m.total*100).toFixed(1)}%;background:#38bdf8"></div>
-                <div class="stacked-seg" style="width:${(m.center/m.total*100).toFixed(1)}%;background:#1ed760"></div>
-                <div class="stacked-seg" style="width:${(m.right/m.total*100).toFixed(1)}%;background:#f59e0b"></div>
-              </div></td>
-            </tr>
-          `).join("")}
-        </tbody>
-      </table>
-    </div>
-    <div style="margin-top:14px" class="grid cols-2">
-      <div>
-        <div style="font-size:11.5px;font-weight:700;color:var(--text);margin-bottom:6px">Stacked pressures per match</div>
-        <div style="display:flex;flex-direction:column;gap:6px">
-          ${matches.map(m=>{
-            const leftW=(m.left/m.total*100).toFixed(1), centerW=(m.center/m.total*100).toFixed(1), rightW=(m.right/m.total*100).toFixed(1);
-            return `<div style="display:flex;align-items:center;gap:8px"><span style="width:92px;font-size:11px;color:var(--muted);font-family:var(--mono)">${m.opponent}</span><div class="stacked-bar-row" style="flex:1"><div class="stacked-seg" style="width:${leftW}%;background:#38bdf8"></div><div class="stacked-seg" style="width:${centerW}%;background:#1ed760"></div><div class="stacked-seg" style="width:${rightW}%;background:#f59e0b"></div></div><span style="width:34px;font-size:11px;font-family:var(--mono);text-align:right">${m.total}</span></div>`;
-          }).join("")}
-        </div>
-        <div class="pressure-pitch-legend" style="margin-top:10px">
-          <span class="ld"><span class="dot-legend" style="background:#38bdf8"></span> LEFT</span>
-          <span class="ld"><span class="dot-legend" style="background:#1ed760"></span> CENTER</span>
-          <span class="ld"><span class="dot-legend" style="background:#f59e0b"></span> RIGHT</span>
-        </div>
-      </div>
-      <div>
-        <div style="font-size:11.5px;font-weight:700;color:var(--text);margin-bottom:6px">Pitch scatter — pressure events</div>
-        <div id="pressurePitch" class="pitch-container" style="height:280px;position:relative;overflow:hidden;background:var(--pitch-bg);border:1px solid var(--border)">
-          <canvas id="pressurePitchCanvas" width="700" height="280" style="width:100%;height:100%;display:block"></canvas>
-        </div>
-        <div class="pressure-pitch-legend">
-          <span class="ld"><span class="dot-legend" style="background:#38bdf8"></span> ● Pressure</span>
-          <span class="ld"><span class="dot-legend" style="background:#f59e0b"></span> ● Shot-Ending</span>
-          <span class="ld"><span class="dot-legend" style="background:#f43f5e"></span> ● Goal-Ending</span>
-          <span style="margin-left:auto;font-size:10.5px;color:var(--muted)">Scattering vs Heat Map toggle</span>
-        </div>
-      </div>
-    </div>
-    <div class="honest-note"><strong>Honest note.</strong> ${escapeHtml(honestNote||"Sofascore not enabled (SOFASCORE_ENABLED unset) — illustrative pressures (MyGamePlan 1.6 ref) — metric_primitives used where available, else static mock with 5/35 matches. Enable SOFASCORE_ENABLED for live pressures.")}</div>
-  </div>`;
-}
-function drawPressurePitch() {
-  const c = document.getElementById("pressurePitchCanvas");
-  if (!c) return;
-  const ctx=c.getContext("2d");
-  const w=c.width, h=c.height;
-  // background
-  const bg=(typeof getThemeColor==="function"&&getThemeColor("--pitch-bg"))||"#0B0D0F";
-  ctx.fillStyle=bg.trim()||"#0B0D0F"; ctx.fillRect(0,0,w,h);
-  if (typeof drawPitchMinimal==="function") drawPitchMinimal(ctx,w,h,false);
-  else if (typeof drawPitchLines==="function") drawPitchLines(ctx,w,h,false);
-  const pts=[
-    {x:0.32,y:0.62,t:"Pressure",c:"#38bdf8"}, {x:0.55,y:0.48,t:"Pressure",c:"#38bdf8"}, {x:0.41,y:0.71,t:"Shot-Ending",c:"#f59e0b"}, {x:0.68,y:0.35,t:"Pressure",c:"#38bdf8"}, {x:0.38,y:0.44,t:"Goal-Ending",c:"#f43f5e"}, {x:0.71,y:0.58,t:"Pressure",c:"#38bdf8"}, {x:0.22,y:0.52,t:"Pressure",c:"#38bdf8"}, {x:0.6,y:0.72,t:"Shot-Ending",c:"#f59e0b"}, {x:0.48,y:0.38,t:"Pressure",c:"#38bdf8"}, {x:0.75,y:0.62,t:"Pressure",c:"#38bdf8"},
-  ];
-  pts.forEach(p=>{
-    const cx=p.x*w, cy=(1-p.y)*h;
-    ctx.beginPath(); ctx.arc(cx,cy,4.5,0,Math.PI*2); ctx.fillStyle=p.c; ctx.fill(); ctx.strokeStyle="rgba(255,255,255,0.85)"; ctx.lineWidth=1; ctx.stroke();
-  });
-}
-
-function tierShotMapHTML(shots, honestNote) {
-  const total = (shots||[]).length || 190;
-  // if no shots, use illustrative stats from Image 3
-  const illust = !shots || !shots.length;
-  const tiers=["Poor","Average","Good","Great"];
-  let counts={Poor:0,Average:0,Good:0,Great:0};
-  let goals={Poor:0,Average:0,Good:0,Great:0};
-  let xg={Poor:0,Average:0,Good:0,Great:0};
-  if (illust) {
-    counts={Poor:97,Average:57,Good:25,Great:11}; // 51%,30%,13%,6% of 190
-    goals={Poor:2,Average:4,Good:5,Great:4};
-    xg={Poor:2.1,Average:4.2,Good:4.1,Great:4.64};
-  } else {
-    (shots||[]).forEach(s=>{
-      const t=tierFromXg(s.xG); counts[t]=(counts[t]||0)+1; if((s.result||"").toLowerCase()==="goal") goals[t]=(goals[t]||0)+1; xg[t]=(xg[t]||0)+(Number(s.xG)||0);
-    });
-  }
-  const sumXg = Object.values(xg).reduce((a,b)=>a+b,0) || 15.04;
-  const sumGoals = Object.values(goals).reduce((a,b)=>a+b,0) || 0;
-  const expectedPct = Math.round((counts.Poor/total*100))||51; // illustrative 51% vs 57.9% left rail?
-  // Image 3 left rail shows Expected 51% vs Actual 57.9% — we compute overall expected vs actual for Poor tier? Simplify global.
-  const actualPct = total? Math.round(((goals.Poor||0)/Math.max(sumGoals,1)*100)) : 58;
-  return `
-  <div class="card" id="tierShotMapCard" style="margin-top:20px">
-    <div class="card-header" style="flex-wrap:wrap;gap:10px">
-      <span class="card-title">Shot Quality Tiers — Expected vs Actual (Image 3)</span>
-      <span class="chart-subtitle">Poor #f87171 · Average #fb923c · Good #facc15 · Great #a3be8c · Pitch dots by tier</span>
-    </div>
-    <div class="tier-filters">
-      <span class="tier-filter">Team <select disabled><option>All Teams</option></select></span>
-      <span class="tier-filter">xG Category <select><option>All tiers</option><option>Poor</option><option>Average</option><option>Good</option><option>Great</option></select></span>
-      <span class="tier-filter">Result <select><option>All</option><option>Goal</option><option>Saved</option><option>Missed</option></select></span>
-      <span class="tier-filter">Buildup <select disabled><option>All</option></select></span>
-      <span class="tier-filter">Possession <select disabled><option>All</option></select></span>
-      <span class="tier-filter" style="margin-left:auto">Shots For <label class="check" style="margin:0"><input type="checkbox" checked disabled/> Include Penalties</label></span>
-    </div>
-    <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
-      <span style="font-size:11px;color:var(--muted);font-family:var(--mono)">Date range</span>
-      <input type="range" class="tier-date-slider" min="0" max="100" value="62" style="flex:1" disabled title="3/16/2024—8/29/2024 (illustrative)" />
-      <span style="font-size:11px;color:var(--muted);font-family:var(--mono)">3/16/2024 — 8/29/2024</span>
-    </div>
-    <div class="tier-rail">
-      <div class="tier-left-rail">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-          <span style="font-size:11px;font-weight:800;letter-spacing:0.6px;color:var(--muted);text-transform:uppercase">Expected</span>
-          <span style="font-size:11px;font-weight:800;letter-spacing:0.6px;color:var(--accent);text-transform:uppercase">Actual 57.9%</span>
-        </div>
-        <div style="display:flex;justify-content:space-between;font-size:11.5px;color:var(--muted);border-bottom:1px solid var(--border);padding-bottom:6px;margin-bottom:6px"><span>51% expected</span><span style="color:var(--accent)">57.9% actual</span></div>
-        ${tiers.map(t=>{
-          const cnt=counts[t]||0; const pct=Math.round((cnt/total*100))||0;
-          const g=goals[t]||0; const gPct=sumGoals? Math.round((g/sumGoals*100)):0;
-          const col=TIER_COLORS[t];
-          return `<div class="tier-row">
-            <span style="display:flex;align-items:center;gap:8px"><span class="tier-swatch" style="background:${col}"></span><span style="font-size:12.5px;font-weight:700;color:var(--text)">${t}</span></span>
-            <span style="display:flex;gap:10px;align-items:center">
-              <span style="font-family:var(--mono);font-size:11.5px;color:var(--muted)">${pct}%</span>
-              <span style="font-family:var(--mono);font-size:11.5px;color:var(--accent)">${gPct}%</span>
-            </span>
-          </div>
-          <div style="display:flex;gap:3px;height:6px;border-radius:999px;overflow:hidden;background:var(--bg);margin:4px 0 8px">
-            <div style="width:${pct}%;background:${col};opacity:0.9"></div>
-            <div style="width:${100-pct}%;background:var(--border)"></div>
-          </div>`;
-        }).join("")}
-        <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);font-size:11.5px;color:var(--muted)">
-          <div><strong style="color:var(--text)">${total} shots</strong> · ${sumXg.toFixed(2)} xG · ${(sumXg/total).toFixed(2)}/shot</div>
-          <div style="margin-top:4px">Poor ${counts.Poor} · Average ${counts.Average} · Good ${counts.Good} · Great ${counts.Great}</div>
-        </div>
-      </div>
-      <div class="tier-pitch-wrap">
-        <div id="tierPitch" class="pitch-container" style="height:380px;position:relative;overflow:hidden;background:var(--pitch-bg);border:1px solid var(--border)">
-          <canvas id="tierPitchCanvas" width="700" height="380" style="width:100%;height:100%;display:block"></canvas>
-        </div>
-        <div class="tier-legend">
-          <span style="display:flex;align-items:center;gap:6px"><span style="width:10px;height:10px;border-radius:50%;background:#f87171;display:inline-block"></span> Poor</span>
-          <span style="display:flex;align-items:center;gap:6px"><span style="width:10px;height:10px;border-radius:50%;background:#fb923c;display:inline-block"></span> Average</span>
-          <span style="display:flex;align-items:center;gap:6px"><span style="width:10px;height:10px;border-radius:50%;background:#facc15;display:inline-block"></span> Good</span>
-          <span style="display:flex;align-items:center;gap:6px"><span style="width:10px;height:10px;border-radius:50%;background:#a3be8c;display:inline-block"></span> Great — 190 shots 15.04 xG 0.08/shot</span>
-          <span style="margin-left:auto;display:flex;gap:6px"><button class="view-pill-btn active" onclick="window.__tierMode='tier'">Tier colors</button><button class="view-pill-btn" onclick="window.__tierMode='outcome'">Outcome</button></span>
-        </div>
-        <div class="honest-note"><strong>Honest note.</strong> ${escapeHtml(honestNote||"Sofascore not needed — Understat X,Y,xG tiered. Filters Buildup/Possession disabled (no Understat location for those); date slider illustrative 3/16/2024—8/29/2024 — enable live filters when event data available.")}</div>
-      </div>
-    </div>
-  </div>`;
-}
-function drawTierPitch(shots) {
-  const c=document.getElementById("tierPitchCanvas");
-  if(!c) return;
-  const ctx=c.getContext("2d");
-  const w=c.width, h=c.height;
-  const bg=(typeof getThemeColor==="function"&&getThemeColor("--pitch-bg"))||"#0B0D0F";
-  ctx.fillStyle=bg.trim()||"#0B0D0F"; ctx.fillRect(0,0,w,h);
-  if (typeof drawPitchMinimal==="function") drawPitchMinimal(ctx,w,h,false);
-  const useShots = (shots && shots.length) ? shots : null;
-  if (!useShots) {
-    // illustrative dots
-    const demo=[
-      {X:0.88,Y:0.52,xG:0.45},{X:0.82,Y:0.48,xG:0.32},{X:0.91,Y:0.45,xG:0.22},{X:0.78,Y:0.55,xG:0.12},{X:0.85,Y:0.62,xG:0.05},{X:0.76,Y:0.38,xG:0.07},{X:0.9,Y:0.58,xG:0.38},{X:0.81,Y:0.42,xG:0.18},{X:0.74,Y:0.5,xG:0.04},{X:0.86,Y:0.51,xG:0.15},{X:0.79,Y:0.46,xG:0.09},{X:0.88,Y:0.4,xG:0.28},{X:0.83,Y:0.6,xG:0.11},{X:0.77,Y:0.62,xG:0.03},{X:0.89,Y:0.54,xG:0.41},{X:0.8,Y:0.36,xG:0.06},
-    ];
-    demo.forEach(s=>{
-      const col=tierColor(s.xG);
-      const cx=s.X*w, cy=(1-s.Y)*h;
-      ctx.beginPath(); ctx.arc(cx,cy,5,0,Math.PI*2); ctx.fillStyle=col; ctx.fill(); ctx.strokeStyle="rgba(0,0,0,0.45)"; ctx.lineWidth=1; ctx.stroke();
-    });
-    return;
-  }
-  useShots.forEach(s=>{
-    const col=tierColor(s.xG);
-    const cx=(Number(s.X)||0)*w, cy=(1-(Number(s.Y)||0))*h;
-    const r=Math.min(4+Math.sqrt(Number(s.xG)||0.05)*8, 10);
-    ctx.beginPath(); ctx.arc(cx,cy,r,0,Math.PI*2); ctx.fillStyle=col; ctx.fill(); ctx.strokeStyle="rgba(0,0,0,0.45)"; ctx.lineWidth=1; ctx.stroke();
-  });
-}
-
-function chipPitchHTML(homeName, awayName, homeFormation, awayFormation, minuteLabel, honestNote) {
-  const chipsHome=[
-    {n:1,name:"COURTOIS",pos:"GK",x:0.12,y:0.50},{n:2,name:"CARVAJAL",pos:"DR",x:0.28,y:0.15},{n:4,name:"ALABA",pos:"DC",x:0.28,y:0.35},{n:3,name:"MILITAO",pos:"DC",x:0.28,y:0.65},{n:6,name:"MENDY",pos:"DL",x:0.28,y:0.85},{n:8,name:"KROOS",pos:"MC",x:0.50,y:0.28},{n:10,name:"MODRIC",pos:"MC",x:0.48,y:0.50},{n:5,name:"VALVERDE",pos:"MC",x:0.50,y:0.72},{n:11,name:"ASIO",pos:"AMR",x:0.72,y:0.20},{n:9,name:"BENZEMA",pos:"FW",x:0.80,y:0.50},{n:7,name:"VINICIUS",pos:"AML",x:0.72,y:0.80},
-  ];
-  const chipsAway=[
-    {n:13,name:"CARDENAS",pos:"GK",x:0.88,y:0.50},{n:22,name:"MIRAMON",pos:"DR",x:0.72,y:0.15},{n:15,name:"POSTIGO",pos:"DC",x:0.72,y:0.35},{n:4,name:"VEZO",pos:"DC",x:0.72,y:0.65},{n:3,name:"TONE",pos:"DL",x:0.72,y:0.85},{n:8,name:"MELERO",pos:"MR",x:0.55,y:0.15},{n:24,name:"CAMPANA",pos:"MC",x:0.55,y:0.38},{n:10,name:"BARDHI",pos:"MC",x:0.55,y:0.62},{n:11,name:"MORALES",pos:"ML",x:0.55,y:0.85},{n:9,name:"MARTI",pos:"FW",x:0.78,y:0.35},{n:21,name:"DE FRUTOS",pos:"FW",x:0.78,y:0.65},
-  ];
-  const commentary=[
-    {time:"4'", team:homeName, text:"Benzema shot saved — xG 0.12 (Poor)"},
-    {time:"18'", team:awayName, text:"Marti header over — xG 0.07 (Average)"},
-    {time:"34'", team:homeName, text:"Vinicius goal — ASIO 11 assist — 1:0"},
-    {time:"45+2'", team:awayName, text:"Campana free kick — Good chance xG 0.18"},
-    {time:"62'", team:homeName, text:"Modric tackle — ballRecovery (pressure)"},
-    {time:"78'", team:awayName, text:"Morales offside — foul 0.02"},
-  ];
-  return `
-  <div class="card" id="chipPitchCard" style="margin-top:20px">
-    <div class="card-header" style="flex-wrap:wrap;gap:10px">
-      <span class="card-title">Formation Chip Pitch — Dotted 11s + Line-ups + Timeline (Image 4)</span>
-      <span class="chart-subtitle">${escapeHtml(homeFormation)} vs ${escapeHtml(awayFormation)} · ${escapeHtml(minuteLabel)}</span>
-    </div>
-    <div class="chip-pitch-header">
-      <div class="chip-team-badge">
-        <span class="crest">RMA</span>
-        <span>
-          <span style="font-weight:900;color:var(--text-bright);font-size:13.5px">${escapeHtml(homeName)} <span style="font-weight:700;color:var(--accent);font-family:var(--mono)">1</span></span>
-          <span style="font-family:var(--mono);font-size:11.5px;color:var(--muted);margin-left:6px">${escapeHtml(homeFormation)} · passing 77% · crossing 20</span>
-        </span>
-      </div>
-      <span style="font-family:var(--mono);font-size:11.5px;color:var(--muted)">45:59+4 · possession 47% / 53% · fouls 12–14 · offsides 2–3</span>
-      <div class="chip-team-badge">
-        <span>
-          <span style="font-weight:900;color:var(--text-bright);font-size:13.5px"><span style="font-weight:700;color:var(--muted);font-family:var(--mono)">0</span> ${escapeHtml(awayName)}</span>
-          <span style="font-family:var(--mono);font-size:11.5px;color:var(--muted);margin-left:6px">· ${escapeHtml(awayFormation)} · passing 89% · crossing 22</span>
-        </span>
-        <span class="crest" style="color:var(--muted)">LEV</span>
-      </div>
-    </div>
-    <div class="chip-pitch-grid">
-      <div class="chip-lineup">
-        <div class="chip-lineup-title">${escapeHtml(homeName)} — ${escapeHtml(homeFormation)}</div>
-        ${chipsHome.map(p=>`<div class="chip-player-row"><span class="chip-num">${p.n}</span><span style="flex:1"><strong>${p.name}</strong> <span style="color:var(--muted);font-family:var(--mono);font-size:11px">${p.pos}</span></span></div>`).join("")}
-      </div>
-      <div class="chip-pitch-wrap">
-        <div class="pitch-container" style="height:380px;position:relative;overflow:hidden;background:var(--pitch-bg);border:1px solid var(--border)">
-          <canvas id="chipPitchCanvas" width="700" height="380" style="width:100%;height:100%;display:block"></canvas>
-          <div id="chipOverlay" style="position:absolute;inset:0"></div>
-        </div>
-        <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
-          <span class="hero-pill accent">● Home chips #1ed760</span>
-          <span class="hero-pill">● Away chips #8B939D</span>
-          <span class="hero-pill">Dotted pitch · 1px #24292E</span>
-        </div>
-      </div>
-      <div class="chip-lineup">
-        <div class="chip-lineup-title">${escapeHtml(awayName)} — ${escapeHtml(awayFormation)}</div>
-        ${chipsAway.map(p=>`<div class="chip-player-row"><span class="chip-num">${p.n}</span><span style="flex:1"><strong>${p.name}</strong> <span style="color:var(--muted);font-family:var(--mono);font-size:11px">${p.pos}</span></span></div>`).join("")}
-      </div>
-    </div>
-    <div class="chip-timeline">
-      <div style="font-size:11.5px;font-weight:800;color:var(--text);text-transform:uppercase;letter-spacing:0.6px;margin-bottom:6px">Commentary timeline + fouls/offsides bars</div>
-      ${commentary.map(c=>`<div class="chip-timeline-row"><span class="chip-timeline-time">${c.time}</span><span style="color:var(--muted);font-family:var(--mono);font-size:11px;min-width:90px">${escapeHtml(c.team)}</span><span style="flex:1">${escapeHtml(c.text)}</span></div>`).join("")}
-      <div style="margin-top:10px;display:grid;grid-template-columns:1fr 1fr;gap:12px">
-        <div><div style="font-size:11px;color:var(--muted);font-weight:700">Fouls — ${escapeHtml(homeName)} 12 vs ${escapeHtml(awayName)} 14</div><div class="chip-fouls-bar"><div style="width:46%;background:#38bdf8"></div><div style="width:54%;background:#f59e0b"></div></div></div>
-        <div><div style="font-size:11px;color:var(--muted);font-weight:700">Offsides — ${escapeHtml(homeName)} 2 vs ${escapeHtml(awayName)} 3</div><div class="chip-fouls-bar"><div style="width:40%;background:#1ed760"></div><div style="width:60%;background:#8B939D"></div></div></div>
-      </div>
-    </div>
-    <div class="honest-note"><strong>Honest note.</strong> ${escapeHtml(honestNote||"Sofascore not enabled (SOFASCORE_ENABLED unset) — showing illustrative Real Madrid 4-3-3 vs Levante 4-4-2 dotted pitch with ASIO 11 chips (Image 4 ref). Enable SOFASCORE_ENABLED for live lineups {formation, shirtNumber, position} + playerCoordinates.")}</div>
-  </div>`;
-}
-function drawChipPitch() {
-  const c=document.getElementById("chipPitchCanvas");
-  if(!c) return;
-  const ctx=c.getContext("2d");
-  const w=c.width, h=c.height;
-  const bg=(typeof getThemeColor==="function"&&getThemeColor("--pitch-bg"))||"#0B0D0F";
-  ctx.fillStyle=bg.trim()||"#0B0D0F"; ctx.fillRect(0,0,w,h);
-  if (typeof drawPitchMinimal==="function") drawPitchMinimal(ctx,w,h,false);
-  // dotted overlay: subtle dots grid
-  ctx.fillStyle="rgba(36,41,46,0.55)";
-  for(let x=20;x<w;x+=28){ for(let y=20;y<h;y+=28){ ctx.beginPath(); ctx.arc(x,y,0.9,0,Math.PI*2); ctx.fill(); } }
-  // render chip overlay HTML will be positioned; also draw faint chip circles on canvas as fallback
-}
-function renderChipOverlay() {
-  const overlay=document.getElementById("chipOverlay");
-  const canvas=document.getElementById("chipPitchCanvas");
-  if(!overlay||!canvas) return;
-  overlay.innerHTML="";
-  const w=canvas.clientWidth, h=canvas.clientHeight;
-  const chipsHome=[
-    {n:1,name:"COURTOIS",x:0.12,y:0.50},{n:2,name:"CARVAJAL",x:0.28,y:0.15},{n:4,name:"ALABA",x:0.28,y:0.35},{n:3,name:"MILITAO",x:0.28,y:0.65},{n:6,name:"MENDY",x:0.28,y:0.85},{n:8,name:"KROOS",x:0.50,y:0.28},{n:10,name:"MODRIC",x:0.48,y:0.50},{n:5,name:"VALVERDE",x:0.50,y:0.72},{n:11,name:"ASIO",x:0.72,y:0.20},{n:9,name:"BENZEMA",x:0.80,y:0.50},{n:7,name:"VINICIUS",x:0.72,y:0.80},
-  ];
-  const chipsAway=[
-    {n:13,name:"CARDENAS",x:0.88,y:0.50},{n:22,name:"MIRAMON",x:0.72,y:0.15},{n:15,name:"POSTIGO",x:0.72,y:0.35},{n:4,name:"VEZO",x:0.72,y:0.65},{n:3,name:"TONE",x:0.72,y:0.85},{n:8,name:"MELERO",x:0.55,y:0.15},{n:24,name:"CAMPANA",x:0.55,y:0.38},{n:10,name:"BARDHI",x:0.55,y:0.62},{n:11,name:"MORALES",x:0.55,y:0.85},{n:9,name:"MARTI",x:0.78,y:0.35},{n:21,name:"DE FRUTOS",x:0.78,y:0.65},
-  ];
-  function addChips(list, isHome){
-    list.forEach(p=>{
-      const div=document.createElement("div");
-      div.className="chip-dot";
-      div.style.left=(p.x*100)+"%";
-      div.style.top=( (1-p.y)*100 )+"%";
-      const bg=isHome?"#1ed760":"#8B939D";
-      const col=isHome?"#0B0D0F":"#0B0D0F";
-      div.innerHTML=`<span class="chip-num" style="background:${bg};color:${col};border-color:${bg}">${p.n}</span><span class="chip-label">${escapeHtml(p.name)} ${p.n}</span>`;
-      div.title=`${p.name} #${p.n}`;
-      overlay.appendChild(div);
-    });
-  }
-  addChips(chipsHome,true);
-  addChips(chipsAway,false);
 }
 
 // ==========================================================
@@ -3910,35 +3474,10 @@ function renderInfo() {
 }
 document.getElementById("infoSearch").addEventListener("input", renderInfo);
 
-// Expose for command-palette.js and tests
-window.state = state;
-window.api = api;
-window.activateTab = activateTab;
-window.runTeam = (typeof runTeam !== "undefined" ? runTeam : null);
-window.runPlayer = (typeof runPlayer !== "undefined" ? runPlayer : null);
-window.runMatch = (typeof runMatch !== "undefined" ? runMatch : null);
-window.loadMatchById = (typeof loadMatchById !== "undefined" ? loadMatchById : null);
-window.renderInfo = (typeof renderInfo !== "undefined" ? renderInfo : null);
-try {
-  Object.defineProperty(window, "leagueDataCache", {
-    get() { try { return leagueDataCache; } catch(_) { return null; } },
-    set(v) { try { leagueDataCache = v; } catch(_) {} },
-    configurable: true
-  });
-} catch(_) { window.leagueDataCache = null; }
-window.GLOSSARY = GLOSSARY;
-window.seasonOf = (typeof seasonOf !== "undefined" ? seasonOf : null);
-window.dateOf = (typeof dateOf !== "undefined" ? dateOf : null);
-// helpers for inspiration
-window.drawPressurePitch = (typeof drawPressurePitch !== "undefined" ? drawPressurePitch : null);
-window.drawTierPitch = (typeof drawTierPitch !== "undefined" ? drawTierPitch : null);
-window.drawChipPitch = (typeof drawChipPitch !== "undefined" ? drawChipPitch : null);
-window.renderChipOverlay = (typeof renderChipOverlay !== "undefined" ? renderChipOverlay : null);
-
-// Initial View Activation Trigger
 const initialHashTab = (window.location.hash || "#player").slice(1);
-if (initialHashTab && document.querySelector(`.sidebar-nav [data-tab="${initialHashTab}"]`)) {
+if (initialHashTab && document.querySelector(`.sidebar-nav .nav-item[data-tab="${initialHashTab}"]`)) {
   activateTab(initialHashTab, false);
 } else {
   activateTab("player", false);
 }
+updateWatchlistPill();

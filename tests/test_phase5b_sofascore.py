@@ -5,6 +5,7 @@ TacosScore docs. httpx responses are mocked; no live network.
 """
 import asyncio
 import os
+import tempfile
 import unittest
 from unittest import mock
 
@@ -776,7 +777,7 @@ class RateLimitAndBackoffTestCase(unittest.TestCase):
             async def aclose(self):
                 pass
 
-        client = SofascoreClient(httpx_client=FlakyMock(), disable_throttle=True, enabled_override=True)
+        client = SofascoreClient(httpx_client=FlakyMock(), disable_throttle=True, enabled_override=True, cache_dir=tempfile.mkdtemp())
 
         # Patch asyncio.sleep to avoid delay
         async def _run():

@@ -183,15 +183,77 @@ def situational_xg_share(team_shots: list[dict], team_name: str) -> dict:
     }
 
 
+def compute_team_l1_metrics(team_row: list, league_table: list[list] | None = None) -> list[dict]:
+    """Compute Layer 1 Decision Metrics with league benchmark deltas and percentiles."""
+    style = style_profile(team_row)
+    matches = max(1, style["matches"])
+
+    # Table layout:
+    # [Team, M, W, D, L, G, GA, PTS, xG, NPxG, xGA, NPxGA, NPxGD, PPDA, OPPDA, DC, ODC, xPTS]
+    table = league_table or [team_row]
+    valid_rows = [r for r in table if isinstance(r, (list, tuple)) and len(r) >= 18]
+    if not valid_rows:
+        valid_rows = [team_row]
+
+    def _metric_entry(key: str, label: str, val: float, col_idx: int, subline: str, decimals: int = 2, unit: str = "/match", better: str = "higher", per_match: bool = True):
+        league_vals = []
+        for r in valid_rows:
+            m = max(1, int(to_float(r[1])))
+            raw_v = to_float(r[col_idx])
+            v = (raw_v / m) if per_match else raw_v
+            league_vals.append(v)
+
+        benchmark = sum(league_vals) / len(league_vals) if league_vals else val
+        delta = val - benchmark
+
+        if len(league_vals) > 1:
+            if better == "higher":
+                count_below = sum(1 for lv in league_vals if lv < val)
+                count_equal = sum(1 for lv in league_vals if lv == val)
+            else:
+                count_below = sum(1 for lv in league_vals if lv > val)
+                count_equal = sum(1 for lv in league_vals if lv == val)
+            pct_rank = round((count_below + 0.5 * count_equal) / len(league_vals) * 100.0, 1)
+        else:
+            pct_rank = 50.0
+
+        is_pos = (delta >= 0) if better == "higher" else (delta <= 0)
+
+        return {
+            "key": key,
+            "label": label,
+            "value": round_value(val, decimals),
+            "benchmark": round_value(benchmark, decimals),
+            "delta": round_value(delta, decimals),
+            "delta_display": f"{delta:+.{decimals}f}",
+            "percentile": pct_rank,
+            "unit": unit,
+            "subline": subline,
+            "is_positive": is_pos,
+            "sample_size": len(valid_rows),
+        }
+
+    return [
+        _metric_entry("xG_per_game", "xG / Match", style["xG_per_game"], 8, "Attacking chance generation", decimals=2, unit="/match", better="higher", per_match=True),
+        _metric_entry("xGA_per_game", "xGA / Match", style["xGA_per_game"], 10, "Defensive chance suppression", decimals=2, unit="/match", better="lower", per_match=True),
+        _metric_entry("npxGD_per_game", "NP xGD / Match", round_value(style["npxGD"] / matches, 2), 12, "Non-penalty process dominance", decimals=2, unit="/match", better="higher", per_match=True),
+        _metric_entry("PPDA", "PPDA Pressing", style["PPDA"], 13, "Pressing intensity (passes/action)", decimals=1, unit="ppda", better="lower", per_match=False),
+        _metric_entry("deep_per_game", "Deep Passes / Match", round_value(style["deep_completions"] / matches, 1), 15, "Final third box penetrations", decimals=1, unit="/match", better="higher", per_match=True),
+        _metric_entry("xPTS_per_game", "xPTS / Match", round_value(style["xPTS"] / matches, 2), 17, "Expected points trajectory", decimals=2, unit="pts", better="higher", per_match=True),
+    ]
+
+
 def team_report(
     team_row: list,
     team_history: list[dict] | None = None,
     team_shots: list[dict] | None = None,
     league_histories: dict[str, list[dict]] | None = None,
+    league_table: list[list] | None = None,
 ) -> dict:
     history = team_history or []
     return {
         "style": style_profile(team_row),
+        "l1_metrics": compute_team_l1_metrics(team_row, league_table),
         "ppda_home_away": ppda_home_away(history),
         "form_momentum": form_momentum(history, window=5),
         "situational_xg_share": situational_xg_share(team_shots or [], team_row[0]) if team_shots else None,
