@@ -53,4 +53,4 @@ package = true
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
-filterwarnings = ["error::ResourceWarning"]
+filterwarnings = ["error::ResourceWarning", "ignore:Using `httpx` with `starlette.testclient`:DeprecationWarning"]

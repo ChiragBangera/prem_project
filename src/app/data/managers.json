@@ -1,0 +1,62 @@
+{
+  "_note": "Understat has no manager data, so these stints are maintained by hand. Edit freely; add your own in <data dir>/managers.json (same shape) and they are merged in.",
+  "last_verified": "2026-07-17",
+  "stints": [
+    {
+      "manager": "Erik ten Hag",
+      "team": "Manchester United",
+      "league": "EPL",
+      "start": "2022-07-01",
+      "end": "2024-10-28"
+    },
+    {
+      "manager": "Ruud van Nistelrooy",
+      "team": "Manchester United",
+      "league": "EPL",
+      "start": "2024-10-28",
+      "end": "2024-11-10"
+    },
+    {
+      "manager": "Ruben Amorim",
+      "team": "Manchester United",
+      "league": "EPL",
+      "start": "2024-11-11",
+      "end": "2026-01-05"
+    },
+    {
+      "manager": "Darren Fletcher",
+      "team": "Manchester United",
+      "league": "EPL",
+      "start": "2026-01-05",
+      "end": "2026-01-13"
+    },
+    {
+      "manager": "Michael Carrick",
+      "team": "Manchester United",
+      "league": "EPL",
+      "start": "2026-01-13",
+      "end": null
+    },
+    {
+      "manager": "Mikel Arteta",
+      "team": "Arsenal",
+      "league": "EPL",
+      "start": "2019-12-22",
+      "end": null
+    },
+    {
+      "manager": "Arne Slot",
+      "team": "Liverpool",
+      "league": "EPL",
+      "start": "2024-06-01",
+      "end": "2026-05-30"
+    },
+    {
+      "manager": "Enzo Maresca",
+      "team": "Chelsea",
+      "league": "EPL",
+      "start": "2024-07-01",
+      "end": "2026-01-01"
+    }
+  ]
+}
