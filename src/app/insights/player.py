@@ -98,14 +98,14 @@ def player_insights(row: dict, *, finishing: dict | None = None, career: Sequenc
             out.append(Insight(
                 f"player.{row['id']}.young", "youth",
                 f"At {age}, his all-round output ranks in the top {max(1, round(100 - out_idx))}% of {WORDS[group]}: an unusually productive young player.",
-                "Output index averages his percentile across the metrics that define his role.", tone="positive",
+                "Role score averages his percentile across the metrics that define his role.", tone="positive",
                 score=clamp_score(56 + 0.5 * (out_idx - 60) + (21 - age) * 3), confidence=confidence,
-                evidence=[ev("Age", age), ev("Output index", f1(out_idx)), ev("Minutes", minutes)], entities=ent, link=link))
+                evidence=[ev("Age", age), ev("Role score", f1(out_idx)), ev("Minutes", minutes)], entities=ent, link=link))
         elif age >= 31 and out_idx >= 75:
             out.append(Insight(
                 f"player.{row['id']}.veteran", "profile",
                 f"Still elite at {age}: top {max(1, round(100 - out_idx))}% of {WORDS[group]} on output.", "",
-                tone="neutral", score=40, confidence=confidence, evidence=[ev("Age", age), ev("Output index", f1(out_idx))], entities=ent, link=link))
+                tone="neutral", score=40, confidence=confidence, evidence=[ev("Age", age), ev("Role score", f1(out_idx))], entities=ent, link=link))
 
     # -- role security and minutes
     share = row["minutes_share"]
@@ -176,7 +176,7 @@ def scouting_highlights(rows: Sequence[dict], *, limit_each: int = 3) -> list[In
             f"scout.young.{r['id']}", "youth",
             f"{r['name']} ({r['team']}), {r['age']}: top {max(1, round(100 - r['output']))}% of {WORDS[r['group']]} on output.",
             f"{f2(r['contrib90'])} npxG + xA per 90 over {r['minutes']} minutes.", tone="positive", score=clamp_score(60 + 0.4 * (r["output"] - 65)),
-            confidence=confidence_from_minutes(r["minutes"]), evidence=[ev("Age", r["age"]), ev("Output", f1(r["output"])), ev("Min", r["minutes"])],
+            confidence=confidence_from_minutes(r["minutes"]), evidence=[ev("Age", r["age"]), ev("Role score", f1(r["output"])), ev("Min", r["minutes"])],
             entities=[{"type": "player", "id": r["id"], "name": r["name"]}], link=player_link(r["id"])))
 
     hot = sorted((r for r in pool if r["shots"] >= 30 and r["g_xg_z"] >= 1.8), key=lambda r: -r["g_xg_z"])
@@ -205,7 +205,7 @@ def scouting_highlights(rows: Sequence[dict], *, limit_each: int = 3) -> list[In
             f"{r['name']} ({r['team']}) is top {max(1, round(100 - r['output']))}% among {WORDS[r['group']]} on output but plays only {round(100 * r['minutes_share'])}% of his team's minutes.",
             "Strong rates on limited minutes: either an unjustly used player or a small-sample mirage. Check the sample before getting excited.",
             tone="info", score=clamp_score(52 + 0.3 * (r["output"] - 78)), confidence="low" if r["minutes"] < 900 else "medium",
-            evidence=[ev("Output", f1(r["output"])), ev("Minutes", r["minutes"]), ev("Share", f"{round(100 * r['minutes_share'])}%")],
+            evidence=[ev("Role score", f1(r["output"])), ev("Minutes", r["minutes"]), ev("Share", f"{round(100 * r['minutes_share'])}%")],
             entities=[{"type": "player", "id": r["id"], "name": r["name"]}], link=player_link(r["id"])))
 
     for group, key, label, floor in (("MID", "xgbuildup90", "build-up play", 85), ("DEF", "xgbuildup90", "build-up play", 88)):

@@ -36,7 +36,7 @@ GROUPS: list[dict] = [
             ("percentile", "Percentile", "The share of same-role peers a player is above on a metric.", "50 is average, 90 means better than 90% of comparable players. Peers must have played enough minutes to count."),
             ("pool", "Peer pool", "The players a percentile is measured against: same role group, above a minutes threshold.",
              "The threshold scales with how far into the season it is (about a quarter of the minutes a full-time player could have played)."),
-            ("output", "Output index", "The average percentile across the metrics that define a player's role.", "A quick summary for sorting, not a verdict: open the profile to see the shape."),
+            ("output", "Role score", "The average percentile across the metrics that define a player's role.", "A quick summary for sorting, not a verdict: open the profile to see the shape."),
             ("minutes_share", "Share of team minutes", "Minutes played as a share of everything his team has played.", "Above 80% is a fixture; below 40% is rotation or bench."),
         ],
     },

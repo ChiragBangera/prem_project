@@ -59,6 +59,26 @@ def test_fixture_rounds_and_forecast_scaling():
     assert ls.upcoming[0].hg is None and ls.upcoming[0].hxg is None
 
 
+def test_html_entities_in_names_are_decoded_everywhere():
+    """Understat occasionally sends names such as ``N&#039;Golo``; they must read (and join) as plain text."""
+    raw = raw_league()
+    for entry in raw["teams"].values() if isinstance(raw["teams"], dict) else raw["teams"]:
+        if entry["title"] == "Alpha FC":
+            entry["title"] = "Alpha &amp; Sons FC"
+    for fixture in raw["dates"]:
+        for side in ("h", "a"):
+            if fixture[side]["title"] == "Alpha FC":
+                fixture[side]["title"] = "Alpha &amp; Sons FC"
+    raw["players"][0]["player_name"] = "N&#039;Golo Traor&eacute;"
+    ls = normalize_league(raw, "EPL", 2025)
+    assert "Alpha & Sons FC" in ls.teams and "Alpha &amp; Sons FC" not in ls.teams
+    assert all(m.opponent and m.match_id for m in ls.teams["Alpha & Sons FC"].history)  # still joins to the fixtures
+    assert ls.players[0].name == "N'Golo Traoré"
+
+    shots = normalize_player_page({"shots": [{"id": "1", "minute": "5", "X": "0.9", "Y": "0.5", "xG": "0.1", "result": "Goal", "player": "D&#039;Arcy", "player_assisted": "O&#039;Neil", "h_team": "A", "a_team": "B", "h_a": "h", "date": "2025-08-16 15:00:00"}], "groups": {}}, 1)
+    assert shots.shots[0].player == "D'Arcy" and shots.shots[0].assisted_by == "O'Neil"
+
+
 def test_bad_rows_are_skipped_not_fatal():
     payload = raw_league()
     payload["players"].append({"id": "", "player_name": ""})

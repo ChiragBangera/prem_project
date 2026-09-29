@@ -8,6 +8,7 @@ of crashing a whole page.
 
 from __future__ import annotations
 
+import html as _html
 import math
 from typing import Any, Iterable
 
@@ -52,6 +53,14 @@ def maybe_num(value: Any) -> float | None:
     return None if math.isnan(result) or math.isinf(result) else result
 
 
+def text(value: Any, default: str = "") -> str:
+    """A string field with HTML entities decoded: Understat occasionally sends names like ``N&#039;Golo``."""
+    if value is None:
+        return default
+    out = str(value)
+    return (_html.unescape(out) if "&" in out else out).strip()
+
+
 def rows(value: Any) -> list[dict]:
     """Understat sometimes sends ``{id: row}`` and sometimes ``[row]``."""
     if isinstance(value, dict):
@@ -62,7 +71,7 @@ def rows(value: Any) -> list[dict]:
 
 
 def _split_teams(title: Any) -> list[str]:
-    parts = [p.strip() for p in str(title or "").split(",") if p.strip()]
+    parts = [p.strip() for p in text(title).split(",") if p.strip()]
     return parts or ["Unknown"]
 
 
@@ -107,10 +116,10 @@ def _fixtures(raw: Any, warnings: list[str]) -> list[Fixture]:
                 Fixture(
                     id=integer(item.get("id")),
                     dt=str(item.get("datetime") or "")[:19],
-                    home=str(home["title"]),
-                    away=str(away["title"]),
-                    home_short=str(home.get("short_title") or ""),
-                    away_short=str(away.get("short_title") or ""),
+                    home=text(home["title"]),
+                    away=text(away["title"]),
+                    home_short=text(home.get("short_title")),
+                    away_short=text(away.get("short_title")),
                     played=played,
                     hg=integer(goals.get("h")) if played else None,
                     ag=integer(goals.get("a")) if played else None,
@@ -144,7 +153,7 @@ def _teams(raw: Any, fixtures: list[Fixture], warnings: list[str]) -> dict[str, 
 
     teams: dict[str, Team] = {}
     for entry in rows(raw):
-        name = entry.get("title")
+        name = text(entry.get("title"))
         if not name:
             warnings.append("Skipped a team without a title.")
             continue
@@ -162,7 +171,7 @@ def _teams(raw: Any, fixtures: list[Fixture], warnings: list[str]) -> dict[str, 
         history.sort(key=lambda m: (m.dt, m.venue))
         for index, match in enumerate(history, start=1):
             match.matchweek = index
-        teams[name] = Team(id=integer(entry.get("id")), name=str(name), short=shorts.get(name, ""), history=history)
+        teams[name] = Team(id=integer(entry.get("id")), name=name, short=shorts.get(name, ""), history=history)
     return teams
 
 
@@ -196,14 +205,14 @@ def _players(raw: Any, league: str, season: int, warnings: list[str]) -> list[Pl
     players: list[PlayerSeason] = []
     for row in rows(raw):
         pid = integer(row.get("id"))
-        name = row.get("player_name")
+        name = text(row.get("player_name"))
         if not pid or not name:
             warnings.append("Skipped a player row without id/name.")
             continue
         players.append(
             PlayerSeason(
                 id=pid,
-                name=str(name),
+                name=name,
                 teams=_split_teams(row.get("team_title")),
                 position=str(row.get("position") or "").strip(),
                 games=integer(row.get("games")),
@@ -241,22 +250,22 @@ def _shot(row: dict) -> Shot:
         situation=str(row.get("situation") or ""),
         shot_type=str(row.get("shotType") or ""),
         last_action=str(row.get("lastAction") or ""),
-        player=str(row.get("player") or ""),
+        player=text(row.get("player")),
         player_id=integer(row.get("player_id")) or None,
         venue=str(row.get("h_a") or ""),
         season=integer(row.get("season")),
         match_id=integer(row.get("match_id")) or None,
-        home=str(row.get("h_team") or ""),
-        away=str(row.get("a_team") or ""),
+        home=text(row.get("h_team")),
+        away=text(row.get("a_team")),
         date=str(row.get("date") or "")[:10],
-        assisted_by=(str(row["player_assisted"]) if row.get("player_assisted") else None),
+        assisted_by=(text(row.get("player_assisted")) or None),
     )
 
 
 def _career_row(row: dict) -> CareerSeason:
     return CareerSeason(
         season=integer(row.get("season")),
-        team=str(row.get("team") or ""),
+        team=text(row.get("team")),
         position=str(row.get("position") or ""),
         games=integer(row.get("games")),
         minutes=integer(row.get("time")),
@@ -336,8 +345,8 @@ def normalize_player_page(raw: dict, player_id: int) -> PlayerPage:
     favorite = info.get("favorite_position")
     return PlayerPage(
         id=player_id,
-        name=str(name) if name else None,
-        favorite_position=str(favorite) if favorite else None,
+        name=text(name) or None,
+        favorite_position=text(favorite) or None,
         shots=shots,
         career=career,
         splits=splits,
@@ -363,7 +372,7 @@ def normalize_match_page(raw: dict, match_id: int) -> MatchPage:
             entries.append(
                 RosterEntry(
                     player_id=integer(r.get("player_id") or r.get("id")),
-                    player=str(r.get("player") or ""),
+                    player=text(r.get("player")),
                     position=str(r.get("position") or ""),
                     minutes=integer(r.get("time")),
                     goals=integer(r.get("goals")),
