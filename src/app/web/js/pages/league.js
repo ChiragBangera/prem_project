@@ -10,6 +10,7 @@ import { CsvButton, DataTable } from "../ui/table.js";
 import { GapCell } from "../ui/blocks.js";
 import { Sparkline, RankChart, SERIES_COLORS } from "../charts/lines.js";
 import { Icon } from "../lib/icons.js";
+import { useStableSlots } from "../lib/slots.js";
 import { Scatter } from "../charts/scatter.js";
 
 const VIEWS = [
@@ -73,10 +74,10 @@ function headline(table) {
   return bits.length ? bits.join("; ") + "." : "Results and chances broadly agree across the table.";
 }
 
-function TeamMap({ table, follow }) {
+function TeamMap({ table, follow, colorOf }) {
   const avgX = table.reduce((s, t) => s + t.xg_pg, 0) / table.length;
   const avgY = table.reduce((s, t) => s + t.xga_pg, 0) / table.length;
-  const points = table.map((t) => ({ id: t.team, x: t.xg_pg, y: t.xga_pg, label: t.short, highlight: follow.includes(t.team), color: follow.includes(t.team) ? SERIES_COLORS[follow.indexOf(t.team)] : undefined, data: t }));
+  const points = table.map((t) => ({ id: t.team, x: t.xg_pg, y: t.xga_pg, label: t.short, highlight: follow.includes(t.team), color: follow.includes(t.team) ? colorOf(t.team) : undefined, data: t }));
   return html`<${Scatter} points=${points} mark="pill" invertY=${true} refX=${avgX} refY=${avgY} height=${400}
     xLabel="Chances created per game (xG) →" yLabel="← Chances allowed per game (xGA)"
     corners=${{ tr: "Dominant", tl: "Defence-led", br: "Attack-led", bl: "Struggling" }} hoverPad=${22}
@@ -95,6 +96,8 @@ function LeagueView({ d, query }) {
   const follow = query.follow === "none" ? [] : query.follow ? query.follow.split("|").filter((t) => teamNames.includes(t)).slice(0, 4) : table.slice(0, 3).map((t) => t.team);
   const setFollow = (list) => setQuery({ follow: list.length ? list.join("|") : "none" });
   const toggleFollow = (t) => setFollow(follow.includes(t) ? follow.filter((x) => x !== t) : [...follow, t].slice(-4));
+  const slotOf = useStableSlots(follow);
+  const colorOf = (t) => SERIES_COLORS[slotOf(t)];
   const columns = useMemo(() => columnsFor(view), [view]);
   const initialSort = view === "style" ? { key: "xgd_pg", dir: "desc" } : { key: view === "expected" ? "xpts_gap" : "rank", dir: view === "expected" ? "desc" : "asc" };
   const ucl = scope.ucl_places, rel = scope.relegation_places, n = table.length;
@@ -125,16 +128,16 @@ function LeagueView({ d, query }) {
 
     <div class="grid cols-2">
       <${Card} title="Attack against defence" sub="Where each team sits on chances created and allowed. Dotted lines are league averages. Click a team to open it.">
-        <${TeamMap} table=${table} follow=${follow} />
+        <${TeamMap} table=${table} follow=${follow} colorOf=${colorOf} />
         <p class="xsmall muted" style=${{ marginTop: "8px" }}>Teams you follow in the race chart are outlined in the same colour. Up and to the right is better.</p>
       </${Card}>
       <${Card} title="The race, matchweek by matchweek" sub="Table position after each round. Click a line to follow it (up to four)."
         actions=${html`<${Select} compact label="Follow a team" value="" options=${[{ value: "", label: "Follow a team…" }, ...[...table].sort((a, b) => a.team.localeCompare(b.team)).map((t) => ({ value: t.team, label: t.team }))]} onChange=${(v) => v && toggleFollow(v)} />`}>
         <${RankChart} series=${trajectories.rank} rounds=${trajectories.rounds} highlight=${follow} nTeams=${n} height=${400}
-          zones=${{ ucl, rel }} onPick=${toggleFollow}
+          zones=${{ ucl, rel }} onPick=${toggleFollow} colorOf=${colorOf}
           shortOf=${(t) => table.find((x) => x.team === t)?.short || t.slice(0, 3).toUpperCase()} />
         <div class="follow-chips">
-          ${follow.map((t, i) => html`<button type="button" class="chip" key=${t} onClick=${() => toggleFollow(t)} title="Stop following"><i class="dot" style=${{ background: SERIES_COLORS[i] }}></i>${t}<${Icon} name="x" /></button>`)}
+          ${follow.map((t, i) => html`<button type="button" class="chip" key=${t} onClick=${() => toggleFollow(t)} title="Stop following"><i class="dot" style=${{ background: colorOf(t) }}></i>${t}<${Icon} name="x" /></button>`)}
           ${follow.length ? html`<button type="button" class="chip" onClick=${() => setFollow([])}>Clear</button>` : html`<span class="xsmall muted">Nobody followed. Hover the lines, or pick a team above.</span>`}
           <span class="xsmall muted" style=${{ marginLeft: "auto" }}>Blue band: Champions League places · red band: relegation places</span>
         </div>

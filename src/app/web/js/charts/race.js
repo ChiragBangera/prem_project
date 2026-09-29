@@ -2,7 +2,7 @@
 import { html, useState } from "../lib/html.js";
 import { tooltip } from "../lib/tooltip.js";
 import { nf } from "../lib/format.js";
-import { Frame, AxisX, AxisY, niceTicks, scaleLinear, stepPath } from "./core.js";
+import { Frame, AxisX, AxisY, ChartTable, niceTicks, scaleLinear, stepPath } from "./core.js";
 
 const valueAt = (points, minute) => {
   let v = 0;
@@ -16,7 +16,9 @@ export function XgRace({ home, away, homeName, awayName, homeShort, awayShort, h
   const top = Math.max(0.5, ...home.map((p) => p.xg), ...away.map((p) => p.xg));
   const goals = [...home.filter((p) => p.goal).map((p) => ({ ...p, side: "h" })), ...away.filter((p) => p.goal).map((p) => ({ ...p, side: "a" }))];
   const colors = { h: "var(--c1)", a: "var(--c2)" };
-  return html`<${Frame} height=${height} label=${`Cumulative xG: ${homeName} ${nf(home[home.length - 1]?.xg, 2)}, ${awayName} ${nf(away[away.length - 1]?.xg, 2)}`} margin=${{ top: 16, right: 60, bottom: 34, left: 40 }} onLeave=${() => { setHover(null); tooltip.hide(); }}>
+  const marks = [0, 15, 30, 45, 60, 75, 90].filter((m) => m <= end);
+  const cols = [{ key: "m", label: "Minute", render: (r) => r + "′" }, { key: "h", label: homeName, num: true, render: (r) => nf(valueAt(home, r), 2) }, { key: "a", label: awayName, num: true, render: (r) => nf(valueAt(away, r), 2) }];
+  return html`<${Frame} height=${height} label=${`Cumulative xG: ${homeName} ${nf(home[home.length - 1]?.xg, 2)}, ${awayName} ${nf(away[away.length - 1]?.xg, 2)}`} margin=${{ top: 16, right: 60, bottom: 34, left: 40 }} onLeave=${() => { setHover(null); tooltip.hide(); }} after=${html`<${ChartTable} label="View cumulative xG by minute" columns=${cols} rows=${marks} />`}>
     ${({ iw, ih }) => {
       const sx = scaleLinear([0, end], [0, iw]);
       const sy = scaleLinear([0, top * 1.12], [ih, 0]);

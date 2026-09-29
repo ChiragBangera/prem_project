@@ -222,6 +222,10 @@ def create_app(settings: Settings | None = None, *, provider=None, today: date |
     async def data_sync(request: Request, body: SyncRequest):
         return ok(wb(request).start_sync(body.leagues, body.seasons, body.force))
 
+    @app.post("/api/data/check")
+    async def data_check(request: Request):
+        return ok(await wb(request).check_connection())
+
     @app.get("/api/data/jobs/{job_id}")
     async def job(request: Request, job_id: str):
         found = wb(request).jobs.get(job_id)

@@ -20,7 +20,7 @@ const GROUPS = [
   { value: "DEF", label: "Defenders" }, { value: "GK", label: "Goalkeepers" },
 ];
 const DEFAULT_GROUPS = ["ATT", "MID", "DEF"];
-const MIXED = ["contrib90", "npxg90", "xa90", "xgchain90", "xgbuildup90", "shots90"];
+const MIXED = ["contrib90", "npxg90", "xa90", "xgchain90", "xgbuildup90"];
 const MAP_METRICS = ["npxg90", "xa90", "contrib90", "shots90", "kp90", "xgps", "xgchain90", "xgbuildup90", "goals90", "g_xg", "output", "minutes"];
 const GROUP_COLOR = { ATT: "var(--c2)", MID: "var(--c1)", DEF: "var(--c3)", GK: "var(--c4)" };
 
@@ -85,7 +85,7 @@ function applyFilters(rows, f) {
 }
 
 function metricKeys(groups, catalog) {
-  if (groups.length === 1 && groups[0] !== "GK" && catalog.profiles[groups[0]]) return catalog.profiles[groups[0]].filter((k) => k !== "yellow90").slice(0, 6);
+  if (groups.length === 1 && groups[0] !== "GK" && catalog.profiles[groups[0]]) return catalog.profiles[groups[0]].filter((k) => k !== "yellow90").slice(0, 5);
   return MIXED;
 }
 

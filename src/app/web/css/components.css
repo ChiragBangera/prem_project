@@ -190,7 +190,7 @@ table.data td.zone-none { box-shadow: inset 3px 0 0 transparent; }
 .gap-bar .val { min-width: 34px; text-align: right; }
 
 /* ============ insight cards ============ */
-.insights { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)); }
+.insights { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 290px), 1fr)); }
 .insights > :only-child { max-width: 760px; }
 .insight {
   display: flex; flex-direction: column; gap: 10px; padding: 16px;
@@ -209,6 +209,11 @@ a.insight:hover .go { color: var(--accent-strong); opacity: 1; transform: transl
 .tone.warning { background: var(--warn-wash); color: var(--warn-ink); }
 .tone.info, .tone.neutral { background: var(--accent-wash); color: var(--accent-strong); }
 :root[data-theme="dark"] .tone.info, :root[data-theme="dark"] .tone.neutral { color: var(--accent-hover); }
+.kicker { font-size: var(--fs-2xs); font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase; color: var(--ink-3); line-height: 1; margin-top: 1px; }
+.kicker.positive { color: var(--good-ink); }
+.kicker.negative { color: var(--crit-ink); }
+.kicker.warning { color: var(--warn-ink); }
+.kicker.info, .kicker.neutral { color: var(--ink-3); }
 .insight-head { font-size: var(--fs-md); font-weight: 650; line-height: 1.32; text-wrap: pretty; }
 .insight-detail { color: var(--ink-2); font-size: var(--fs-sm); line-height: 1.5; text-wrap: pretty; }
 .evidence { display: flex; flex-wrap: wrap; gap: 6px 14px; }

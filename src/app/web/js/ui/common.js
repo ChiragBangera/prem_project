@@ -320,6 +320,8 @@ export class ErrorBoundary extends Component {
 
 const TONE_ICON = { positive: "trendUp", negative: "trendDown", warning: "alert", info: "info", neutral: "info" };
 const CONF_LABEL = { high: "", medium: "Moderate evidence", low: "Small sample" };
+// The tone also gets a word, so it never rests on colour alone.
+const KICKER = { positive: "Upside", negative: "Downside", warning: "Watch", info: "Context", neutral: "Context" };
 
 export function InsightCard({ insight, scope, compact }) {
   const to = linkHref(insight.link, scope);
@@ -329,6 +331,7 @@ export function InsightCard({ insight, scope, compact }) {
     <div class="insight-top">
       <span class=${cls("tone", insight.tone)} aria-hidden="true"><${Icon} name=${TONE_ICON[insight.tone] || "info"} size="sm" /></span>
       <div class="stack" style=${{ "--gap": "5px" }}>
+        <div class=${cls("kicker", insight.tone)}>${KICKER[insight.tone] || "Context"}</div>
         <div class="insight-head">${insight.headline}</div>
         ${!compact && insight.detail ? html`<div class="insight-detail">${insight.detail}</div>` : null}
       </div>

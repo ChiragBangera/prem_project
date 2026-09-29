@@ -12,3 +12,5 @@ dist/
 screenshots/
 .prem-data/
 node_modules/
+shots/
+*.sqlite

@@ -2,7 +2,7 @@
 import { html, useState } from "../lib/html.js";
 import { tooltip } from "../lib/tooltip.js";
 import { nf, signed, dateShort } from "../lib/format.js";
-import { Frame, AxisY, niceExtent, niceTicks, scaleBand, scaleLinear, tickFormat } from "./core.js";
+import { Frame, AxisY, ChartTable, niceExtent, niceTicks, scaleBand, scaleLinear, tickFormat } from "./core.js";
 
 const WORD = { w: "Won", d: "Drew", l: "Lost" };
 
@@ -17,7 +17,12 @@ export function MatchStrip({ matches, height = 230, onOpen }) {
   const [hover, setHover] = useState(null);
   const diffs = matches.map((m) => m.xg - m.xga);
   const [lo, hi] = niceExtent(Math.min(-0.5, ...diffs) * 1.05, Math.max(0.5, ...diffs) * 1.05, 4);
-  return html`<${Frame} height=${height} label="Chance difference and result in every match" margin=${{ top: 26, right: 12, bottom: 26, left: 40 }} onLeave=${() => { setHover(null); tooltip.hide(); }}>
+  const cols = [
+    { key: "n", label: "MW", render: (m) => m.n }, { key: "opp", label: "Opponent", render: (m) => `${m.venue === "h" ? "vs" : "at"} ${m.opponent}` },
+    { key: "score", label: "Result", num: true, render: (m) => `${WORD[m.result]} ${m.gf}–${m.ga}` }, { key: "xg", label: "xG–xGA", num: true, render: (m) => `${nf(m.xg, 2)}–${nf(m.xga, 2)}` },
+    { key: "d", label: "Chance difference", num: true, render: (m) => signed(m.xg - m.xga, 2) },
+  ];
+  return html`<${Frame} height=${height} label="Chance difference and result in every match" margin=${{ top: 26, right: 12, bottom: 26, left: 40 }} onLeave=${() => { setHover(null); tooltip.hide(); }} after=${html`<${ChartTable} columns=${cols} rows=${matches} />`}>
     ${({ iw, ih }) => {
       const keys = matches.map((_, i) => i);
       const sx = scaleBand(keys, [0, iw], 0.28);

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { poissonBinomial, tails, mean, quantile, poissonOutcome } from "../js/lib/stats.js";
+import { poissonBinomial, tails, mean, quantile, poissonOutcome } from "../../src/app/web/js/lib/stats.js";
 
 test("poisson-binomial pmf sums to one and matches the binomial case", () => {
   const pmf = poissonBinomial([0.5, 0.5, 0.5]);

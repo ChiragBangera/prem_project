@@ -389,3 +389,11 @@ code { font: 500 0.92em ui-monospace, SFMono-Regular, Menlo, monospace; backgrou
 .gloss dd { margin: 0; color: var(--ink-2); font-size: var(--fs-sm); text-wrap: pretty; }
 .gloss dd b { color: var(--ink); font-weight: 600; }
 @media (max-width: 860px) { .gloss { grid-template-columns: minmax(0, 1fr); } }
+
+/* ---- chart data tables ---- */
+.chart-table-toggle { margin-top: 10px; }
+.chart-table-toggle summary { cursor: pointer; width: max-content; font-size: var(--fs-xs); font-weight: 600; color: var(--ink-3); border-radius: var(--r-xs); padding: 2px 0; }
+.chart-table-toggle summary:hover { color: var(--ink); }
+.chart-table-toggle[open] summary { margin-bottom: 8px; }
+
+.checkstep { display: grid; grid-template-columns: 30px minmax(0, 1fr) auto; gap: 12px; align-items: start; }

@@ -58,6 +58,28 @@ function SyncCard({ status, meta, onStarted }) {
   </${Card}>`;
 }
 
+function CheckCard({ status }) {
+  const [running, setRunning] = useState(false);
+  const [result, setResult] = useState(null);
+  const [error, setError] = useState(null);
+  const run = async () => {
+    setRunning(true); setError(null);
+    try { setResult(await api.post("/api/data/check")); } catch (e) { setError(e); } finally { setRunning(false); }
+  };
+  return html`<${Card} title="Connection check" sub=${status.mode.demo ? "Runs the same steps against the demo world." : "Reads a league, a match and a player from Understat, and a birthdate from Wikidata, without saving anything. Run it when a page shows an error."}
+    actions=${html`<${Button} size="sm" icon="refresh" disabled=${running || status.mode.offline} onClick=${run}>${running ? "Checking…" : result ? "Run again" : "Run check"}</${Button}>`}>
+    ${error ? html`<${Notice} tone="crit" icon="alert">${error.message}</${Notice}>` : null}
+    ${result ? html`<div class="stack" style=${{ "--gap": "10px" }}>
+      ${result.steps.map((st) => html`<div class="checkstep" key=${st.name}>
+        <span class=${"tone " + (st.ok ? "positive" : "negative")}><${Icon} name=${st.ok ? "check" : "alert"} size="sm" /></span>
+        <div class="stack" style=${{ "--gap": "2px", minWidth: 0 }}><b>${st.name}</b><span class=${st.ok ? "secondary small" : "small"} style=${st.ok ? null : { color: "var(--crit-ink)" }}>${st.detail}</span>${st.hint && !st.ok ? html`<span class="xsmall muted">${st.hint}</span>` : null}</div>
+        <span class="xsmall muted num">${st.ms} ms</span>
+      </div>`)}
+      <p class="small" style=${{ marginTop: "4px" }}><b>${result.ok ? "Everything can be read." : "Something is wrong: fix the first failing step."}</b></p>
+    </div>` : html`<p class="muted small">${status.mode.offline ? "Offline mode is on, so there is nothing to check." : "Not run yet."}</p>`}
+  </${Card}>`;
+}
+
 function Enrichment({ status }) {
   const rows = [
     { key: "ages", label: "Player ages", source: "Wikidata", p: status.enrichment.ages, note: "Matched by name and club. Only used for the age filter and youth insights." },
@@ -99,6 +121,7 @@ function DataView({ status, meta, reload }) {
     <div class="grid cols-2 top">
       <div class="stack">
         <${SyncCard} status=${status} meta=${meta} onStarted=${reload} />
+        <${CheckCard} status=${status} />
         <${Enrichment} status=${status} />
       </div>
       <div class="stack">

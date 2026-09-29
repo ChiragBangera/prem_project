@@ -73,6 +73,29 @@ def cmd_sync(args: argparse.Namespace) -> int:
         return 2
 
 
+def cmd_doctor(args: argparse.Namespace) -> int:
+    _apply_env(args)
+    from app.workbench import Workbench
+
+    async def run() -> dict:
+        wb = Workbench()
+        try:
+            return await wb.check_connection()
+        finally:
+            await wb.close()
+
+    result = asyncio.run(run())
+    where = "demo world" if result["mode"]["demo"] else "Understat"
+    print(f"Checking the data path ({where}):")
+    for step in result["steps"]:
+        mark = "ok  " if step["ok"] else "FAIL"
+        print(f"  [{mark}] {step['name']:<24s} {step['detail']}  ({step['ms']} ms)")
+        if step.get("hint") and not step["ok"]:
+            print(f"         {step['hint']}")
+    print("\nAll good." if result["ok"] else "\nSomething is wrong: see the failing step above.")
+    return 0 if result["ok"] else 1
+
+
 def cmd_status(args: argparse.Namespace) -> int:
     _apply_env(args)
     from app.data.store import Store
@@ -137,6 +160,10 @@ def build_parser() -> argparse.ArgumentParser:
     sync.add_argument("--seasons", default="", help="comma-separated start years (default: current season)")
     sync.add_argument("--force", action="store_true", help="refetch even finished seasons")
     sync.set_defaults(func=cmd_sync)
+
+    doctor = sub.add_parser("doctor", help="check that Understat (and Wikidata) can be reached and read")
+    common(doctor)
+    doctor.set_defaults(func=cmd_doctor)
 
     status = sub.add_parser("status", help="show what is cached")
     common(status)

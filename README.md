@@ -1,116 +1,113 @@
-# Premier League Analytics Lab
+# Prem Lab
 
-An async football analytics API and CLI built around Understat's public website data. The project turns league, team, player, and match data into reproducible analytical answers rather than one-off notebook work.
+A personal football analytics workbench built on [Understat](https://understat.com) data. It runs on your own computer, keeps everything in a local cache, and is designed to answer questions rather than show dashboards: *who is really better than their results, who is worth scouting, what happens next.*
 
-This is a personal portfolio project. It is unofficial and is not affiliated with or endorsed by Understat.
+Unofficial. Not affiliated with or endorsed by Understat.
 
-## What It Does
+| Briefing | Scout |
+| --- | --- |
+| ![Briefing](docs/screens/briefing.jpg) | ![Scout](docs/screens/scout.jpg) |
+| **Player** | **Match report** |
+| ![Player](docs/screens/player.jpg) | ![Match](docs/screens/match.jpg) |
 
-- Fetches JSON data for league, team, player, match, search, and filtered-stat endpoints.
-- Derives league tables with xG, xGA, xPTS, PPDA, and deep-completion metrics.
-- Answers natural-language questions about form, process versus results, player comparisons, coach windows, chance profiles, and defensive trends.
-- Exposes the data and analysis through a hosted HTTP API and a local CLI.
-- Returns written evidence and share-ready copy without coupling the analytics engine to a visualization framework.
+*The screenshots use the built-in demo world (synthetic players and results), not real data.*
 
-The confirmed endpoint inventory is documented in [docs/understat_endpoint_inventory.md](docs/understat_endpoint_inventory.md).
+## What it is for
 
-## Run Locally
+Every page opens with findings, then the evidence.
 
-The project requires Python 3.11 or newer. With `uv` installed:
+- **Briefing** – what stands out right now: teams above or below what their chances deserve, players riding luck, the title, top-four and relegation races, the next fixtures, and the players on your shortlist.
+- **League** – standings read three ways (results, expected, style), attack against defence, and the table race matchweek by matchweek.
+- **Team** – results against chances in every match, percentile profile against the league, rolling form, splits, fixtures with forecasts, squad contributions, and where chances come from.
+- **Scout** – filter and rank players by role, minutes, age, club and finishing luck; one-click lenses ("Goal threats", "Unlucky finishers", "Hidden gems", "Young and good"); a table with percentile bars or a map; tick players to compare.
+- **Player** – profile against role peers, an exact "how unusual is his finishing" distribution, shot map, season-by-season trend, and statistically similar players (optionally younger, or from other leagues).
+- **Compare** – players (percentile dot plot with the differences spelled out) or two teams.
+- **Matches** – every match next to the chances behind it, "results that lied", and a match report with xG race, shot map and deserved result.
+- **Forecast** – upcoming fixtures, a match lab for any pairing, the season simulated thousands of times, and a walk-forward accuracy check of the model.
+- **Shortlist** – players you track, live numbers and your own notes.
+- **Data** and **Method** – sync and cache status, a connection check, and plain-language documentation of every number.
+
+### Ideas the numbers are built on
+
+1. Results are noisy; the quality of chances is steadier. Expected points replay every shot of every match.
+2. Small samples are treated cautiously: peers need enough minutes, and rates are pulled toward the role average in proportion to how little football stands behind them.
+3. Everyone is compared with their own role, so a percentile means the same thing on every page.
+4. Luck is measured, not guessed: a player's goals are placed in the exact distribution of goals his shots could have produced.
+
+## Run it
+
+Requires Python 3.11+. With [uv](https://docs.astral.sh/uv/):
 
 ```bash
 uv sync --extra dev
-uv run uvicorn app.api:app --reload
+uv run prem doctor          # can this machine reach and read Understat?
+uv run prem sync --leagues EPL --seasons 2025,2026
+uv run prem serve           # http://127.0.0.1:8000, opens a browser
 ```
 
-Open these locally:
+Just want to look around first? `uv run prem serve --demo` serves a synthetic league that needs no network.
 
-- API overview: `http://127.0.0.1:8000/`
-- Interactive API docs: `http://127.0.0.1:8000/docs`
-- Health check: `http://127.0.0.1:8000/health`
+| Command | What it does |
+| --- | --- |
+| `prem serve` | Run the app. `--demo`, `--offline`, `--port`, `--data-dir`, `--no-open`, `--reload` |
+| `prem sync` | Fetch league seasons into the cache (`--leagues EPL,La_liga`, `--seasons 2025,2026`, `--force`) |
+| `prem doctor` | Walk the real data path once and report which step fails |
+| `prem status` | Show what is cached and how old it is |
+| `prem clear --yes` | Delete cached match and player data (your shortlist stays) |
 
-Run the tests with:
+Understat is read at a polite pace (a few requests per second, with retries), so a first sync of several seasons takes minutes. Finished seasons never change and are fetched once. Live seasons refresh when their cache is a few hours old; if a refresh fails you keep seeing the saved data, flagged as stale.
+
+### Configuration
+
+| Variable | Meaning |
+| --- | --- |
+| `PREM_DATA_DIR` | Where the cache lives (default `<repo>/.prem-data`, or `~/.prem-lab` when installed) |
+| `PREM_DEMO=1` | Serve the synthetic demo world |
+| `PREM_OFFLINE=1` | Never touch the network; serve what is cached |
+| `PREM_TODAY=YYYY-MM-DD` | Pretend today is this date (demo and testing) |
+
+### Managers
+
+Understat has no manager data. To split a team's season by manager, add your own stints to `<data dir>/managers.json` (same shape as [`src/app/data/managers.json`](src/app/data/managers.json)); they are merged in and appear on the Team page.
+
+### Docker
 
 ```bash
-uv run python -m unittest discover -s tests -v
+docker build -t prem-lab .
+docker run --rm -p 8000:8000 -v prem-data:/data prem-lab
 ```
 
-## API
+The image serves the app on port 8000 and keeps the cache in the `/data` volume.
 
-All application routes are versioned under `/api/v1`.
+## How it is built
 
-| Method | Route | Purpose |
-| --- | --- | --- |
-| `GET` | `/health` | Liveness check without calling Understat |
-| `GET` | `/api/v1/endpoints` | List supported data operations |
-| `GET` | `/api/v1/endpoints/{name}` | Describe one operation and its parameters |
-| `POST` | `/api/v1/endpoints/{name}` | Execute a supported Understat operation |
-| `POST` | `/api/v1/ask` | Run a natural-language analytics question |
+```
+Understat ──> client (paced, retrying) ──> SQLite payload store ──> repository ──> typed models
+                                                                        │
+              analytics (players, teams, league, matches, similarity) ◄─┤
+              forecast  (ratings, Elo, scorelines, season simulation)  ◄─┤
+              insights  (ranked, evidence-backed findings)              ◄─┘
+                                        │
+                                  workbench (page-shaped views) ──> FastAPI ──> no-build web app
+```
 
-Example analytics request:
+- `src/app/data` – the local-first data layer: Understat client, SQLite store, repository (single-flight fetches, stale fallback, offline mode), typed models, a Wikidata birthdate resolver, and a synthetic demo world simulated shot by shot.
+- `src/app/analytics`, `src/app/forecast`, `src/app/insights` – the analysis. Everything is a plain function over typed models and is unit tested.
+- `src/app/workbench.py`, `src/app/api.py` – one service composes views for the pages; the API is thin and uses one error format.
+- `src/app/web` – the frontend: vanilla ES modules on a vendored Preact + htm, hash-routed (the URL carries page state), custom SVG charts, no build step and no runtime network dependencies.
+
+## Tests
 
 ```bash
-curl -X POST http://127.0.0.1:8000/api/v1/ask \
-  -H 'Content-Type: application/json' \
-  -d '{"question":"Compare Arsenal vs Liverpool in 2025"}'
+uv run pytest                       # backend: data layer, analytics, forecasts, insights, API
+npm install && npm test             # pure frontend helpers (node:test)
+uv run prem serve --demo --no-open --port 8765 --today 2027-03-10 &
+npm run e2e                         # drives the real UI in headless Chromium against the demo world
+npm run shoot -- --routes "/;/scout" --theme light,dark --size 1440x900,390x844   # screenshots + console/overflow checks
 ```
 
-Example raw-data request:
+The Understat endpoint notes that the data layer is based on are in [docs/understat_endpoint_inventory.md](docs/understat_endpoint_inventory.md).
 
-```bash
-curl -X POST http://127.0.0.1:8000/api/v1/endpoints/league_table \
-  -H 'Content-Type: application/json' \
-  -d '{"params":{"league_name":"EPL","season":2025}}'
-```
+## Licence
 
-## CLI
-
-The package installs `prem-analytics`, with `understat-cli` retained as a compatibility alias.
-
-```bash
-uv run prem-analytics endpoints
-uv run prem-analytics describe league_table
-uv run prem-analytics run league_table league_name=EPL season=2025
-uv run prem-analytics ask "Compare Arsenal first 5 vs last 5 league matches in 2025"
-uv run prem-analytics shell
-```
-
-Reusable analytical questions are available through `prem-analytics templates`, and Manchester United examples through `prem-analytics manutd-presets`.
-
-## Deploy For Free
-
-The repository includes a Render Blueprint in `render.yaml`. Render currently offers free web services suitable for hobby and portfolio projects.
-
-1. Push this repository to GitHub, GitLab, or Bitbucket.
-2. In Render, choose **New > Blueprint** and connect the repository.
-3. Accept the `prem-analytics-api` service defined in `render.yaml`.
-4. After deployment, open the generated `onrender.com/docs` URL.
-
-No database or paid add-on is required. Free Render services spin down after inactivity, so the first request after an idle period can take about a minute. The same application can also run from the included `Dockerfile` on any container host.
-
-## Configuration
-
-`FOOTBALL_ANALYTICS_CORS_ORIGINS` controls which browser origins may call the API. It accepts a comma-separated list and defaults to `*` because the API is read-only.
-
-```bash
-FOOTBALL_ANALYTICS_CORS_ORIGINS=https://your-portfolio.example,https://your-app.example
-```
-
-## Design Notes
-
-- The endpoint manifest is the allowlist for public raw-data execution. Users cannot supply arbitrary upstream URLs.
-- One async HTTP session is shared for the lifetime of the hosted application.
-- Upstream timeouts, HTTP failures, and invalid JSON are translated into a consistent `502` API response.
-- The health endpoint never calls Understat, so hosting platforms can distinguish application health from upstream availability.
-- The service stores no user data and requires no persistent filesystem.
-
-## Limitations
-
-- Understat is an upstream website, not a guaranteed service-level API. Its routes or response shapes can change.
-- Advanced goalkeeper conclusions need post-shot xG or save-quality data that Understat does not expose cleanly.
-- Coach timelines are curated in the repository and should be updated as managerial eras change.
-- This project explains statistical evidence; it does not claim that xG or xPTS alone proves tactical causation.
-
-## License
-
-Project code is available under the MIT License. Understat data remains subject to the source site's terms and ownership.
+MIT. Data belongs to Understat and its sources; respect their terms and keep the request rate low.

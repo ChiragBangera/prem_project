@@ -78,7 +78,8 @@ export function BarList({ rows, max, color = "var(--c1)", format = (v) => nf(v, 
  * Percentile dot plot for comparing 2-4 subjects across metrics.
  * metrics: [{ key, label, values:[raw...], pct:[percentile...], best: index, format }]
  */
-export function PercentileDots({ metrics, subjects }) {
+export function PercentileDots({ metrics, subjects, colors }) {
+  const colorAt = (i) => (colors ? colors[i] : SERIES_COLORS[i % SERIES_COLORS.length]);
   return html`<div class="pdots" role="list">
     <div class="pdots-head" aria-hidden="true"><span></span><span class="axis-cap"><em>0</em><em>25</em><em>50</em><em>75</em><em>100</em></span><span></span></div>
     ${metrics.map((m) => {
@@ -88,10 +89,10 @@ export function PercentileDots({ metrics, subjects }) {
         <span class="lab">${m.label}</span>
         <span class="track" aria-hidden="true">
           ${known.length > 1 ? html`<i class="span" style=${{ left: lo + "%", width: hi - lo + "%" }}></i>` : null}
-          ${m.pct.map((p, i) => (p == null ? null : html`<i key=${i} class=${"dot" + (i === m.best ? " best" : "")} style=${{ left: p + "%", background: SERIES_COLORS[i % SERIES_COLORS.length] }}
+          ${m.pct.map((p, i) => (p == null ? null : html`<i key=${i} class=${"dot" + (i === m.best ? " best" : "")} style=${{ left: p + "%", background: colorAt(i) }}
             onMouseMove=${(e) => tooltip.move(e, html`<div><div class="tt-title">${subjects[i].name}</div><div class="tt-row"><span class="k">${m.label}</span><span class="v">${m.format(m.values[i])}</span></div><div class="tt-row"><span class="k">Percentile</span><span class="v">${Math.round(p)}</span></div></div>`)} onMouseLeave=${tooltip.hide}></i>`))}
         </span>
-        <span class="vals num">${m.values.map((v, i) => html`<b key=${i} class=${i === m.best ? "best" : ""} style=${{ "--dot": SERIES_COLORS[i % SERIES_COLORS.length] }}>${m.format(v)}</b>`)}</span>
+        <span class="vals num">${m.values.map((v, i) => html`<b key=${i} class=${i === m.best ? "best" : ""} style=${{ "--dot": colorAt(i) }}>${m.format(v)}</b>`)}</span>
       </div>`;
     })}
   </div>`;

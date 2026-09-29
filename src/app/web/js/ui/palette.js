@@ -1,5 +1,5 @@
 // Command palette: jump to any page, team or player. Opens with Cmd/Ctrl+K or "/".
-import { html, useEffect, useMemo, useRef, useState } from "../lib/html.js";
+import { html, useEffect, useLayoutEffect, useMemo, useRef, useState } from "../lib/html.js";
 import { Icon } from "../lib/icons.js";
 import { navigate } from "../lib/router.js";
 import { ui, useStore } from "../lib/store.js";
@@ -35,7 +35,7 @@ export function Palette({ onClose }) {
   const search = useApi("/api/search", { q: term, limit: 8 }, { enabled: term.length >= 2, staleMs: 60000 });
 
   // The palette mounts fresh each time it opens, so there is no state to reset (and no race with the first keystrokes).
-  useEffect(() => {
+  useLayoutEffect(() => {
     inputRef.current?.focus();
     // Escape closes it from anywhere, even before focus has landed in the input
     const esc = (e) => { if (e.key === "Escape") { e.preventDefault(); onClose(); } };

@@ -88,6 +88,22 @@ function Splits({ splits }) {
   </${Card}>`;
 }
 
+function Managers({ eras }) {
+  const cols = [
+    { key: "manager", label: "Manager", sortable: false, className: "strong" },
+    { key: "period", label: "In charge", sortable: false, render: (r) => `${dateShort(r.start)} – ${r.end ? dateShort(r.end) : "now"}` },
+    { key: "played", label: "P", num: true, sortable: false },
+    { key: "pts_pg", label: "Pts/g", num: true, sortable: false, render: (r) => nf(r.pts_pg, 2) },
+    { key: "xpts_pg", label: "xPts/g", num: true, sortable: false, render: (r) => nf(r.xpts_pg, 2) },
+    { key: "xg_pg", label: "xG/g", num: true, sortable: false, render: (r) => nf(r.xg_pg, 2) },
+    { key: "xga_pg", label: "xGA/g", num: true, sortable: false, render: (r) => nf(r.xga_pg, 2) },
+    { key: "xgd_pg", label: "xGD/g", num: true, sortable: false, render: (r) => html`<span class=${"delta-val " + (r.xgd_pg > 0.05 ? "pos" : r.xgd_pg < -0.05 ? "neg" : "")}>${signed(r.xgd_pg, 2)}</span>` },
+  ];
+  return html`<${Card} flush title="Managers" sub="Only this season's matches, split by the stints in managers.json. Short spells are noisy.">
+    <${DataTable} columns=${cols} rows=${eras} rowKey=${(r) => r.manager + r.start} dense caption="Manager stints" />
+  </${Card}>`;
+}
+
 function BarCell({ value, max, color }) {
   return html`<span class="gap-bar"><span class="bar-inline" style=${{ width: "88px" }}><i style=${{ width: Math.min(100, (value / (max || 1)) * 100) + "%", background: color }}></i></span><span class="val">${nf(value, 1)}</span></span>`;
 }
@@ -175,9 +191,7 @@ function TeamView({ d, team, tab }) {
         <${Fixtures} upcoming=${p.upcoming} schedule=${p.schedule} team=${team} />
         <${Splits} splits=${p.splits} />
       </div>
-      ${p.eras?.length ? html`<${Card} title="Managers" sub="From the stints you maintain in managers.json">
-        <div class="stack" style=${{ "--gap": "8px" }}>${p.eras.map((e, i) => html`<div class="row between" key=${i}><b>${e.manager}</b><span class="muted small">${e.from}${e.to ? ` – ${e.to}` : " – present"}</span></div>`)}</div>
-      </${Card}>` : null}
+      ${p.eras?.length ? html`<${Managers} eras=${p.eras} />` : null}
     ` : null}
 
     ${tab === "squad" ? html`<${Squad} squad=${p.squad} scope=${{ ...scope, team }} concentration=${p.concentration} />` : null}

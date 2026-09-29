@@ -2,7 +2,7 @@
 import { html } from "../lib/html.js";
 import { tooltip } from "../lib/tooltip.js";
 import { nf, ordinal, pct } from "../lib/format.js";
-import { seqColor, Frame, AxisX, AxisY, niceTicks, scaleLinear } from "./core.js";
+import { seqColor, Frame, AxisX, AxisY, ChartTable, niceTicks, scaleLinear } from "./core.js";
 
 /** rows = home goals, columns = away goals. Cells shade by probability; the likeliest scoreline is ringed. */
 export function ScorelineMatrix({ matrix, homeName, awayName, size = 7 }) {
@@ -37,7 +37,8 @@ export function PositionStrip({ dist, team }) {
 /** Predicted probability against how often it happened. Points on the diagonal are honest forecasts. */
 export function Reliability({ bins, height = 320 }) {
   const maxN = Math.max(...bins.map((b) => b.n), 1);
-  return html`<${Frame} height=${height} label="Forecast reliability: predicted probability against observed frequency" margin=${{ top: 12, right: 16, bottom: 46, left: 52 }}>
+  const cols = [{ key: "predicted", label: "Model said", num: true, render: (b) => pct(b.predicted, 1) }, { key: "observed", label: "Happened", num: true, render: (b) => pct(b.observed, 1) }, { key: "n", label: "Forecasts", num: true }];
+  return html`<${Frame} height=${height} label="Forecast reliability: predicted probability against observed frequency" margin=${{ top: 12, right: 16, bottom: 46, left: 52 }} after=${html`<${ChartTable} columns=${cols} rows=${[...bins].sort((a, b) => a.predicted - b.predicted)} />`}>
     ${({ iw, ih }) => {
       const sx = scaleLinear([0, 1], [0, iw]), sy = scaleLinear([0, 1], [ih, 0]);
       const t = niceTicks(0, 1, 5);

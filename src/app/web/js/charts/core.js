@@ -138,7 +138,7 @@ export function useWidth(ref, initial = 640) {
  * Responsive SVG frame. `children` is a render function receiving inner geometry.
  * The <svg> is the accessible image; a data-table alternative is provided by pages where it matters.
  */
-export function Frame({ height = 280, margin, label, children, class: klass, style, onLeave }) {
+export function Frame({ height = 280, margin, label, children, class: klass, style, onLeave, after }) {
   const ref = useRef(null);
   const w = useWidth(ref);
   const m = { top: 10, right: 16, bottom: 28, left: 40, ...(margin || {}) };
@@ -148,6 +148,7 @@ export function Frame({ height = 280, margin, label, children, class: klass, sty
     <svg width=${w} height=${height} viewBox=${`0 0 ${w} ${height}`} role="img" aria-label=${label} onMouseLeave=${onLeave}>
       <g transform=${`translate(${m.left},${m.top})`}>${children({ w, height, iw, ih, m })}</g>
     </svg>
+    ${after || null}
   </div>`;
 }
 
@@ -197,4 +198,15 @@ export function Legend({ items, hidden = [], onToggle }) {
         : html`<span key=${it.key} class="item">${swatch}${it.label}</span>`;
     })}
   </div>`;
+}
+
+/** Table alternative to a chart, tucked away until asked for. Every drawn number is reachable without hovering. */
+export function ChartTable({ label = "View the data", columns, rows }) {
+  return html`<details class="chart-table-toggle">
+    <summary>${label}</summary>
+    <div class="chart-table"><table class="data dense">
+      <thead><tr>${columns.map((c) => html`<th key=${c.key} class=${c.num ? "num" : ""}>${c.label}</th>`)}</tr></thead>
+      <tbody>${rows.map((r, i) => html`<tr key=${i}>${columns.map((c) => html`<td key=${c.key} class=${c.num ? "num" : ""}>${c.render ? c.render(r) : r[c.key]}</td>`)}</tr>`)}</tbody>
+    </table></div>
+  </details>`;
 }

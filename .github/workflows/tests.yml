@@ -5,12 +5,11 @@ on:
   pull_request:
 
 jobs:
-  test:
+  backend:
     runs-on: ubuntu-latest
     strategy:
       matrix:
         python-version: ["3.11", "3.13"]
-
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -20,4 +19,29 @@ jobs:
       - name: Install project
         run: python -m pip install ".[dev]"
       - name: Run tests
-        run: python -m unittest discover -s tests -v
+        run: python -m pytest -q
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install project and browser tooling
+        run: |
+          python -m pip install ".[dev]"
+          npm install
+          npx playwright install --with-deps chromium
+      - name: Unit tests for frontend helpers
+        run: npm test
+      - name: Start the demo server
+        run: |
+          PREM_DATA_DIR="$RUNNER_TEMP/prem" python -m app.cli serve --demo --no-open --port 8765 --today 2027-03-10 &
+          for i in $(seq 1 60); do curl -sf http://127.0.0.1:8765/api/health && break; sleep 1; done
+      - name: End-to-end checks in headless Chromium
+        run: npm run e2e

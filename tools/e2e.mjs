@@ -228,6 +228,22 @@ await check("season simulation and accuracy tabs render", async () => {
   expect((await page.locator("svg[aria-label^='Forecast reliability'] circle").count()) >= 4, "reliability points missing");
 });
 
+await check("manager stints render as a table when managers.json has them", async () => {
+  await page.route("**/api/team?*", async (route) => {
+    const res = await route.fetch();
+    const body = await res.json();
+    body.profile.eras = [
+      { manager: "Test Manager A", start: "2026-08-01", end: "2026-11-30", played: 12, pts_pg: 1.5, xpts_pg: 1.6, xg_pg: 1.7, xga_pg: 1.3, xgd_pg: 0.4 },
+      { manager: "Test Manager B", start: "2026-12-01", end: null, played: 18, pts_pg: 1.1, xpts_pg: 1.5, xg_pg: 1.5, xga_pg: 1.5, xgd_pg: 0.0 },
+    ];
+    await route.fulfill({ response: res, json: body });
+  });
+  await go("/team/Everton");
+  const text = await page.locator("main").innerText();
+  expect(text.includes("Test Manager A") && text.includes("Test Manager B") && text.includes("now"), "manager table missing");
+  await page.unroute("**/api/team?*");
+});
+
 console.log("Scope, theme, data");
 await check("changing the season reloads the briefing for a finished year", async () => {
   await go("/");

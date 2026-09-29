@@ -1,0 +1,14 @@
+{
+  "name": "prem-lab-tools",
+  "private": true,
+  "type": "module",
+  "description": "Frontend tests and browser tooling for Prem Lab. The app itself has no build step and no runtime dependencies.",
+  "scripts": {
+    "test": "node --test \"tests/js/*.test.mjs\"",
+    "e2e": "node tools/e2e.mjs --base http://127.0.0.1:8765",
+    "shoot": "node tools/shoot.mjs --base http://127.0.0.1:8765"
+  },
+  "devDependencies": {
+    "playwright": "^1.56.0"
+  }
+}

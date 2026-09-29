@@ -2,7 +2,7 @@
 import { html, useState } from "../lib/html.js";
 import { tooltip } from "../lib/tooltip.js";
 import { nf, ordinal } from "../lib/format.js";
-import { Frame, AxisX, AxisY, areaPath, extent, linePath, nearest, niceExtent, niceTicks, scaleLinear, tickFormat } from "./core.js";
+import { Frame, AxisX, AxisY, ChartTable, areaPath, extent, linePath, nearest, niceExtent, niceTicks, scaleLinear, tickFormat } from "./core.js";
 
 export const SERIES_COLORS = ["var(--c1)", "var(--c2)", "var(--c3)", "var(--c4)", "var(--c5)", "var(--c6)", "var(--c7)", "var(--c8)"];
 
@@ -18,7 +18,7 @@ function spread(items, minGap, lo, hi) {
 
 export function LineChart({
   x, series, height = 260, yFormat, xFormat, yDomain, xDomain, xTicks, zeroLine = false, invertY = false, endLabels = true,
-  tooltipTitle, tooltipFormat, label = "Line chart", yLabel, xLabel, markers,
+  tooltipTitle, tooltipFormat, label = "Line chart", yLabel, xLabel, markers, dataTable = true,
 }) {
   const [hover, setHover] = useState(null);
   const all = series.flatMap((s) => s.values).filter((v) => v != null && Number.isFinite(v));
@@ -26,7 +26,9 @@ export function LineChart({
   const [dx0, dx1] = xDomain || [x[0], x[x.length - 1]];
   const margin = { top: 12, right: endLabels ? 58 : 16, bottom: xLabel ? 44 : 30, left: yLabel ? 58 : 46 };
 
-  return html`<${Frame} height=${height} label=${label} margin=${margin} onLeave=${() => { setHover(null); tooltip.hide(); }}>
+  const tableCols = [{ key: "x", label: xLabel || "Point", render: (r) => (tooltipTitle ? tooltipTitle(r.i) : xFormat ? xFormat(r.x) : r.x) }, ...series.map((sr, k) => ({ key: sr.key || k, label: sr.label, num: true, render: (r) => (r.v[k] == null ? "–" : tooltipFormat ? tooltipFormat(r.v[k], sr) : nf(r.v[k], 2)) }))];
+  const tableRows = x.map((xv, i) => ({ i, x: xv, v: series.map((sr) => sr.values[i]) }));
+  return html`<${Frame} height=${height} label=${label} margin=${margin} onLeave=${() => { setHover(null); tooltip.hide(); }} after=${dataTable ? html`<${ChartTable} columns=${tableCols} rows=${tableRows} />` : null}>
     ${({ iw, ih }) => {
       const sx = scaleLinear([dx0, dx1], [0, iw]);
       const sy = scaleLinear([dy0, dy1], invertY ? [0, ih] : [ih, 0]);
@@ -94,11 +96,11 @@ export function Sparkline({ values, width = 88, height = 26, color = "var(--c1)"
 }
 
 /** Table position by matchweek. Everything is faint except the teams being followed (palette order = follow order). */
-export function RankChart({ series, rounds, highlight = [], height = 380, nTeams = 20, zones, onPick, shortOf = (t) => t.slice(0, 3).toUpperCase() }) {
+export function RankChart({ series, rounds, highlight = [], height = 380, nTeams = 20, zones, onPick, colorOf: colorFor, shortOf = (t) => t.slice(0, 3).toUpperCase() }) {
   const [hover, setHover] = useState(null);
   const teams = Object.keys(series);
   const weeks = Array.from({ length: rounds }, (_, i) => i + 1);
-  const colorOf = (t) => { const i = highlight.indexOf(t); return i >= 0 ? SERIES_COLORS[i % SERIES_COLORS.length] : "var(--ink)"; };
+  const colorOf = (t) => { const i = highlight.indexOf(t); return i < 0 ? "var(--ink)" : colorFor ? colorFor(t) : SERIES_COLORS[i % SERIES_COLORS.length]; };
   return html`<${Frame} height=${height} label="Table position by matchweek" margin=${{ top: 10, right: 50, bottom: 30, left: 34 }} onLeave=${() => { setHover(null); tooltip.hide(); }}>
     ${({ iw, ih }) => {
       const sx = scaleLinear([1, Math.max(2, rounds)], [0, iw]);
