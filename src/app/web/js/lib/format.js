@@ -22,6 +22,14 @@ export function pct(v, digits = 0) {
   return isNum(v) ? `${(v * 100).toFixed(digits)}%` : "–";
 }
 
+/** Probability for people: never claims certainty (">99%") or impossibility ("<1%") it cannot back. */
+export function probText(p, digits = 0) {
+  if (!isNum(p)) return "–";
+  if (p >= 0.995) return ">99%";
+  if (p < 0.005) return "<1%";
+  return `${(p * 100).toFixed(p < 0.1 ? Math.max(1, digits) : digits)}%`;
+}
+
 export function int(v) {
   return isNum(v) ? Math.round(v).toLocaleString("en-GB") : "–";
 }
@@ -84,7 +92,7 @@ export function relTime(seconds) {
 export function bytes(n) {
   if (!isNum(n)) return "–";
   if (n < 1024) return `${n} B`;
-  if (n < 1048576) return `${(n / 1024).toFixed(0)} KB`;
+  if (n < 1e6) return `${(n / 1024).toFixed(0)} KB`;
   return `${(n / 1048576).toFixed(1)} MB`;
 }
 

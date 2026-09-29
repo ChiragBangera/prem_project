@@ -44,6 +44,7 @@ class DemoProvider:
         self._seed = seed
         self._leagues: dict[str, League] = {}
         self._seasons: dict[tuple[str, int], SeasonData] = {}
+        self._dobs: dict[str, dict[str, str]] = {}
         self._lock = threading.RLock()
 
     # ------------------------------------------------------------------ world
@@ -80,13 +81,17 @@ class DemoProvider:
         self.season_data(code, current_season(self.today))
         return [self._seasons[(code, s)] for s in range(FIRST_DEMO_SEASON, current_season(self.today) + 1)]
 
-    def birthdate(self, name: str) -> str | None:
+    def birthdate(self, name: str, team: str | None = None) -> str | None:
+        """Look a demo player up by name. The world is built on demand (one league, once), so cached payloads still get ages."""
         key = fold(name)
-        with self._lock:
-            for league in self._leagues.values():
-                for player in league.players.values():
-                    if fold(player.name) == key:
-                        return player.dob.isoformat()
+        codes = [c for c, clubs in CLUBS.items() if team and any(club[0] == team for club in clubs)] or list(self._leagues)
+        for code in codes:
+            with self._lock:
+                if code not in self._dobs:
+                    self.season_data(code, current_season(self.today))
+                    self._dobs[code] = {fold(p.name): p.dob.isoformat() for p in self._leagues[code].players.values()}
+                if key in self._dobs[code]:
+                    return self._dobs[code][key]
         return None
 
     # ------------------------------------------------------------------ provider API

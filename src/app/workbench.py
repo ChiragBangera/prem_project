@@ -104,7 +104,7 @@ class Workbench:
 
     def dob_of(self, name: str, team: str | None) -> str | None:
         if self.settings.demo:
-            return getattr(self.provider, "birthdate", lambda n: None)(name)
+            return getattr(self.provider, "birthdate", lambda n, t=None: None)(name, team)
         return self.resolver.cached(name, team)
 
     def favorite_of(self, pid: int) -> str | None:
@@ -266,7 +266,7 @@ class Workbench:
             "coverage": {"ages_known": ds.ages_known, "players": len(ds.rows), "inferred_roles": ds.inferred, "roles_known": len(self.favorites)},
             "enrichment": self.enricher.status(),
             "rows": rows,
-            "highlights": dicts(rank(scouting_highlights(ds.rows), limit=12, per_kind=3)),
+            "highlights": dicts(rank(scouting_highlights(ds.rows), limit=12, per_kind=2, diversify=True)),
         }
 
     async def player_view(self, player_id: int, league: str | None, season, seasons: list[int] | None = None) -> dict:
@@ -534,7 +534,7 @@ class Workbench:
             "scope": scope, "meta": fetched.meta.to_dict(), "context": ctx, "insights": dicts(front),
             "table": [{k: r[k] for k in ("rank", "team", "short", "played", "pts", "gd", "xpts", "xpts_gap", "xgd_pg", "form", "trend_xgd", "rank_xpts")} for r in table],
             "recent": recent_matches(ls, limit=10), "movers": movers(ls), "upcoming": upcoming, "race": race,
-            "highlights": dicts(rank(scouting_highlights(ds.rows), limit=6, per_kind=2)),
+            "highlights": dicts(rank(scouting_highlights(ds.rows), limit=6, per_kind=2, diversify=True)),
         }
 
     # ------------------------------------------------------------------ search

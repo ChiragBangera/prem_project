@@ -57,7 +57,7 @@
   /* ink */
   --ink: #0d1218;
   --ink-2: #4a5462;
-  --ink-3: #647080;
+  --ink-3: #5d6979;
 
   /* lines */
   --line: #dce1e8;
@@ -94,6 +94,8 @@
   /* diverging: above expectation (blue) <-> below (orange), neutral middle */
   --pos: #2a78d6;
   --neg: #eb6834;
+  --pos-ink: #1c5cab;
+  --neg-ink: #b54312;
   --mid: #e7ebf0;
 
   /* status: reserved; always paired with an icon + label */
@@ -169,6 +171,8 @@
     --seq-700: #cde2fb;
     --pos: #3987e5;
     --neg: #d95926;
+    --pos-ink: #6da7ec;
+    --neg-ink: #f0895c;
     --mid: #262e3a;
     --good-ink: #3fc63f;
     --warn-ink: #f3c04d;
@@ -221,6 +225,8 @@
   --seq-700: #cde2fb;
   --pos: #3987e5;
   --neg: #d95926;
+  --pos-ink: #6da7ec;
+  --neg-ink: #f0895c;
   --mid: #262e3a;
   --good-ink: #3fc63f;
   --warn-ink: #f3c04d;

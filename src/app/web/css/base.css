@@ -167,7 +167,8 @@ img { max-width: 100%; }
 .page-sub { color: var(--ink-2); font-size: var(--fs-md); max-width: 72ch; text-wrap: pretty; }
 .page-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 
-.section-title { display: flex; align-items: baseline; gap: 10px; }
+.section-title { display: flex; align-items: baseline; gap: 4px 10px; flex-wrap: wrap; }
+.section-title h2 { white-space: nowrap; }
 .section-title h2 { font-size: var(--fs-lg); font-weight: 650; font-stretch: var(--stretch-tight); }
 .section-title .sub { color: var(--ink-3); font-size: var(--fs-sm); }
 

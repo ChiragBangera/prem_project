@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Prem Lab</title>
+  <meta name="description" content="Personal football analytics: what the chances say, not just the scoreline.">
+  <meta name="color-scheme" content="light dark">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="preload" href="fonts/archivo-latin.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="css/tokens.css">
+  <link rel="stylesheet" href="css/base.css">
+  <link rel="stylesheet" href="css/components.css">
+  <link rel="stylesheet" href="css/pages.css">
+  <script>
+    // Apply the saved theme before first paint so there is no light flash in dark mode.
+    try {
+      var saved = JSON.parse(localStorage.getItem("prem.ui.v1") || "null");
+      if (saved && (saved.theme === "light" || saved.theme === "dark")) document.documentElement.dataset.theme = saved.theme;
+    } catch (e) {}
+  </script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <div id="root"></div>
+  <noscript><p style="padding:24px;font-family:sans-serif">Prem Lab needs JavaScript. It runs entirely on this computer.</p></noscript>
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>

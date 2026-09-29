@@ -71,5 +71,5 @@ def compose_insights(
 ) -> list[Insight]:
     """A balanced front page: strongest team stories plus a few players worth a look."""
     picked = rank(league, limit=max(1, limit - 3), per_kind=2)
-    picked += rank(scouting, limit=3, per_kind=1)
+    picked += rank(scouting, limit=3, per_kind=1, diversify=True)
     return sorted(picked, key=lambda i: (-i.score, i.id))[:limit]

@@ -96,21 +96,29 @@ def confidence_from_minutes(minutes: int) -> str:
 # ---------------------------------------------------------------------- ranking
 
 
-def rank(insights: Iterable[Insight], limit: int | None = None, per_kind: int | None = None) -> list[Insight]:
-    """Best first, with an optional cap per kind so one theme cannot crowd out the rest."""
+def rank(insights: Iterable[Insight], limit: int | None = None, per_kind: int | None = None, diversify: bool = False) -> list[Insight]:
+    """Best first, with an optional cap per kind so one theme cannot crowd out the rest.
+
+    ``diversify`` puts the best insight of each kind ahead of the second-best of any kind, so the first few
+    cards a person sees cover different ground.
+    """
     ordered = sorted(insights, key=lambda i: (-i.score, i.id))
-    if per_kind is None:
-        return ordered[:limit] if limit else ordered
-    seen: dict[str, int] = {}
-    out = []
-    for insight in ordered:
-        if seen.get(insight.kind, 0) >= per_kind:
-            continue
-        seen[insight.kind] = seen.get(insight.kind, 0) + 1
-        out.append(insight)
-        if limit and len(out) >= limit:
-            break
-    return out
+    if per_kind is not None:
+        seen: dict[str, int] = {}
+        capped = []
+        for insight in ordered:
+            if seen.get(insight.kind, 0) >= per_kind:
+                continue
+            seen[insight.kind] = seen.get(insight.kind, 0) + 1
+            capped.append(insight)
+        ordered = capped
+    if diversify:
+        firsts, rest, kinds = [], [], set()
+        for insight in ordered:
+            (rest if insight.kind in kinds else firsts).append(insight)
+            kinds.add(insight.kind)
+        ordered = firsts + rest
+    return ordered[:limit] if limit else ordered
 
 
 def clamp_score(value: float) -> float:

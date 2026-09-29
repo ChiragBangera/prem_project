@@ -182,7 +182,7 @@ def scouting_highlights(rows: Sequence[dict], *, limit_each: int = 3) -> list[In
     hot = sorted((r for r in pool if r["shots"] >= 30 and r["g_xg_z"] >= 1.8), key=lambda r: -r["g_xg_z"])
     for r in hot[:limit_each]:
         add(Insight(
-            f"scout.hot.{r['id']}", "finishing",
+            f"scout.hot.{r['id']}", "hot",
             f"{r['name']} ({r['team']}) has {r['goals']} goals from {f1(r['xg'])} xG: expect a slowdown.",
             f"{signed(r['g_xg'])} over expectation on {r['shots']} shots.", tone="warning", score=clamp_score(46 + 12 * min(r["g_xg_z"], 3.5)),
             confidence="medium", evidence=[ev("Goals", r["goals"]), ev("xG", f1(r["xg"])), ev("z", signed(r["g_xg_z"], 1))],
@@ -191,7 +191,7 @@ def scouting_highlights(rows: Sequence[dict], *, limit_each: int = 3) -> list[In
     cold = sorted((r for r in pool if r["shots"] >= 30 and r["g_xg_z"] <= -1.8), key=lambda r: r["g_xg_z"])
     for r in cold[:limit_each]:
         add(Insight(
-            f"scout.cold.{r['id']}", "finishing",
+            f"scout.cold.{r['id']}", "cold",
             f"{r['name']} ({r['team']}) has only {r['goals']} goals from {f1(r['xg'])} xG: the chances are there.",
             f"{signed(r['g_xg'])} against expectation on {r['shots']} shots; a rebound is likelier than not.", tone="positive",
             score=clamp_score(44 + 12 * min(abs(r["g_xg_z"]), 3.5)), confidence="medium",
