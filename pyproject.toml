@@ -1,7 +1,7 @@
 [project]
-name = "prem-analytics-lab"
-version = "0.2.0"
-description = "An async football analytics API and CLI powered by Understat data."
+name = "prem-lab"
+version = "2.0.0"
+description = "A personal, local-first football analytics workbench powered by Understat data."
 readme = "README.md"
 requires-python = ">=3.11"
 license = "MIT"
@@ -9,10 +9,10 @@ license-files = ["LICENSE"]
 authors = [
     { name = "Chirag Bangera" },
 ]
-keywords = ["football", "soccer", "analytics", "understat", "xg"]
+keywords = ["football", "soccer", "analytics", "understat", "xg", "scouting"]
 classifiers = [
     "Development Status :: 4 - Beta",
-    "Intended Audience :: Developers",
+    "Intended Audience :: End Users/Desktop",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
@@ -24,21 +24,33 @@ dependencies = [
     "fastapi>=0.115,<1",
     "uvicorn>=0.30,<1",
     "numpy>=1.26,<3",
-    "xgboost>=3.2.0",
 ]
 
 [project.optional-dependencies]
 dev = [
     "httpx>=0.27,<1",
+    "pytest>=8",
+    "pytest-asyncio>=0.24",
 ]
 
 [project.scripts]
-prem-analytics = "app.cli:main"
+prem = "app.cli:main"
 prem-app = "app.cli:serve_main"
-understat-cli = "app.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+app = ["web/**/*", "data/*.json"]
+
 [tool.uv]
 package = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+filterwarnings = ["error::ResourceWarning"]

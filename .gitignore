@@ -6,7 +6,9 @@ __pycache__/
 build/
 dist/
 .coverage
+.pytest_cache/
 .env
 .DS_Store
 screenshots/
-
+.prem-data/
+node_modules/

@@ -1,178 +1,115 @@
+"""One match, explained by its shots."""
+
 from __future__ import annotations
 
-from .percentiles import to_float
-from ._shared import HONEST_MATCH_LIMITATIONS, round_value
+from typing import Sequence
+
+from app.data.models import Fixture, MatchPage, RosterEntry, Shot
+from app.stats import outcome_probs, poisson_binomial, safe_div
+
+BIG_CHANCE = 0.30
+ON_TARGET = {"Goal", "SavedShot"}
+BUCKETS = ((0, 15), (16, 30), (31, 45), (46, 60), (61, 75), (76, 130))
 
 
-def _shots_for(team_shots_dict: dict, side: str) -> list[dict]:
-    return list(team_shots_dict.get(side, []))
-
-
-def calibration(match_shots: dict) -> dict:
-    """xG vs actual goals for both sides — bare-min 'did the score flatter?' read."""
-    h_shots = _shots_for(match_shots, "h")
-    a_shots = _shots_for(match_shots, "a")
-    h_xg = sum(to_float(s.get("xG", 0)) for s in h_shots)
-    a_xg = sum(to_float(s.get("xG", 0)) for s in a_shots)
-    h_goals_from_shots = sum(1 for s in h_shots if s.get("result") == "Goal")
-    a_goals_from_shots = sum(1 for s in a_shots if s.get("result") == "Goal")
-    goals_from_match_shots = {
-        "h": h_goals_from_shots,
-        "a": a_goals_from_shots,
-    }
+def _shot(s: Shot) -> dict:
     return {
-        "xG": {"h": round_value(h_xg), "a": round_value(a_xg)},
-        "goals_from_shots": goals_from_match_shots,
-        "g_minus_xg": {"h": round_value(h_goals_from_shots - h_xg), "a": round_value(a_goals_from_shots - a_xg)},
-        "interpretation": (
-            "xG is sum over shots. Goals from shots may differ from official match goals if "
-            "any goal was an own goal (not attributed to a bellicose shot). Use this class to "
-            "rank which side 'deserved' from chances — but caveat: includes GK quality."
-        ),
-        "limitations": HONEST_MATCH_LIMITATIONS,
+        "id": s.id, "minute": s.minute, "x": round(s.x, 4), "y": round(s.y, 4), "xg": round(s.xg, 3),
+        "result": s.result, "situation": s.situation, "type": s.shot_type, "last_action": s.last_action,
+        "player": s.player, "player_id": s.player_id, "assisted_by": s.assisted_by,
     }
 
 
-def big_chance_inventory(match_shots: dict, xg_threshold: float = 0.20) -> dict:
-    """Shots above an xG threshold. The xG >= 0.20 threshold is a disclosed heuristic; Understat exposes no official 'big chance' flag."""
-    h_shots = _shots_for(match_shots, "h")
-    a_shots = _shots_for(match_shots, "a")
-    inventory_h = [_big_shot(s) for s in h_shots if to_float(s.get("xG", 0)) >= xg_threshold]
-    inventory_a = [_big_shot(s) for s in a_shots if to_float(s.get("xG", 0)) >= xg_threshold]
+def _side_summary(shots: Sequence[Shot]) -> dict:
+    n = len(shots)
+    xg = sum(s.xg for s in shots)
     return {
-        "xG_threshold": xg_threshold,
-        "threshold_note": "Disclosed heuristic. Understat exposes no official 'big chance' flag.",
-        "home": sorted(inventory_h, key=lambda i: -i["xG"]),
-        "away": sorted(inventory_a, key=lambda i: -i["xG"]),
+        "shots": n,
+        "on_target": sum(1 for s in shots if s.result in ON_TARGET),
+        "goals": sum(1 for s in shots if s.is_goal),
+        "xg": round(xg, 2),
+        "xg_per_shot": round(safe_div(xg, n), 3),
+        "big_chances": sum(1 for s in shots if s.xg >= BIG_CHANCE),
+        "np_xg": round(sum(s.xg for s in shots if s.situation != "Penalty"), 2),
     }
 
 
-def _big_shot(s: dict) -> dict:
-    return {
-        "minute": s.get("minute"),
-        "xG": round_value(to_float(s.get("xG", 0))),
-        "result": s.get("result"),
-        "situation": s.get("situation"),
-        "shotType": s.get("shotType"),
-        "lastAction": s.get("lastAction"),
-        "player": s.get("player"),
-        "X": to_float(s.get("X", 0)),
-        "Y": to_float(s.get("Y", 0)),
-    }
+def _timeline(shots: Sequence[Shot]) -> list[dict]:
+    total, points = 0.0, [{"minute": 0, "xg": 0.0, "goal": None}]
+    for s in sorted(shots, key=lambda s: (s.minute, s.id)):
+        total += s.xg
+        points.append(
+            {
+                "minute": s.minute,
+                "xg": round(total, 3),
+                "goal": {"player": s.player, "xg": round(s.xg, 2), "situation": s.situation} if s.is_goal else None,
+            }
+        )
+    return points
 
 
-def situation_breakdown(match_shots: dict) -> dict:
-    h_shots = _shots_for(match_shots, "h")
-    a_shots = _shots_for(match_shots, "a")
-    return {
-        "home": _by_situation(h_shots),
-        "away": _by_situation(a_shots),
-    }
+def _buckets(shots: Sequence[Shot]) -> list[float]:
+    return [round(sum(s.xg for s in shots if lo <= s.minute <= hi), 3) for lo, hi in BUCKETS]
 
 
-def _by_situation(shots: list[dict]) -> dict:
-    out: dict[str, dict] = {}
+def _situations(shots: Sequence[Shot]) -> list[dict]:
+    rows: dict[str, dict] = {}
     for s in shots:
-        situation = s.get("situation", "Unknown")
-        slot = out.setdefault(situation, {"shots": 0, "xG": 0.0, "goals": 0})
-        slot["shots"] += 1
-        slot["xG"] = round_value(slot["xG"] + to_float(s.get("xG", 0)))
-        if s.get("result") == "Goal":
-            slot["goals"] += 1
-    return out
+        row = rows.setdefault(s.situation or "Other", {"situation": s.situation or "Other", "shots": 0, "goals": 0, "xg": 0.0})
+        row["shots"] += 1
+        row["goals"] += int(s.is_goal)
+        row["xg"] += s.xg
+    return sorted(({**r, "xg": round(r["xg"], 2)} for r in rows.values()), key=lambda r: -r["xg"])
 
 
-def shot_map(match_shots: dict) -> dict:
-    """Pitch-normalized shot coordinates + xG for front-end plotting."""
-    h = [_shot_point(s, "h") for s in _shots_for(match_shots, "h")]
-    a = [_shot_point(s, "a") for s in _shots_for(match_shots, "a")]
+def _roster(entries: Sequence[RosterEntry]) -> list[dict]:
+    return [
+        {
+            "id": e.player_id, "name": e.player, "position": e.position, "minutes": e.minutes,
+            "goals": e.goals, "assists": e.assists, "shots": e.shots, "xg": round(e.xg, 2), "xa": round(e.xa, 2),
+            "kp": e.key_passes, "xgchain": round(e.xgchain, 2), "xgbuildup": round(e.xgbuildup, 2),
+            "yellow": e.yellow, "red": e.red,
+        }
+        for e in entries
+        if e.minutes > 0
+    ]
+
+
+def deserved(home_shots: Sequence[Shot], away_shots: Sequence[Shot]) -> dict:
+    """How often each result would occur if these exact chances were replayed."""
+    pmf_h = poisson_binomial(s.xg for s in home_shots)
+    pmf_a = poisson_binomial(s.xg for s in away_shots)
+    p_home, p_draw, p_away = outcome_probs(pmf_h, pmf_a)
     return {
-        "home": h,
-        "away": a,
-        "coordinate_note": "X,Y are Understat's 0-1 normalized shot end-coordinates (orientation: defending goal at left).",
-        "limitations": HONEST_MATCH_LIMITATIONS,
+        "home": round(p_home, 4), "draw": round(p_draw, 4), "away": round(p_away, 4),
+        "home_expected": round(sum(s.xg for s in home_shots), 2),
+        "away_expected": round(sum(s.xg for s in away_shots), 2),
+        "home_pmf": [round(float(p), 4) for p in pmf_h[:7]],
+        "away_pmf": [round(float(p), 4) for p in pmf_a[:7]],
     }
 
 
-def _shot_point(s: dict, side: str) -> dict:
+def match_report(fixture: Fixture, page: MatchPage) -> dict:
+    home, away = page.shots["h"], page.shots["a"]
+    dv = deserved(home, away)
+    hg, ag = fixture.hg or 0, fixture.ag or 0
+    actual = "home" if hg > ag else "away" if ag > hg else "draw"
+    winner_prob = dv[actual]
+    biggest = sorted([("h", s) for s in home] + [("a", s) for s in away], key=lambda t: -t[1].xg)[:6]
     return {
-        "side": side,
-        "minute": s.get("minute"),
-        "xG": round_value(to_float(s.get("xG", 0))),
-        "result": s.get("result"),
-        "situation": s.get("situation"),
-        "shotType": s.get("shotType"),
-        "lastAction": s.get("lastAction"),
-        "player": s.get("player"),
-        "X": to_float(s.get("X", 0)),
-        "Y": to_float(s.get("Y", 0)),
-    }
-
-
-def xg_timeline(match_shots: dict) -> dict:
-    """Cumulative xG by team over minute — the classic xG race narrative chart."""
-    h = sorted(_shots_for(match_shots, "h"), key=lambda s: _minute(s))
-    a = sorted(_shots_for(match_shots, "a"), key=lambda s: _minute(s))
-    cum_h = _cumulative(h)
-    cum_a = _cumulative(a)
-    return {
-        "home": cum_h,
-        "away": cum_a,
-    }
-
-
-def _minute(s: dict) -> int:
-    try:
-        return int(s.get("minute", 0))
-    except (TypeError, ValueError):
-        return 0
-
-
-def _cumulative(shots: list[dict]) -> list[dict]:
-    total = 0.0
-    out = []
-    for s in shots:
-        total += to_float(s.get("xG", 0))
-        out.append({"minute": _minute(s), "cumulative_xG": round_value(total)})
-    return out
-
-
-def match_narrative(match_meta: dict, match_shots: dict) -> dict:
-    """Plain-English narrative read of the match using xG-vs-actual and shots."""
-    calib = calibration(match_shots)
-    h_xg = calib["xG"]["h"]
-    a_xg = calib["xG"]["a"]
-    h_goals = calib["goals_from_shots"]["h"]
-    a_goals = calib["goals_from_shots"]["a"]
-    home_team = match_meta.get("h", "?")
-    away_team = match_meta.get("a", "?")
-
-    narrative = f"{home_team} {h_goals}-{a_goals} {away_team}"
-    if h_xg + a_xg > 0:
-        if h_xg > a_xg and h_goals < a_goals:
-            narrative += f": {home_team} out-xG'd {away_team} {h_xg:.2f}-{a_xg:.2f} but lost on the scoreboard."
-        elif a_xg > h_xg and a_goals < h_goals:
-            narrative += f": {away_team} out-xG'd {home_team} {a_xg:.2f}-{h_xg:.2f} but lost on the scoreboard."
-        elif h_xg > a_xg and h_goals > a_goals:
-            narrative += f": {home_team} won both xG ({h_xg:.2f}-{a_xg:.2f}) and the scoreline."
-        elif a_xg > h_xg and a_goals > h_goals:
-            narrative += f": {away_team} won both xG ({a_xg:.2f}-{h_xg:.2f}) and the scoreline."
-        else:
-            narrative += f": xG {h_xg:.2f}-{a_xg:.2f}, decisive on the scoreboard."
-    return {
-        "narrative": narrative,
-        "scoreline": {"h": h_goals, "a": a_goals},
-        "xG": {"h": h_xg, "a": a_xg},
-    }
-
-
-def match_report(match_meta: dict, match_shots: dict) -> dict:
-    return {
-        "calibration": calibration(match_shots),
-        "big_chance_inventory": big_chance_inventory(match_shots),
-        "situation_breakdown": situation_breakdown(match_shots),
-        "shot_map": shot_map(match_shots),
-        "xg_timeline": xg_timeline(match_shots),
-        "narrative": match_narrative(match_meta, match_shots),
-        "limitations": HONEST_MATCH_LIMITATIONS,
+        "fixture": {
+            "id": fixture.id, "date": fixture.date, "dt": fixture.dt, "round": fixture.round,
+            "home": fixture.home, "away": fixture.away,
+            "home_short": fixture.home_short, "away_short": fixture.away_short,
+            "hg": hg, "ag": ag, "hxg": fixture.hxg, "axg": fixture.axg,
+        },
+        "own_goals": {"home": max(0, hg - sum(s.is_goal for s in home)), "away": max(0, ag - sum(s.is_goal for s in away))},
+        "summary": {"home": _side_summary(home), "away": _side_summary(away)},
+        "deserved": {**dv, "actual": actual, "actual_probability": round(winner_prob, 4)},
+        "shots": {"home": [_shot(s) for s in home], "away": [_shot(s) for s in away]},
+        "timeline": {"home": _timeline(home), "away": _timeline(away)},
+        "buckets": {"labels": ["0-15", "16-30", "31-45", "46-60", "61-75", "76+"], "home": _buckets(home), "away": _buckets(away)},
+        "situations": {"home": _situations(home), "away": _situations(away)},
+        "key_chances": [{"side": side, **_shot(s)} for side, s in biggest],
+        "players": {"home": _roster(page.rosters.get("h", [])), "away": _roster(page.rosters.get("a", []))},
     }
