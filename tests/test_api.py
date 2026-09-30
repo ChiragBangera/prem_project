@@ -121,6 +121,7 @@ def test_team_chances_are_named_ordered_and_explained(client):
     body = get(client, "/api/team/chances", team="Arsenal", season="2019").json()
     by = {b["key"]: b for b in body["breakdowns"]}
     assert all(b["guide"]["what"] and b["guide"]["read"] and b["guide"]["good"] and b["guide"]["bad"] and b["blurb"] for b in body["breakdowns"])
+    assert {k: b["viz"] for k, b in by.items()} == {"situation": "bars", "shotZone": "pitch", "timing": "columns", "gameState": "columns", "attackSpeed": "columns", "formation": "bars", "result": "outcome"}
     assert [r["label"] for r in by["timing"]["rows"]] == ["1–15 min", "16–30 min", "31–45 min", "46–60 min", "61–75 min", "76+ min"]
     assert [r["label"] for r in by["shotZone"]["rows"]] == ["Outside the box", "Penalty area", "Six-yard box"]  # far to near, and no fake 'own goals' zone
     assert by["gameState"]["rows"][0]["label"] == "Behind by 2+" and by["gameState"]["rows"][-1]["label"] == "Ahead by 2+"

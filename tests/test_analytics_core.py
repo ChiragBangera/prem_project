@@ -322,6 +322,13 @@ def test_prepare_breakdowns_orders_rows_names_them_and_drops_own_goals():
     assert formation["rows"][1]["small"] and not formation["rows"][0]["small"]  # 100 minutes is too little to trust
 
 
+def test_rows_measured_per_90_need_minutes_behind_them():
+    groups = {"gameState": [_row("Goal diff 0", 271, 39.0, 153, 19.7, time=1931), _row("Goal diff -1", 59, 8.7, 16, 1.3, time=40)]}
+    rows = {r["name"]: r for r in prepare_breakdowns(groups, games=38)[0]["rows"]}
+    assert not rows["Goal diff 0"]["small"]
+    assert rows["Goal diff -1"]["small"]  # 40 minutes makes 8.7 xG look like 19 per 90: noise, not a finding
+
+
 def test_league_comparison_ranks_and_insights_use_the_league_not_a_guess():
     def team(corner_xg):
         return prepare_breakdowns({"situation": [_row("OpenPlay", 300, 40.0, 200, 25.0, goals=40), _row("FromCorner", 60, corner_xg, 40, 5.0, goals=round(corner_xg))]}, games=38)

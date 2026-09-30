@@ -20,6 +20,7 @@ from app.insights.core import Insight, ev, ordinal
 MIN_LEAGUE_TEAMS = 8  # below this a rank or an average against "the league" is not meaningful
 MIN_ROW_SHOTS = 15  # shots for + against; smaller rows are noise
 MIN_FORMATION_MINUTES = 450
+MIN_MINUTES = {"formation": MIN_FORMATION_MINUTES, "gameState": 150}  # rows measured per 90 need this many minutes behind them
 
 # metric key -> (label, better) where better is "high", "low" or None (identity, not quality)
 METRICS: dict[str, tuple[str, str | None]] = {
@@ -33,58 +34,58 @@ METRICS: dict[str, tuple[str, str | None]] = {
 
 BREAKDOWNS: list[dict] = [
     {
-        "key": "situation", "label": "Situation",
+        "key": "situation", "label": "Situation", "viz": "bars",
         "blurb": "How the move started: open play, corner, free kick or penalty.",
         "what": "Every shot is filed by the situation it came from. It answers: is this team's attack built on open play or on dead balls, and does it concede the same way?",
-        "read": "Each row pairs the xG created (blue) with the xG allowed (orange). The two bars above show the mix: where the team's xG comes from and where it gives xG away.",
+        "read": "Each row pairs the xG created (blue) with the xG allowed (orange). The tick marks the league average; the chip is the league rank, 1st being best.",
         "good": "Blue longer than orange in the big rows, especially open play, which is the most repeatable source.",
         "bad": "A lot of xG from penalties or set pieces makes an attack easier to shut down. Conceding heavily from corners points at set-piece defending.",
     },
     {
-        "key": "shotZone", "label": "Shot zone",
+        "key": "shotZone", "label": "Shot zone", "viz": "pitch",
         "blurb": "Where on the pitch the shot was taken.",
         "what": "Shots are grouped by area: inside the six-yard box, the rest of the penalty area, and outside the box.",
-        "read": "Zones run from far out to closest to goal. Compare the blue and orange bars in each zone, then look at xG per shot: it climbs sharply nearer goal.",
+        "read": "The stronger the colour, the more xG per game. The left pitch is where the team creates chances, the right is where it allows them. Hover a zone for shots, quality per shot and league rank.",
         "good": "Lots of xG from the six-yard box and penalty area, and few shots allowed there.",
         "bad": "Many shots from outside the box add up to little xG. Conceding a lot inside the six-yard box is the most dangerous leak.",
     },
     {
-        "key": "timing", "label": "Timing",
+        "key": "timing", "label": "Timing", "viz": "columns",
         "blurb": "Which stretch of the match the shot came in.",
         "what": "Shots are grouped in 15-minute spells (the last group, 76+, includes stoppage time).",
-        "read": "Read left to right as the match unfolds. The net column shows which spells the team wins on chances and which it loses.",
+        "read": "Read left to right as the match unfolds: blue is created, orange is allowed, the tick is the league average, and the number underneath is the net.",
         "good": "Positive net in the opening and closing spells: starting fast and finishing strong.",
         "bad": "A negative net late on can mean fading fitness or a defence that drops too deep once ahead.",
     },
     {
-        "key": "gameState", "label": "Game state",
+        "key": "gameState", "label": "Game state", "viz": "columns",
         "blurb": "The score at the time of the shot.",
         "what": "Shots are grouped by the goal difference when they were taken, so you can see how the team behaves when level, ahead or behind. Rates are per 90 minutes spent in that state.",
-        "read": "Because a team spends very different time in each state, the bars are per 90 minutes, not totals. Compare the same team across states.",
+        "read": "Columns are per 90 minutes spent in that state, so a state the team rarely sees is not drowned out. Blue is created, orange is allowed, the tick is the league average.",
         "good": "Creating more when behind shows a team that keeps pushing; still creating when ahead shows it does not just park the bus.",
         "bad": "Allowing far more when ahead means a lead is hard to protect. Rows with only a few minutes are noise.",
     },
     {
-        "key": "attackSpeed", "label": "Attack speed",
+        "key": "attackSpeed", "label": "Attack speed", "viz": "columns",
         "blurb": "How quickly the move built up.",
         "what": "Understat labels each shot by how quick the attack was (Slow, Standard, Normal, Fast). Understat does not publish the exact cut-offs.",
-        "read": "Compare the mix: a large 'Fast' bar means the team leans on quick counters, a large 'Slow' one on patient build-up.",
+        "read": "Columns run from slowest to fastest build-up. Blue is created, orange is allowed, the tick is the league average, and the number underneath is the net.",
         "good": "High xG per shot in the speed the team uses most: it means that style produces good chances, not just shots.",
         "bad": "A lot of shots from one style with low xG per shot means that route is not creating much.",
     },
     {
-        "key": "formation", "label": "Formation",
+        "key": "formation", "label": "Formation", "viz": "bars",
         "blurb": "The shape the team played in.",
         "what": "Chances created and allowed while the team lined up in each formation, with the minutes it played that way.",
-        "read": "Minutes matter most: judge a formation only if it was used for a good stretch. Bars are per 90 minutes so formations of different lengths compare fairly.",
+        "read": "Minutes matter most: judge a formation only if it was used for a good stretch. Rates are per 90 minutes so formations of different lengths compare fairly.",
         "good": "A formation with a clearly higher net per 90 and plenty of minutes.",
         "bad": "Rows with under about 450 minutes are too short to trust and are dimmed.",
     },
     {
-        "key": "result", "label": "Shot result",
+        "key": "result", "label": "Shot result", "viz": "outcome",
         "blurb": "What happened to the shot.",
         "what": "Every shot ends as a goal, a save, a block, a miss, or a hit on the post. The xG shown is the value of the shots that ended that way.",
-        "read": "The 'Goal' row compares actual goals with the xG of those shots. Blocked shots show how often the team shoots into crowded areas.",
+        "read": "Each bar is every shot the team took (or faced), split by how it ended. The tiles beneath turn that into rates you can compare.",
         "good": "Many shots on target (goals and saves) and few blocked.",
         "bad": "A large blocked share means shooting from congested spots. Many misses with high xG are chances that should have been on target.",
     },
@@ -203,10 +204,10 @@ def prepare_breakdowns(groups: dict[str, list[dict]], games: int) -> list[dict]:
                 "xg_shot": round(_div(r["xg"], r["shots"]), 3), "a_xg_shot": round(_div(a["xg"], a["shots"]), 3),
                 "share_for": round(_div(r["xg"], total_for), 4), "share_against": round(_div(a["xg"], total_against), 4),
                 "g_xg": round(r["goals"] - r["xg"], 2), "a_g_xg": round(a["goals"] - a["xg"], 2),
-                "small": (key == "formation" and (r.get("time") or 0) < MIN_FORMATION_MINUTES) or (r["shots"] + a["shots"] < MIN_ROW_SHOTS),
+                "small": (per_90 and (r.get("time") or 0) < MIN_MINUTES.get(key, 0)) or (r["shots"] + a["shots"] < MIN_ROW_SHOTS),
             })
         out.append({
-            "key": key, "label": info["label"], "blurb": info["blurb"],
+            "key": key, "label": info["label"], "viz": info["viz"], "blurb": info["blurb"],
             "guide": {k: info[k] for k in ("what", "read", "good", "bad")},
             "unit": "90" if per_90 else "game", "note": note, "rows": rows,
             "totals": {"xg": round(total_for, 2), "a_xg": round(total_against, 2)},

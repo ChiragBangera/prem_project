@@ -1,27 +1,25 @@
-// Team chances: the chances a side creates and allows, broken down seven ways, each one explained and set against the league.
+// Team chances: what a side creates and allows, one tailored picture per breakdown, each explained and set against the league.
 import { html, useState } from "../lib/html.js";
 import { useApi } from "../lib/api.js";
 import { setQuery, useLocation } from "../lib/router.js";
-import { nf, ordinal, signed } from "../lib/format.js";
-import { Async, Badge, Card, Delta, Insights } from "../ui/common.js";
+import { nf, ordinal } from "../lib/format.js";
+import { Tip } from "../lib/tooltip.js";
+import { Async, Badge, Button, Card, Delta } from "../ui/common.js";
 import { DataTable } from "../ui/table.js";
 import { StackedBar } from "../charts/bars.js";
+import { ColumnPairs } from "../charts/columns.js";
+import { ZonePitch } from "../charts/pitch.js";
 import { SERIES_COLORS } from "../charts/lines.js";
 
-const GUIDE_KEY = "prem-lab.chances-guide-open";
-const readOpen = () => { try { return localStorage.getItem(GUIDE_KEY) !== "0"; } catch (_) { return true; } };
-const saveOpen = (v) => { try { localStorage.setItem(GUIDE_KEY, v ? "1" : "0"); } catch (_) { /* private mode: it just will not be remembered */ } };
-
-const BARS_INFO = {
-  what: "For each row, the blue bar is the xG the team created and the orange bar is the xG it allowed, on the same scale. The small tick marks the league average, and the chip is the team's rank among the league (1st is best).",
-  good: "Blue longer than orange, blue past its tick, orange short of its tick, and a green 1st–6th chip.",
-  bad: "Orange longer than blue, a red chip near the bottom, or a big row where the team is below the league tick.",
-};
 const NUMBERS_INFO = {
-  what: "The raw counts behind the bars: shots, goals and xG for and against, plus xG per shot (how good the average shot was) and goals minus xG (finishing).",
+  what: "The raw counts behind the chart: shots, goals and xG for and against, plus xG per shot (how good the average shot was) and goals minus xG (finishing).",
   good: "A high xG per shot for the team and a low one against; goals above xG means finishing better than the chances suggest.",
   bad: "Goals far above xG is usually luck that fades; far below often corrects itself. Rows with few shots are dimmed as small samples.",
 };
+const TONE_COLOR = { positive: "var(--good, var(--c1))", negative: "var(--crit)", warning: "var(--warn)", neutral: "var(--ink-3)", info: "var(--ink-3)" };
+
+const unitWord = (group) => (group.unit === "90" ? "per 90" : "per game");
+const rank = (stat) => (stat ? `${ordinal(stat.rank)} of ${stat.of}` : null);
 
 /** 1st..N: top third green, bottom third red. `kind` says which way "good" runs in the tooltip. */
 function RankChip({ stat, kind, unit }) {
@@ -32,23 +30,45 @@ function RankChip({ stat, kind, unit }) {
   return html`<${Badge} tone=${tone} title=${`${kind === "created" ? "Chances created" : "Chances allowed"}: ${ordinal(stat.rank)} of ${stat.of} teams (${meaning}). League average ${nf(stat.avg, 2)} xG ${unit}.`}>${ordinal(stat.rank)}</${Badge}>`;
 }
 
+/** The tooltip every visual shares for one row: values, quality per shot, and where it ranks. */
+function rowTip(group, r, c) {
+  const unit = unitWord(group);
+  const rows = [
+    { label: `Created (xG ${unit})`, value: `${nf(r.per_for, 2)}${c.per_for ? ` · ${rank(c.per_for)}` : ""}`, color: "var(--c1)" },
+    { label: `Allowed (xG ${unit})`, value: `${nf(r.per_against, 2)}${c.per_against ? ` · ${rank(c.per_against)}` : ""}`, color: "var(--c2)" },
+    { label: "Shots for / against", value: `${r.shots} / ${r.a_shots}` },
+    { label: "xG per shot for / against", value: `${r.shots ? nf(r.xg_shot, 2) : "–"} / ${r.a_shots ? nf(r.a_xg_shot, 2) : "–"}` },
+  ];
+  if (c.per_for) rows.push({ label: "League average (created)", value: nf(c.per_for.avg, 2) });
+  if (c.per_against) rows.push({ label: "League average (allowed)", value: nf(c.per_against.avg, 2) });
+  return html`<${Tip} title=${r.label} sub=${r.small ? "Small sample: read with care" : r.hint} rows=${rows} />`;
+}
+
+// ------------------------------------------------------------------ visuals
+
 function AvgTick({ stat, max, unit }) {
   if (!stat) return null;
   return html`<b class="avg-tick" style=${{ left: Math.min(100, (stat.avg / max) * 100) + "%" }} title=${`League average: ${nf(stat.avg, 2)} xG ${unit}`}></b>`;
 }
 
-function ChanceBars({ group, lg }) {
-  const unit = group.unit === "90" ? "per 90" : "per game";
-  const cmp = lg?.available ? lg.comparison?.[group.key] || {} : {};
+function Key({ group, hasLeague }) {
+  return html`<div class="cbars-key">
+    <span class="item"><i class="swatch box" style=${{ background: "var(--c1)" }}></i>Created</span>
+    <span class="item"><i class="swatch box" style=${{ background: "var(--c2)" }}></i>Allowed</span>
+    ${hasLeague ? html`<span class="item"><i class="avg-swatch"></i>League average</span>` : null}
+    <span class="muted xsmall">xG ${unitWord(group)}</span>
+  </div>`;
+}
+
+function Swatches({ items }) {
+  return html`<div class="legend">${items.map((i) => html`<span class="item" key=${i.key}><span class="swatch box" style=${{ background: i.color }}></span>${i.label}</span>`)}</div>`;
+}
+
+function ChanceBars({ group, cmp }) {
+  const unit = unitWord(group);
   const max = Math.max(1e-9, ...group.rows.flatMap((r) => [r.per_for, r.per_against, cmp[r.name]?.per_for?.avg || 0, cmp[r.name]?.per_against?.avg || 0]));
-  const hasLeague = Object.keys(cmp).length > 0;
   return html`<div class="cbars">
-    <div class="cbars-key">
-      <span class="item"><i class="swatch box" style=${{ background: "var(--c1)" }}></i>Created</span>
-      <span class="item"><i class="swatch box" style=${{ background: "var(--c2)" }}></i>Allowed</span>
-      ${hasLeague ? html`<span class="item"><i class="avg-swatch"></i>League average</span>` : null}
-      <span class="muted xsmall">xG ${unit}</span>
-    </div>
+    <${Key} group=${group} hasLeague=${Object.keys(cmp).length > 0} />
     ${group.rows.map((r) => {
       const c = cmp[r.name] || {};
       return html`<div class=${"cbar-row" + (r.small ? " dim" : "")} key=${r.name} title=${r.small ? "Small sample: too few shots or minutes to read much into this row." : undefined}>
@@ -64,32 +84,129 @@ function ChanceBars({ group, lg }) {
 }
 
 function MixBars({ group }) {
-  const seg = (get) => group.rows.map((r, i) => ({ key: r.name, label: r.label, value: get(r), color: SERIES_COLORS[(i + 2) % SERIES_COLORS.length] })).filter((s) => s.value > 0); // start past blue and orange, which mean created and allowed below
+  const seg = (get) => group.rows.map((r, i) => ({ key: r.name, label: r.label, value: get(r), color: SERIES_COLORS[(i + 2) % SERIES_COLORS.length] })).filter((s) => s.value > 0); // past blue and orange, which mean created and allowed
+  const all = group.rows.map((r, i) => ({ key: r.name, label: r.label, color: SERIES_COLORS[(i + 2) % SERIES_COLORS.length] }));
   return html`<div class="stack" style=${{ "--gap": "10px" }}>
-    <div><div class="mix-title">Where the xG comes from <span class="muted xsmall">${nf(group.totals.xg, 1)} xG created</span></div><${StackedBar} segments=${seg((r) => r.xg)} unit=" xG" legend=${false} /></div>
-    <div><div class="mix-title">Where the xG is conceded <span class="muted xsmall">${nf(group.totals.a_xg, 1)} xG allowed</span></div><${StackedBar} segments=${seg((r) => r.a_xg)} unit=" xG" /></div>
+    <div><div class="mix-title">Where the xG comes from <span class="muted xsmall">${nf(group.totals.xg, 1)} xG created</span></div><${StackedBar} segments=${seg((r) => r.xg)} unit=" xG" legend=${false} height=${22} /></div>
+    <div><div class="mix-title">Where the xG is conceded <span class="muted xsmall">${nf(group.totals.a_xg, 1)} xG allowed</span></div><${StackedBar} segments=${seg((r) => r.a_xg)} unit=" xG" legend=${false} height=${22} /></div>
+    <${Swatches} items=${all} />
   </div>`;
 }
 
-function Guide({ group }) {
-  const [open, setOpen] = useState(readOpen);
-  const toggle = () => { saveOpen(!open); setOpen(!open); };
+const ZONE_KEY = { shotOboxTotal: "outside", shotPenaltyArea: "penalty", shotSixYardBox: "six" };
+
+function ZoneView({ group, cmp }) {
+  const unit = unitWord(group);
+  const byName = Object.fromEntries(group.rows.map((r) => [r.name, r]));
+  const max = Math.max(1e-9, ...group.rows.flatMap((r) => [r.per_for, r.per_against]));
+  const zones = (get) => Object.entries(ZONE_KEY).filter(([name]) => byName[name]).map(([name, key]) => {
+    const r = byName[name];
+    return { key, value: r[get], name: r.label, tip: rowTip(group, r, cmp[name] || {}) };
+  });
+  const order = ["shotSixYardBox", "shotPenaltyArea", "shotOboxTotal"].filter((n) => byName[n]);
+  return html`<div class="stack" style=${{ "--gap": "14px" }}>
+    <div class="zone-pair">
+      <figure><figcaption><b>Created</b> <span class="muted xsmall">xG ${unit}, at the opponent's goal</span></figcaption><${ZonePitch} zones=${zones("per_for")} color="var(--c1)" max=${max} label="Chances created by shot zone" /></figure>
+      <figure><figcaption><b>Allowed</b> <span class="muted xsmall">xG ${unit}, at their own goal</span></figcaption><${ZonePitch} zones=${zones("per_against")} color="var(--c2)" max=${max} label="Chances allowed by shot zone" /></figure>
+    </div>
+    <div class="zone-read">
+      <div class="zr-head"><span></span><span>Created</span><span>Allowed</span><span title="Average quality of a shot taken / faced">xG a shot</span></div>
+      ${order.map((n) => {
+        const r = byName[n], c = cmp[n] || {};
+        return html`<div class="zr-row" key=${n}>
+          <span><b>${r.label}</b></span>
+          <span class="num">${nf(r.per_for, 2)} <${RankChip} stat=${c.per_for} kind="created" unit=${unit} /></span>
+          <span class="num">${nf(r.per_against, 2)} <${RankChip} stat=${c.per_against} kind="allowed" unit=${unit} /></span>
+          <span class="num muted">${r.shots ? nf(r.xg_shot, 2) : "–"} / ${r.a_shots ? nf(r.a_xg_shot, 2) : "–"}</span>
+        </div>`;
+      })}
+    </div>
+  </div>`;
+}
+
+function ColumnsView({ group, cmp }) {
+  const rows = group.rows.map((r) => {
+    const c = cmp[r.name] || {};
+    return { key: r.name, label: r.label, a: r.per_for, b: r.per_against, aAvg: c.per_for?.avg, bAvg: c.per_against?.avg, dim: r.small, tip: rowTip(group, r, c) };
+  });
+  return html`<div class="stack" style=${{ "--gap": "6px" }}>
+    <${Key} group=${group} hasLeague=${rows.some((r) => r.aAvg != null)} />
+    <${ColumnPairs} rows=${rows} label=${`Chances created and allowed by ${group.label.toLowerCase()}`} />
+  </div>`;
+}
+
+const OUTCOMES = [
+  { name: "Goal", color: "var(--c1)" }, { name: "SavedShot", color: "var(--c3)" }, { name: "ShotOnPost", color: "var(--c5)" },
+  { name: "BlockedShot", color: "var(--c4)" }, { name: "MissedShots", color: "var(--c8)" },
+];
+
+function OutcomeView({ group }) {
+  const by = Object.fromEntries(group.rows.map((r) => [r.name, r]));
+  const side = (key) => {
+    const n = (name) => by[name]?.[key] || 0;
+    const total = OUTCOMES.reduce((s, o) => s + n(o.name), 0) || 1;
+    const onTarget = n("Goal") + n("SavedShot");
+    return { total, onTarget: onTarget / total, conversion: onTarget ? n("Goal") / onTarget : 0, blocked: n("BlockedShot") / total, off: n("MissedShots") / total };
+  };
+  const made = side("shots"), faced = side("a_shots");
+  const seg = (key) => OUTCOMES.filter((o) => by[o.name]).map((o) => ({ key: o.name, label: by[o.name].label, value: by[o.name][key], color: o.color }));
+  const pctText = (v) => `${(100 * v).toFixed(0)}%`;
+  const tiles = [
+    { label: "On target", hint: "Goals plus saves, out of all shots", a: made.onTarget, b: faced.onTarget },
+    { label: "Goals per shot on target", hint: "How often an on-target shot beat the keeper", a: made.conversion, b: faced.conversion },
+    { label: "Blocked", hint: "Shots stopped by a defender", a: made.blocked, b: faced.blocked },
+    { label: "Off target", hint: "Shots that missed the goal", a: made.off, b: faced.off },
+  ];
+  return html`<div class="stack" style=${{ "--gap": "16px" }}>
+    <div><div class="mix-title">Shots the team took <span class="muted xsmall">${made.total} shots</span></div><${StackedBar} segments=${seg("shots")} unit=" shots" format=${(v) => nf(v, 0)} legend=${false} height=${26} /></div>
+    <div><div class="mix-title">Shots the team faced <span class="muted xsmall">${faced.total} shots</span></div><${StackedBar} segments=${seg("a_shots")} unit=" shots" format=${(v) => nf(v, 0)} legend=${false} height=${26} /></div>
+    <${Swatches} items=${OUTCOMES.filter((o) => by[o.name]).map((o) => ({ key: o.name, label: by[o.name].label, color: o.color }))} />
+    <div class="tiles four">
+      ${tiles.map((t) => html`<div class="tile" key=${t.label} title=${t.hint}>
+        <span class="label">${t.label}</span>
+        <span class="value" style=${{ color: "var(--c1)" }}>${pctText(t.a)}</span>
+        <span class="delta">faced: <b>${pctText(t.b)}</b></span>
+      </div>`)}
+    </div>
+  </div>`;
+}
+
+function Visual({ group, lg }) {
+  const cmp = lg?.available ? lg.comparison?.[group.key] || {} : {};
+  if (group.viz === "pitch") return html`<${ZoneView} group=${group} cmp=${cmp} />`;
+  if (group.viz === "columns") return html`<${ColumnsView} group=${group} cmp=${cmp} />`;
+  if (group.viz === "outcome") return html`<${OutcomeView} group=${group} />`;
+  return html`<div class="stack" style=${{ "--gap": "20px" }}><${MixBars} group=${group} /><${ChanceBars} group=${group} cmp=${cmp} /></div>`;
+}
+
+// ------------------------------------------------------------------ side panel and numbers
+
+function Takeaways({ items, comparing }) {
+  if (!items.length) return html`<p class="muted small">${comparing ? "Comparing with the league…" : "Nothing here is far from the league norm, which is a finding too."}</p>`;
+  return html`<ul class="takeaways">
+    ${items.map((i) => html`<li key=${i.id}>
+      <i class="dot" style=${{ background: TONE_COLOR[i.tone] || TONE_COLOR.neutral }} aria-hidden="true"></i>
+      <div><span class="tk-head">${i.headline}</span>
+        ${i.evidence?.length ? html`<span class="tk-ev">${i.evidence.slice(0, 3).map((e) => `${e.label} ${e.value}`).join(" · ")}${i.confidence === "low" ? " · small sample" : ""}</span>` : null}</div>
+    </li>`)}
+  </ul>`;
+}
+
+function SidePanel({ group, insights, comparing }) {
   const g = group.guide;
-  return html`<section class="card guide-card">
-    <button type="button" class="guide-head" aria-expanded=${String(open)} onClick=${toggle}>
-      <span class="card-title">How to read this: ${group.label}</span><span class="muted small">${open ? "Hide" : "Show"}</span>
-    </button>
-    ${open ? html`<dl class="guide-grid">
-      <div><dt>What it is</dt><dd>${g.what}</dd></div>
-      <div><dt>How to read the chart</dt><dd>${g.read}</dd></div>
-      <div class="good"><dt>What good looks like</dt><dd>${g.good}</dd></div>
-      <div class="bad"><dt>What to watch for</dt><dd>${g.bad}</dd></div>
-    </dl>` : null}
-  </section>`;
+  return html`<aside class="side-stack">
+    <${Card} title="What stands out" class="side-card"><${Takeaways} items=${insights} comparing=${comparing} /></${Card}>
+    <${Card} title="Reading it" class="side-card">
+      <dl class="read-list">
+        <div class="good"><dt>Good looks like</dt><dd>${g.good}</dd></div>
+        <div class="bad"><dt>Watch for</dt><dd>${g.bad}</dd></div>
+      </dl>
+    </${Card}>
+  </aside>`;
 }
 
 function Numbers({ group }) {
-  const rate = group.unit === "90" ? "per 90" : "per game";
+  const rate = unitWord(group);
   const cols = [
     { key: "label", label: group.label, firstDir: "asc", className: "strong", value: (r) => r.label },
     { key: "shots", label: "Shots", num: true },
@@ -103,42 +220,48 @@ function Numbers({ group }) {
     { key: "a_xg_shot", label: "xG/shot against", num: true, render: (r) => (r.a_shots ? nf(r.a_xg_shot, 3) : "–"), title: "Average quality of each shot conceded. Lower is better." },
     { key: "per_net", label: `Net ${rate}`, num: true, render: (r) => html`<${Delta} value=${r.per_net} digits=${2} />`, title: `xG created minus xG allowed, ${rate}` },
   ];
-  return html`<${Card} flush title="Chance numbers, row by row" info=${NUMBERS_INFO} sub="Every count behind the bars. Click a header to sort.">
+  return html`<${Card} flush title="Chance numbers, row by row" info=${NUMBERS_INFO} sub="Every count behind the chart. Click a header to sort.">
     <${DataTable} columns=${cols} rows=${group.rows} rowKey=${(r) => r.name} dense caption=${`Chances by ${group.label.toLowerCase()}`} rowClass=${(r) => (r.small ? "row-muted" : "")} />
   </${Card}>`;
 }
 
+// ------------------------------------------------------------------ page
+
 function ChancesView({ d, lq, scope }) {
   const { query } = useLocation();
+  const [showNumbers, setShowNumbers] = useState(false);
   const groups = d.breakdowns;
   const group = groups.find((g) => g.key === query.by) || groups[0];
   const lg = lq.data;
+  const comparing = lq.loading && !lg;
   const insights = (lg?.available ? lg.insights?.[group.key] : null) || d.insights?.[group.key] || [];
-  const status = lq.loading && !lg
+  const status = comparing
     ? "Comparing with the rest of the league…"
     : lg?.available ? `Compared with the other ${lg.of - 1} teams in the league.` : lg ? lg.reason : lq.error ? "League comparison is not available right now." : "";
 
   if (!groups.length) return html`<${Card} title="Chances"><p class="muted">Understat has no chance breakdown for this team yet.</p></${Card}>`;
+  const g = group.guide;
   return html`<div class="stack" style=${{ "--gap": "16px" }}>
-    <${Card} title="Break the chances down by" sub=${group.blurb}>
+    <div class="chances-head">
       <div class="season-chips" role="group" aria-label="Break the chances down by">
-        ${groups.map((g) => html`<button type="button" class="chip" key=${g.key} aria-pressed=${String(g.key === group.key)} onClick=${() => setQuery({ by: g.key === groups[0].key ? null : g.key })} title=${g.blurb}>${g.label}</button>`)}
+        ${groups.map((x) => html`<button type="button" class="chip" key=${x.key} aria-pressed=${String(x.key === group.key)} onClick=${() => setQuery({ by: x.key === groups[0].key ? null : x.key })} title=${x.blurb}>${x.label}</button>`)}
       </div>
-      ${status ? html`<p class="xsmall muted" style=${{ marginTop: "10px" }}>${status}</p>` : null}
-    </${Card}>
+      <p class="xsmall muted">${group.blurb}${status ? ` ${status}` : ""}</p>
+    </div>
 
-    <${Guide} group=${group} />
-    ${insights.length ? html`<${Insights} items=${insights} scope=${scope} />` : null}
+    <div class="chances-grid">
+      <${Card} title=${`Chances created and allowed, by ${group.label.toLowerCase()}`} sub=${g.what} info=${{ what: `${g.what} ${g.read}`, good: g.good, bad: g.bad }}>
+        <${Visual} group=${group} lg=${lg} />
+        ${group.note ? html`<p class="xsmall muted" style=${{ marginTop: "12px" }}>${group.note}</p>` : null}
+        <p class="chart-caption">${g.read}</p>
+      </${Card}>
+      <${SidePanel} group=${group} insights=${insights} comparing=${comparing} />
+    </div>
 
-    <${Card} title=${`Chances created and allowed, by ${group.label.toLowerCase()}`} info=${BARS_INFO} sub=${`All values are xG ${group.unit === "90" ? "per 90 minutes" : "per game"}. Blue is created, orange is allowed.`}>
-      <div class="stack" style=${{ "--gap": "20px" }}>
-        <${MixBars} group=${group} />
-        <${ChanceBars} group=${group} lg=${lg} />
-        ${group.note ? html`<p class="xsmall muted">${group.note}</p>` : null}
-      </div>
-    </${Card}>
-
-    <${Numbers} group=${group} />
+    <div class="row" style=${{ gap: "10px" }}>
+      <${Button} kind="quiet" size="sm" icon=${showNumbers ? "chevronDown" : "chevronRight"} onClick=${() => setShowNumbers(!showNumbers)}>${showNumbers ? "Hide the numbers" : "Show the numbers"}</${Button}>
+    </div>
+    ${showNumbers ? html`<${Numbers} group=${group} />` : null}
   </div>`;
 }
 

@@ -6,9 +6,10 @@ import { nf } from "../lib/format.js";
 const L = 105, W = 68;
 
 /** Vertical attacking half, goal at the top. Coordinates: x across (0..68), y down from the goal line. */
-function HalfMarks() {
+function HalfMarks({ children }) {
   return html`<g class="pitch">
     <rect class="turf" x="0" y="0" width=${W} height="52.5" />
+    ${children || null}
     <rect class="mark" x="0" y="0" width=${W} height="52.5" />
     <rect class="mark" x="13.84" y="0" width="40.32" height="16.5" />
     <rect class="mark" x="24.84" y="0" width="18.32" height="5.5" />
@@ -89,6 +90,36 @@ export function MatchPitch({ home, away, homeColor = "var(--c1)", awayColor = "v
       </g>
       ${draw(away, awayColor, true)}
       ${draw(home, homeColor, false)}
+    </svg>
+  </div>`;
+}
+
+
+// Zone outlines on the attacking half (metres, goal at the top). Each is a hole-punched path so the zones do not overlap.
+const ZONE_PATH = {
+  outside: "M0 0H68V52.5H0Z M13.84 0V16.5H54.16V0Z",
+  penalty: "M13.84 0H54.16V16.5H13.84Z M24.84 0V5.5H43.16V0Z",
+  six: "M24.84 0H43.16V5.5H24.84Z",
+};
+const ZONE_TEXT = { outside: { x: 34, y: 33 }, penalty: { x: 34, y: 10.4 }, six: { x: 34, y: 3.7 } };
+
+/**
+ * The attacking half shaded by zone. zones: [{ key: "outside"|"penalty"|"six", value, name, tip }];
+ * darker = a bigger value relative to `max`, so two pitches drawn with the same max compare directly.
+ */
+export function ZonePitch({ zones, color = "var(--c1)", max, label, maxWidth = 320 }) {
+  const top = max || Math.max(1e-9, ...zones.map((z) => z.value));
+  const shade = (v) => 0.1 + 0.7 * Math.min(1, Math.max(0, v) / top);
+  return html`<div class="shotmap zone-pitch" style=${{ maxWidth: maxWidth + "px" }}>
+    <svg viewBox="-2 -4 72 60" role="img" aria-label=${label}>
+      <${HalfMarks}>
+        ${zones.map((z) => html`<path key=${z.key} d=${ZONE_PATH[z.key]} fill-rule="evenodd" class="zone" style=${{ fill: color, fillOpacity: shade(z.value) }}
+          onMouseMove=${(e) => tooltip.move(e, z.tip)} onMouseLeave=${tooltip.hide} />`)}
+      </${HalfMarks}>
+      ${zones.map((z) => html`<g key=${"t" + z.key} pointer-events="none">
+        <text class="zone-val" x=${ZONE_TEXT[z.key].x} y=${ZONE_TEXT[z.key].y} text-anchor="middle" font-size=${z.key === "six" ? 2.9 : 3.8}>${nf(z.value, 2)}</text>
+        ${z.key === "six" ? null : html`<text class="zone-name" x=${ZONE_TEXT[z.key].x} y=${ZONE_TEXT[z.key].y + 3.3} text-anchor="middle" font-size="2.1">${z.name}</text>`}
+      </g>`)}
     </svg>
   </div>`;
 }

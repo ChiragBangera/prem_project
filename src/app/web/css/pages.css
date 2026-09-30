@@ -449,3 +449,40 @@ table.data tr.row-muted { opacity: 0.6; cursor: default; }
   .cbar-net { justify-items: start; grid-auto-flow: column; gap: 6px; justify-content: start; align-items: baseline; }
 }
 .cbar-label .badge { justify-self: start; }
+
+/* zone pitch and columns */
+.zone-pitch { margin: 0; }
+.zone-pitch .zone { cursor: default; stroke: none; }
+.zone-pitch .zone:hover { stroke: var(--ink); stroke-width: 1; }
+.zone-val { fill: var(--ink); font-weight: 700; paint-order: stroke; stroke: var(--pitch-fill); stroke-width: .55px; }
+.zone-name { fill: var(--ink-2); paint-order: stroke; stroke: var(--pitch-fill); stroke-width: .45px; }
+.avg-line { stroke: var(--ink); stroke-width: 2; opacity: .8; stroke-linecap: round; }
+.col-val { font-size: 10px; fill: var(--ink-2); }
+.col-net { font-size: 11px; font-weight: 650; }
+
+/* chances tab layout */
+.chances-head { display: grid; gap: 8px; }
+.chances-grid { display: grid; grid-template-columns: minmax(0, 2fr) minmax(260px, 1fr); gap: 16px; align-items: start; }
+@media (max-width: 1000px) { .chances-grid { grid-template-columns: 1fr; } }
+.side-stack { display: grid; gap: 16px; }
+.takeaways { list-style: none; margin: 0; padding: 0; display: grid; gap: 14px; }
+.takeaways li { display: grid; grid-template-columns: 10px 1fr; gap: 10px; align-items: start; }
+.takeaways .dot { width: 8px; height: 8px; border-radius: 50%; margin-top: 6px; }
+.takeaways .tk-head { display: block; font-size: var(--fs-sm); line-height: 1.4; font-weight: 550; }
+.takeaways .tk-ev { display: block; margin-top: 3px; font-size: var(--fs-xs); color: var(--ink-3); line-height: 1.4; }
+.read-list { margin: 0; display: grid; gap: 12px; }
+.read-list dt { font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: .06em; color: var(--ink-3); margin-bottom: 2px; font-weight: 650; }
+.read-list dd { margin: 0; font-size: var(--fs-sm); line-height: 1.45; }
+.read-list .good dt { color: var(--good-ink, var(--ink-3)); }
+.read-list .bad dt { color: var(--warn-ink, var(--ink-3)); }
+.chart-caption { margin: 14px 0 0; font-size: var(--fs-xs); color: var(--ink-3); line-height: 1.5; }
+.zone-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.zone-pair figure { margin: 0; display: grid; gap: 6px; justify-items: center; }
+.zone-pair figcaption { font-size: var(--fs-sm); text-align: center; }
+.zone-read { display: grid; gap: 0; font-size: var(--fs-sm); }
+.zr-head, .zr-row { display: grid; grid-template-columns: minmax(110px, 1.2fr) 1fr 1fr 1fr; gap: 8px; align-items: center; padding: 7px 0; }
+.zr-head { font-size: var(--fs-xs); color: var(--ink-3); text-transform: uppercase; letter-spacing: .05em; border-bottom: 1px solid var(--line, rgba(128,128,128,.2)); }
+.zr-row { border-top: 1px solid var(--line, rgba(128,128,128,.14)); }
+.zr-row .badge { margin-left: 4px; }
+.tiles.four { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+@media (max-width: 720px) { .tiles.four { grid-template-columns: repeat(2, minmax(0, 1fr)); } .zone-pair { gap: 8px; } .zr-head, .zr-row { grid-template-columns: 1.1fr 1fr 1fr; } .zr-head span:last-child, .zr-row span:last-child { display: none; } }
