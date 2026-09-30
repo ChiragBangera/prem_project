@@ -4,9 +4,9 @@ import { cls, dateShort, nf, pct, probText, timeOf, weekday } from "../lib/forma
 import { Icon } from "../lib/icons.js";
 import { Crest, matchHref, teamHref, Badge, Delta } from "./common.js";
 import { href } from "../lib/router.js";
+import { ProbBar, BarList } from "../charts/bars.js";
 
 export const labHref = (home, away) => href("/forecast", { tab: "lab", home, away });
-import { ProbBar, BarList } from "../charts/bars.js";
 
 export const FLAG_LABEL = {
   against_run_of_play: "Against the run of play",
@@ -45,7 +45,7 @@ export function ResultItem({ m, showDate = true }) {
   </a>`;
 }
 
-export function FixtureRow({ f, onOpen, showRound }) {
+export function FixtureRow({ f, showRound }) {
   return html`<a class="fixture" href=${labHref(f.home, f.away)}>
     <div class="when num"><b>${weekday(f.date)} ${dateShort(f.date)}</b><span class="muted">${timeOf(f.dt)}${showRound && f.round ? ` · MW${f.round}` : ""}</span></div>
     <div class="teams">
