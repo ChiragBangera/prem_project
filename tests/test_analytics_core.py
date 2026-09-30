@@ -19,6 +19,7 @@ from app.analytics.table import (
     strengths,
     team_percentiles,
 )
+from app.analytics.chances import chance_insights, compare_to_league, league_baseline, prepare_breakdowns
 from app.analytics.team import find_team, team_history, team_profile
 from app.data.models import Shot
 from app.data.normalize import normalize_match_page, normalize_player_page
@@ -292,3 +293,58 @@ def test_similarity_skips_goalkeepers_and_low_minutes(demo_league):
     assert similar_players(keeper, ds.rows) == []
     star = next(r for r in ds.rows if r["group"] == "MID" and r["in_pool"])
     assert all(t["minutes"] >= 2500 for t in similar_players(star, ds.rows, min_minutes=2500))
+
+
+# ------------------------------------------------------------------ chances tab
+
+
+def _row(name, shots, xg, a_shots, a_xg, goals=0, a_goals=0, time=None):
+    return {"name": name, "time": time, "shots": shots, "goals": goals, "xg": xg, "against": {"shots": a_shots, "goals": a_goals, "xg": a_xg}}
+
+
+def test_prepare_breakdowns_orders_rows_names_them_and_drops_own_goals():
+    groups = {
+        "shotZone": [_row("ownGoals", 5, 5.0, 1, 1.0, goals=5, a_goals=1), _row("shotSixYardBox", 80, 30.0, 30, 10.0), _row("shotOboxTotal", 150, 5.0, 110, 3.5), _row("shotPenaltyArea", 320, 44.0, 170, 20.0)],
+        "timing": [_row("76+", 100, 18.0, 70, 10.0), _row("1-15", 90, 13.0, 34, 5.0)],
+        "formation": [_row("4-4-2", 10, 1.0, 8, 1.0, time=100), _row("4-3-3", 340, 50.0, 210, 23.0, time=2270)],
+    }
+    out = {b["key"]: b for b in prepare_breakdowns(groups, games=38)}
+    zone = out["shotZone"]
+    assert [r["label"] for r in zone["rows"]] == ["Outside the box", "Penalty area", "Six-yard box"]
+    assert zone["note"] and "own" in zone["note"].lower()
+    assert sum(r["share_for"] for r in zone["rows"]) == pytest.approx(1.0, abs=0.001)
+    six = zone["rows"][-1]
+    assert six["xg_shot"] == pytest.approx(30 / 80, abs=1e-3) and six["per_for"] == pytest.approx(30 / 38, abs=1e-3) and zone["unit"] == "game"
+    assert [r["label"] for r in out["timing"]["rows"]] == ["1–15 min", "76+ min"]
+    formation = out["formation"]
+    assert formation["unit"] == "90" and [r["name"] for r in formation["rows"]] == ["4-3-3", "4-4-2"]
+    assert formation["rows"][0]["per_for"] == pytest.approx(50 / 2270 * 90, abs=1e-3)
+    assert formation["rows"][1]["small"] and not formation["rows"][0]["small"]  # 100 minutes is too little to trust
+
+
+def test_league_comparison_ranks_and_insights_use_the_league_not_a_guess():
+    def team(corner_xg):
+        return prepare_breakdowns({"situation": [_row("OpenPlay", 300, 40.0, 200, 25.0, goals=40), _row("FromCorner", 60, corner_xg, 40, 5.0, goals=round(corner_xg))]}, games=38)
+
+    teams = {f"T{i}": team(5.0 + 0.2 * i) for i in range(1, 12)}
+    teams["Corner FC"] = team(22.0)  # far more corner xG than anyone
+    comparison = compare_to_league("Corner FC", teams["Corner FC"], league_baseline(teams))
+    stat = comparison["situation"]["FromCorner"]["per_for"]
+    assert stat["rank"] == 1 and stat["of"] == 12 and stat["z"] > 2
+    against = comparison["situation"]["FromCorner"]["per_against"]
+    assert against["rank"] <= 12  # 'low is better' ranks are computed too
+
+    headlines = [i["headline"] for i in chance_insights("Corner FC", teams["Corner FC"], comparison)["situation"]]
+    assert any("from corners" in h and "1st of 12" in h and "from from" not in h for h in headlines)
+    assert all(i["evidence"] for i in chance_insights("Corner FC", teams["Corner FC"], comparison)["situation"])
+
+
+def test_chance_insights_without_a_league_make_no_league_claims_and_ignore_tiny_rows():
+    prepared = prepare_breakdowns({
+        "situation": [_row("OpenPlay", 300, 40.0, 200, 25.0, goals=40), _row("FromCorner", 3, 0.3, 2, 0.2)],
+        "result": [_row("Goal", 71, 28.0, 27, 8.0, goals=71), _row("BlockedShot", 175, 14.0, 111, 9.0), _row("SavedShot", 111, 17.0, 61, 8.0), _row("MissedShots", 189, 22.0, 104, 8.0)],
+    }, games=38)
+    out = chance_insights("Test FC", prepared)
+    assert all("league" not in i["headline"].lower() and "of 20" not in i["headline"] for ins in out.values() for i in ins)
+    assert not any("corner" in i["headline"].lower() for i in out["situation"])  # 5 shots is noise
+    assert any("on target" in i["headline"] for i in out["result"])

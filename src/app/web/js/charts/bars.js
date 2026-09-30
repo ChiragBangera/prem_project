@@ -48,7 +48,7 @@ export function ProbBar({ home, draw, away, homeLabel, awayLabel, compact, hideL
 }
 
 /** Parts of a whole. Segments are separated by a 2px gap; large ones carry their label. */
-export function StackedBar({ segments, format = (v) => nf(v, 1), unit = "", height = 26 }) {
+export function StackedBar({ segments, format = (v) => nf(v, 1), unit = "", height = 26, legend = true }) {
   const total = segments.reduce((s, x) => s + Math.max(0, x.value), 0) || 1;
   return html`<div class="stackbar-wrap">
     <div class="stackbar" style=${{ height: height + "px" }} role="img" aria-label=${segments.map((s) => `${s.label} ${format(s.value)}${unit}`).join(", ")}>
@@ -58,7 +58,7 @@ export function StackedBar({ segments, format = (v) => nf(v, 1), unit = "", heig
           onMouseMove=${(e) => tooltip.move(e, html`<div><div class="tt-title">${s.label}</div><div class="tt-row"><span class="k">${format(s.value)}${unit}</span><span class="v">${p.toFixed(0)}%</span></div></div>`)} onMouseLeave=${tooltip.hide}>${p >= 12 ? html`<span>${p.toFixed(0)}%</span>` : null}</i>`;
       })}
     </div>
-    <div class="legend">${segments.map((s, i) => html`<span class="item" key=${s.key || i}><span class="swatch box" style=${{ background: s.color || SERIES_COLORS[i % SERIES_COLORS.length] }}></span>${s.label} <b class="num">${format(s.value)}${unit}</b></span>`)}</div>
+    ${legend ? html`<div class="legend">${segments.map((s, i) => html`<span class="item" key=${s.key || i}><span class="swatch box" style=${{ background: s.color || SERIES_COLORS[i % SERIES_COLORS.length] }}></span>${s.label} <b class="num">${format(s.value)}${unit}</b></span>`)}</div>` : null}
   </div>`;
 }
 

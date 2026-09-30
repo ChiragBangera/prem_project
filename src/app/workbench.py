@@ -19,6 +19,7 @@ from typing import Any, Callable
 
 from app import __version__, glossary
 from app.analytics import compare as compare_engine
+from app.analytics.chances import MIN_LEAGUE_TEAMS, chance_insights, compare_to_league, league_baseline, prepare_breakdowns
 from app.analytics.match import match_report
 from app.analytics.metrics import GROUP_LABELS, PLAYER_METRICS, PROFILE_METRICS, TEAM_METRICS
 from app.analytics.player_detail import player_detail
@@ -444,23 +445,44 @@ class Workbench:
         }
 
     async def team_chances_view(self, league: str, season, team: str) -> dict:
+        """The team's own chance breakdowns: fast (one page), no league context. See team_chances_league_view for that."""
         code, s, fetched, scope = await self._scope(league, season)
         t = find_team(fetched.data, team)
         page = await self.repo.team_page(t.name, s)
-        groups = page.data.groups
-        situation = {r["name"]: r for r in groups.get("situation", [])}
-        total_xg = sum(r["xg"] for r in situation.values()) or 1.0
-        set_piece = sum(situation.get(k, {"xg": 0})["xg"] for k in ("FromCorner", "SetPiece", "DirectFreekick"))
-        notes = []
-        if total_xg > 5:
-            share = set_piece / total_xg
-            notes.append({
-                "id": "chances.setpiece", "kind": "style", "tone": "neutral", "score": 50, "confidence": "medium",
-                "headline": f"{round(100 * share)}% of {t.name}'s xG comes from set pieces.",
-                "detail": "Most teams sit at roughly a fifth to a quarter; well above that suggests a dead-ball identity, well below an open-play one.",
-                "evidence": [{"label": "Set-piece xG", "value": f"{set_piece:.1f}"}, {"label": "Total xG", "value": f"{total_xg:.1f}"}], "entities": [], "link": None,
-            })
-        return {"scope": scope, "meta": page.meta.to_dict(), "team": t.name, "groups": groups, "insights": notes}
+        prepared = prepare_breakdowns(page.data.groups, max(len(t.history), 1))
+        return {
+            "scope": scope, "meta": page.meta.to_dict(), "team": t.name, "games": len(t.history),
+            "breakdowns": prepared, "insights": chance_insights(t.name, prepared),
+        }
+
+    async def team_chances_league_view(self, league: str, season, team: str) -> dict:
+        """The same breakdowns set against every other team: ranks, league averages and league-aware findings.
+
+        Loads each team's page (cached; finished seasons are fetched once, ever). If it cannot, the tab keeps working without it.
+        """
+        code, s, fetched, scope = await self._scope(league, season)
+        ls = fetched.data
+        t = find_team(ls, team)
+
+        async def page(name: str):
+            try:
+                return name, (await self.repo.team_page(name, s)).data.groups
+            except AppError:
+                return name, None
+
+        try:
+            results = await asyncio.wait_for(asyncio.gather(*(page(n) for n in ls.teams)), timeout=40)
+        except asyncio.TimeoutError:
+            return {"available": False, "reason": "Comparing with the rest of the league took too long. Open the tab again in a moment: the pages already fetched are kept.", "of": len(ls.teams)}
+        pages = {n: g for n, g in results if g}
+        if len(pages) < MIN_LEAGUE_TEAMS or t.name not in pages:
+            return {"available": False, "reason": "Not enough of the league's team pages could be loaded to compare against.", "loaded": len(pages), "of": len(ls.teams)}
+        prepared = {n: prepare_breakdowns(g, max(len(ls.teams[n].history), 1)) for n, g in pages.items()}
+        comparison = compare_to_league(t.name, prepared[t.name], league_baseline(prepared))
+        return {
+            "available": True, "team": t.name, "loaded": len(pages), "of": len(ls.teams),
+            "comparison": comparison, "insights": chance_insights(t.name, prepared[t.name], comparison),
+        }
 
     # ------------------------------------------------------------------ matches
 

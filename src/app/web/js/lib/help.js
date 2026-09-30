@@ -140,11 +140,6 @@ export const HELP = {
     bad: "'Against' climbing above 'for' means the team is being outplayed.",
   },
   "Points and expected points": XPTS,
-  "Where the chances come from and go": {
-    what: "Blue is chances the team creates and orange is chances it allows, split by type. Use the dropdown to switch between situation, shot zone, timing, game state, attack speed, formation and shot result.",
-    good: "Creating more xG than it allows in each row, especially from good zones such as the penalty area and six-yard box.",
-    bad: "Orange bars longer than blue: the team gives up more than it creates there. A lot conceded inside the penalty area is the most dangerous.",
-  },
   "Squad contributions": {
     what: "Every player's minutes, goals against xG, assists and share of the team's attacking output.",
     good: "Output spread across several players; G – xG near zero means unremarkable finishing.",
@@ -236,7 +231,7 @@ export function helpFor(title) {
 export const FEATURES = [
   { name: "Shot map: player", where: "Scout → click a player → 'Finishing and shots' tab", what: "Every shot he has taken, on a pitch, plus how lucky or unlucky his finishing is.", href: "/scout" },
   { name: "Shot map: match", where: "Matches → click any match → 'Shot map' card", what: "Both teams' shots on one pitch for a single game.", href: "/matches" },
-  { name: "Where a team's chances come from", where: "League → click a team → 'Chances' tab", what: "A table (not a pitch drawing) of chances created and allowed, by situation, shot zone, timing and more. Pick the breakdown in the dropdown.", href: "/league" },
+  { name: "Where a team's chances come from", where: "League → click a team → 'Chances' tab", what: "Chances created and allowed in seven breakdowns (situation, shot zone, timing, game state, attack speed, formation, shot result), each explained and ranked against the league. Not a pitch drawing.", href: "/league" },
   { name: "Chances against results, match by match", where: "League → click a team → Overview", what: "Shows which results were deserved and which were lucky.", href: "/league" },
   { name: "Expected points (xPts)", where: "League → 'Expected' view", what: "The table the chances say it should be, and who is over- or under-performing.", href: "/league" },
   { name: "Title, top-4 and relegation odds", where: "Briefing → 'The run-in'; Forecast → 'Season'", what: "The rest of the season simulated thousands of times.", href: "/" },

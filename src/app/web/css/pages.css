@@ -416,3 +416,36 @@ code { font: 500 0.92em ui-monospace, SFMono-Regular, Menlo, monospace; backgrou
 .season-chips .chip-note { margin-left: 4px; font-size: var(--fs-xs); color: var(--ink-3); }
 .season-cell { display: inline-flex; align-items: center; gap: 8px; }
 table.data tr.row-muted { opacity: 0.6; cursor: default; }
+
+/* team chances */
+.guide-card { padding: 0; }
+.guide-head { display: flex; width: 100%; justify-content: space-between; align-items: center; gap: 12px; padding: 14px 18px; text-align: left; }
+.guide-head:hover .muted { color: var(--ink); }
+.guide-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 24px; margin: 0; padding: 2px 18px 18px; }
+.guide-grid dt { font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: .06em; color: var(--ink-3); margin-bottom: 3px; font-weight: 650; }
+.guide-grid dd { margin: 0; font-size: var(--fs-sm); line-height: 1.5; }
+.guide-grid .good dt { color: var(--good-ink, var(--ink-3)); }
+.guide-grid .bad dt { color: var(--warn-ink, var(--ink-3)); }
+@media (max-width: 720px) { .guide-grid { grid-template-columns: 1fr; } }
+.mix-title { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; font-size: var(--fs-sm); font-weight: 600; margin-bottom: 6px; }
+.cbars { display: grid; gap: 2px; }
+.cbars-key { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; font-size: var(--fs-xs); color: var(--ink-2); padding-bottom: 8px; }
+.cbars-key .item { display: inline-flex; align-items: center; gap: 6px; }
+.cbars-key .muted { margin-left: auto; }
+.avg-swatch { display: inline-block; width: 2px; height: 12px; background: var(--ink); opacity: .75; }
+.cbar-row { display: grid; grid-template-columns: minmax(150px, 30%) minmax(0, 1fr) 72px; gap: 8px 18px; align-items: center; padding: 10px 0; border-top: 1px solid var(--line, rgba(128,128,128,.18)); }
+.cbar-row.dim { opacity: .6; }
+.cbar-label { display: grid; gap: 2px; min-width: 0; }
+.cbar-label .muted { line-height: 1.35; }
+.cbar-bars { display: grid; gap: 5px; min-width: 0; }
+.cbar { display: grid; grid-template-columns: minmax(0, 1fr) 48px 44px; align-items: center; gap: 10px; }
+.cbar .track { position: relative; height: 10px; border-radius: 5px; background: var(--surface-2, rgba(128,128,128,.12)); overflow: visible; }
+.cbar .track i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 5px; }
+.cbar .avg-tick { position: absolute; top: -3px; bottom: -3px; width: 2px; margin-left: -1px; background: var(--ink); opacity: .75; border-radius: 1px; }
+.cbar .val { text-align: right; font-size: var(--fs-sm); }
+.cbar-net { display: grid; justify-items: end; line-height: 1.2; }
+@media (max-width: 720px) {
+  .cbar-row { grid-template-columns: 1fr; gap: 6px; }
+  .cbar-net { justify-items: start; grid-auto-flow: column; gap: 6px; justify-content: start; align-items: baseline; }
+}
+.cbar-label .badge { justify-self: start; }

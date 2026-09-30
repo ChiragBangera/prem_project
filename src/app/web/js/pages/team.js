@@ -8,26 +8,18 @@ import { Tip } from "../lib/tooltip.js";
 import { Async, Badge, Card, Crest, DataNotices, EmptyState, Form, Insights, Notice, PageHead, Section, Select, Stat, Tabs, useDocumentTitle, playerHref, matchHref, teamHref, Star } from "../ui/common.js";
 import { DataTable } from "../ui/table.js";
 import { GapCell, labHref } from "../ui/blocks.js";
-import { PercentileBars, ProbBar, StackedBar } from "../charts/bars.js";
+import { PercentileBars, ProbBar } from "../charts/bars.js";
 import { LineChart } from "../charts/lines.js";
 import { MatchStrip, StripLegend } from "../charts/matchstrip.js";
 import { rememberVisit } from "../ui/palette.js";
 import { useEffect } from "../lib/html.js";
 import History from "./team-history.js";
+import Chances from "./team-chances.js";
 
 const SPLIT_LABEL = {
   home: "Home", away: "Away", first_half: "First half of season", second_half: "Second half of season",
   last6: "Last 6 matches", vs_stronger: "Against stronger teams", vs_weaker: "Against weaker teams",
 };
-
-const GROUP_LABEL = { situation: "Situation", shotZone: "Shot zone", timing: "Timing", gameState: "Game state", attackSpeed: "Attack speed", formation: "Formation", result: "Shot result" };
-const NAME_MAP = {
-  OpenPlay: "Open play", FromCorner: "From corners", SetPiece: "Set pieces", DirectFreekick: "Direct free kicks", Penalty: "Penalties",
-  shotPenaltyArea: "Penalty area", shotSixYardBox: "Six-yard box", shotOboxTotal: "Outside the box",
-  SavedShot: "Saved", BlockedShot: "Blocked", MissedShots: "Off target", ShotOnPost: "Hit the post", Goal: "Goals", OwnGoal: "Own goals",
-};
-const prettyName = (n) => NAME_MAP[n] || n;
-
 function difficulty(strength) {
   if (strength >= 0.5) return { label: "Tough", tone: "warn" };
   if (strength <= -0.5) return { label: "Kind", tone: "good" };
@@ -103,40 +95,6 @@ function Managers({ eras }) {
   return html`<${Card} flush title="Managers" sub="Only this season's matches, split by the stints in managers.json. Short spells are noisy.">
     <${DataTable} columns=${cols} rows=${eras} rowKey=${(r) => r.manager + r.start} dense caption="Manager stints" />
   </${Card}>`;
-}
-
-function BarCell({ value, max, color }) {
-  return html`<span class="gap-bar"><span class="bar-inline" style=${{ width: "88px" }}><i style=${{ width: Math.min(100, (value / (max || 1)) * 100) + "%", background: color }}></i></span><span class="val">${nf(value, 1)}</span></span>`;
-}
-
-function Chances({ team, scope }) {
-  const q = useApi("/api/team/chances", { team, league: scope.league, season: scope.season });
-  const { query } = useLocation();
-  const group = GROUP_LABEL[query.group] ? query.group : "situation";
-  return html`<${Async} q=${q}>${(d) => {
-    const rows = (d.groups[group] || []).filter((r) => r.shots || r.xg).map((r) => ({ ...r, label: prettyName(r.name), a_xg: r.against?.xg ?? 0, a_shots: r.against?.shots ?? 0, a_goals: r.against?.goals ?? 0 }));
-    const maxXg = Math.max(1, ...rows.map((r) => Math.max(r.xg, r.a_xg)));
-    const totalFor = rows.reduce((s, r) => s + r.xg, 0);
-    const cols = [
-      { key: "label", label: GROUP_LABEL[group], firstDir: "asc", className: "strong", value: (r) => r.label },
-      { key: "shots", label: "Shots for", num: true }, { key: "goals", label: "Goals for", num: true },
-      { key: "xg", label: "xG for", num: true, render: (r) => html`<${BarCell} value=${r.xg} max=${maxXg} color="var(--c1)" />` },
-      { key: "xg_shot", label: "xG/shot", num: true, value: (r) => (r.shots ? r.xg / r.shots : null), render: (r) => (r.shots ? nf(r.xg / r.shots, 3) : "–") },
-      { key: "a_shots", label: "Shots against", num: true }, { key: "a_goals", label: "Goals against", num: true },
-      { key: "a_xg", label: "xG against", num: true, render: (r) => html`<${BarCell} value=${r.a_xg} max=${maxXg} color="var(--c2)" />` },
-    ];
-    return html`<div class="stack" style=${{ "--gap": "16px" }}>
-      <${Insights} items=${d.insights} scope=${scope} />
-      <${Card} flush title="Where the chances come from and go" sub="Blue: chances this team creates. Orange: chances it allows. All values are xG unless stated."
-        actions=${html`<${Select} compact label="Breakdown" value=${group} options=${Object.entries(GROUP_LABEL).filter(([k]) => d.groups[k]?.length).map(([value, label]) => ({ value, label }))} onChange=${(v) => setQuery({ group: v === "situation" ? null : v })} />`}>
-        <div class="card-body" style=${{ paddingBottom: 0 }}>
-          <${StackedBar} segments=${rows.filter((r) => r.xg > 0).map((r) => ({ key: r.name, label: r.label, value: r.xg }))} unit=" xG" />
-          <p class="xsmall muted" style=${{ marginTop: "8px" }}>Share of the ${nf(totalFor, 1)} xG this team has created, by ${GROUP_LABEL[group].toLowerCase()}.</p>
-        </div>
-        <${DataTable} columns=${cols} rows=${rows} rowKey=${(r) => r.name} dense caption="Chance breakdown" />
-      </${Card}>
-    </div>`;
-  }}</${Async}>`;
 }
 
 function TeamView({ d, team, tab }) {

@@ -112,7 +112,32 @@ def test_team_view_and_chances(client):
     unknown = get(client, "/api/team", team="Nowhere FC", season="2019")
     assert unknown.status_code == 404 and unknown.json()["hint"]
     chances = get(client, "/api/team/chances", team="Arsenal", season="2019").json()
-    assert {"situation", "timing", "shotZone"} <= set(chances["groups"]) and chances["insights"][0]["headline"].startswith(("2", "1", "3", "4", "5", "0"))
+    keys = [b["key"] for b in chances["breakdowns"]]
+    assert {"situation", "timing", "shotZone", "gameState", "attackSpeed", "formation", "result"} <= set(keys)
+    assert set(chances["insights"]) == set(keys) and chances["games"] == 38
+
+
+def test_team_chances_are_named_ordered_and_explained(client):
+    body = get(client, "/api/team/chances", team="Arsenal", season="2019").json()
+    by = {b["key"]: b for b in body["breakdowns"]}
+    assert all(b["guide"]["what"] and b["guide"]["read"] and b["guide"]["good"] and b["guide"]["bad"] and b["blurb"] for b in body["breakdowns"])
+    assert [r["label"] for r in by["timing"]["rows"]] == ["1–15 min", "16–30 min", "31–45 min", "46–60 min", "61–75 min", "76+ min"]
+    assert [r["label"] for r in by["shotZone"]["rows"]] == ["Outside the box", "Penalty area", "Six-yard box"]  # far to near, and no fake 'own goals' zone
+    assert by["gameState"]["rows"][0]["label"] == "Behind by 2+" and by["gameState"]["rows"][-1]["label"] == "Ahead by 2+"
+    assert all(r["hint"] for b in body["breakdowns"] if b["key"] != "formation" for r in b["rows"])
+    situation = by["situation"]["rows"]
+    assert sum(r["share_for"] for r in situation) == pytest.approx(1.0, abs=0.01) and by["situation"]["unit"] == "game"
+    assert by["formation"]["unit"] == "90" and by["formation"]["rows"][0]["time"] >= by["formation"]["rows"][-1]["time"]
+
+
+def test_team_chances_against_the_league_is_optional_context(client):
+    body = get(client, "/api/team/chances/league", team="Arsenal", season="2019").json()
+    assert body["available"] and body["loaded"] == body["of"] == 20
+    stat = body["comparison"]["situation"]["OpenPlay"]["per_for"]
+    assert 1 <= stat["rank"] <= stat["of"] == 20 and "avg" in stat and "z" in stat
+    assert "formation" not in body["comparison"]  # formation names do not line up across teams
+    assert set(body["insights"]) >= {"situation", "shotZone", "timing"}
+    assert get(client, "/api/team/chances/league", team="Nowhere FC", season="2019").status_code == 404
 
 
 def test_auto_season_falls_back_when_the_new_season_is_barely_started(tmp_path):
