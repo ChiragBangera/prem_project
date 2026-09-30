@@ -192,3 +192,51 @@ def team_profile(ls: LeagueSeason, name: str, *, eras: Sequence[dict] = ()) -> d
         "concentration": concentration(squad) if squad else None,
         "eras": era_splits(team, eras, ls) if eras else [],
     }
+
+
+def team_history(ls: LeagueSeason, name: str) -> dict:
+    """One team's season as matchweek series, ready to lay beside other seasons of the same team.
+
+    Everything is aligned by matchweek (the team's nth match). Cumulative series have one value
+    per match played; the rolling series is ``None`` until a full window exists.
+    """
+    team = find_team(ls, name)
+    traj = rank_trajectories(ls)
+    row = next(r for r in compute_table(ls) if r["team"] == team.name)
+    history = team.history
+
+    xg_cum: list[float] = []
+    xga_cum: list[float] = []
+    xgd_cum: list[float] = []
+    xg = xga = 0.0
+    for m in history:
+        xg += m.xg
+        xga += m.xga
+        xg_cum.append(round(xg, 3))
+        xga_cum.append(round(xga, 3))
+        xgd_cum.append(round(xg - xga, 3))
+    xgd_roll = [None if v is None else round(v, 3) for v in rolling([m.xgd for m in history], WINDOW)]
+
+    n_teams = len(ls.teams)
+    return {
+        "team": team.name,
+        "short": team.short,
+        "played": len(history),
+        "rounds_total": 2 * (n_teams - 1) if n_teams > 1 else 0,
+        "n_teams": n_teams,
+        "complete": bool(ls.fixtures) and not ls.upcoming,
+        "final_rank": row["rank"],
+        "final_rank_xpts": row["rank_xpts"],
+        "pts": row["pts"],
+        "xpts": row["xpts"],
+        "gd": sum(m.gf - m.ga for m in history),
+        "xgd": round(xg - xga, 2),
+        "points": traj["points"].get(team.name, []),
+        "xpts_cum": traj["xpts"].get(team.name, []),
+        "rank": traj["rank"].get(team.name, []),
+        "xg_cum": xg_cum,
+        "xga_cum": xga_cum,
+        "xgd_cum": xgd_cum,
+        "xgd_roll": xgd_roll,
+        "window": WINDOW,
+    }

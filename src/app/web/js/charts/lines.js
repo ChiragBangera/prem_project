@@ -17,7 +17,7 @@ function spread(items, minGap, lo, hi) {
 }
 
 export function LineChart({
-  x, series, height = 260, yFormat, xFormat, yDomain, xDomain, xTicks, zeroLine = false, invertY = false, endLabels = true,
+  x, series, height = 260, yFormat, xFormat, yDomain, xDomain, xTicks, yTicks, zeroLine = false, invertY = false, endLabels = true,
   tooltipTitle, tooltipFormat, label = "Line chart", yLabel, xLabel, markers, dataTable = true,
 }) {
   const [hover, setHover] = useState(null);
@@ -32,7 +32,7 @@ export function LineChart({
     ${({ iw, ih }) => {
       const sx = scaleLinear([dx0, dx1], [0, iw]);
       const sy = scaleLinear([dy0, dy1], invertY ? [0, ih] : [ih, 0]);
-      const yt = niceTicks(dy0, dy1, Math.max(3, Math.floor(ih / 52)));
+      const yt = yTicks || niceTicks(dy0, dy1, Math.max(3, Math.floor(ih / 52)));
       const xt = xTicks || niceTicks(dx0, dx1, Math.max(3, Math.floor(iw / 80)));
       const fy = yFormat || tickFormat(yt[1] - yt[0] || 1);
       const move = (e) => {
@@ -44,6 +44,7 @@ export function LineChart({
       };
       const ends = endLabels
         ? spread(series.map((s, k) => {
+            if (s.noEnd) return null; // caller marks the end of this line itself
             let last = s.values.length - 1;
             while (last >= 0 && (s.values[last] == null || !Number.isFinite(s.values[last]))) last -= 1;
             return last < 0 ? null : { s, k, y: sy(s.values[last]), v: s.values[last] };

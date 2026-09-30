@@ -13,6 +13,7 @@ import { LineChart } from "../charts/lines.js";
 import { MatchStrip, StripLegend } from "../charts/matchstrip.js";
 import { rememberVisit } from "../ui/palette.js";
 import { useEffect } from "../lib/html.js";
+import History from "./team-history.js";
 
 const SPLIT_LABEL = {
   home: "Home", away: "Away", first_half: "First half of season", second_half: "Second half of season",
@@ -151,7 +152,7 @@ function TeamView({ d, team, tab }) {
 
   const shift = t.rank_gap;
   const sub = `${ordinal(t.rank)} in the ${scope.league_name} on ${t.pts} points after ${plural(t.played, "game")}.${Math.abs(shift) >= 2 ? ` On expected points they would be ${ordinal(t.rank_xpts)}.` : ""}`;
-  const tabs = [{ value: "overview", label: "Overview" }, { value: "squad", label: "Squad", count: p.squad.length }, { value: "chances", label: "Chances" }];
+  const tabs = [{ value: "overview", label: "Overview" }, { value: "squad", label: "Squad", count: p.squad.length }, { value: "chances", label: "Chances" }, { value: "history", label: "History" }];
 
   return html`
     <${PageHead} lead=${html`<${Crest} team=${t.team} short=${t.short} size=${46} />`} eyebrow=${`${scope.league_name} · ${scope.label}`} title=${t.team} sub=${sub}
@@ -198,6 +199,7 @@ function TeamView({ d, team, tab }) {
 
     ${tab === "squad" ? html`<${Squad} squad=${p.squad} scope=${{ ...scope, team }} concentration=${p.concentration} />` : null}
     ${tab === "chances" ? html`<${Chances} team=${team} scope=${scope} />` : null}
+    ${tab === "history" ? html`<${History} team=${team} league=${scope.league} viewing=${scope.season} />` : null}
   `;
 }
 
@@ -206,7 +208,7 @@ export default function Team({ params }) {
   const { query } = useLocation();
   const team = params.team;
   const q = useApi("/api/team", { team, league, season });
-  const tab = ["squad", "chances"].includes(query.tab) ? query.tab : "overview";
+  const tab = ["squad", "chances", "history"].includes(query.tab) ? query.tab : "overview";
   useDocumentTitle(team);
   return html`<${Async} q=${q}>${(d) => html`<${TeamView} d=${d} team=${team} tab=${tab} />`}</${Async}>`;
 }

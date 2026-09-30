@@ -25,7 +25,7 @@ from app.analytics.player_detail import player_detail
 from app.analytics.players import build_dataset
 from app.analytics.similarity import similar_players
 from app.analytics.table import compute_table, league_context, rank_trajectories
-from app.analytics.team import find_team, squad_rows, team_profile
+from app.analytics.team import find_team, squad_rows, team_history, team_profile
 from app.config import Settings
 from app.data.demo import DemoProvider
 from app.data.repository import Fetched, Repository
@@ -48,6 +48,8 @@ from app.jobs import JobManager
 from app.leagues import DEFAULT_LEAGUE, FIRST_SEASON, LEAGUES, available_seasons, current_season, fold, normalize_league, season_label
 
 MIN_ROUNDS_FOR_DEFAULT = 3  # a season with fewer rounds than this is not yet worth defaulting to
+HISTORY_DEFAULT_SEASONS = 5
+HISTORY_MAX_SEASONS = 8  # one colour each in the charts
 PACKAGED_MANAGERS = Path(__file__).parent / "data" / "managers.json"
 
 
@@ -398,6 +400,48 @@ class Workbench:
                 u["forecast"] = {"win": f["p_home"] if home else f["p_away"], "draw": f["p_draw"], "loss": f["p_away"] if home else f["p_home"]}
         return {"scope": scope, "meta": fetched.meta.to_dict(), "profile": profile, "insights": dicts(insights), "forecasts": forecasts,
                 "teams": [{"name": x.name, "short": x.short} for x in sorted(ls.teams.values(), key=lambda x: x.name)]}
+
+    async def team_history_view(self, league: str, team: str, seasons: list[int]) -> dict:
+        """One team's seasons side by side, by matchweek. Seasons the team was not in the league come back flagged, not as errors."""
+        code = self._league_code(league)
+        cfg = LEAGUES[code]
+        if not seasons:
+            newest, _ = await self.resolve_season(code, "auto")
+            seasons = [s for s in range(newest, newest - HISTORY_DEFAULT_SEASONS, -1) if s >= FIRST_SEASON]
+        seasons = list(dict.fromkeys(seasons))
+        if len(seasons) > HISTORY_MAX_SEASONS:
+            raise BadRequest(f"Pick at most {HISTORY_MAX_SEASONS} seasons to compare.")
+        key = team.strip().lower()
+
+        async def one(season: int):
+            base = {"season": season, "label": season_label(season)}
+            try:
+                fetched = await self._load(code, season)
+            except AppError as exc:
+                return {**base, "available": False, "reason": exc.message}, None
+            try:
+                data = await self._memo_async(("team_history", code, season, key), self._v((code, season)), lambda: team_history(fetched.data, team))
+            except NotFound:
+                return {**base, "available": False, "missing": True, "reason": f"Not in the {cfg.name} in {base['label']}."}, fetched.meta
+            return {**base, "available": True, **data}, fetched.meta
+
+        results = await asyncio.gather(*(one(s) for s in seasons))
+        rows = sorted((r for r, _ in results), key=lambda r: -r["season"])
+        metas = [m for _, m in results if m is not None]
+        found = [r for r in rows if r["available"]]
+        if not found:
+            if any(r.get("missing") for r in rows):
+                raise NotFound(f"'{team}' was not in the {cfg.name} in any of the selected seasons.", hint="Pick other seasons, or check the spelling.")
+            raise DataUnavailable("None of the selected seasons could be loaded.", hint="Open the Data page to sync, or try other seasons.")
+        return {
+            "scope": {"league": code, "league_name": cfg.name},
+            "team": found[0]["team"],
+            "short": found[0]["short"],
+            "seasons": rows,
+            "rounds_max": max(len(r["points"]) for r in found),
+            "n_teams_max": max(r["n_teams"] for r in found),
+            "meta": {"stale": any(m.stale for m in metas), "errors": [m.error for m in metas if m.error]},
+        }
 
     async def team_chances_view(self, league: str, season, team: str) -> dict:
         code, s, fetched, scope = await self._scope(league, season)

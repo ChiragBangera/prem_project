@@ -407,3 +407,12 @@ code { font: 500 0.92em ui-monospace, SFMono-Regular, Menlo, monospace; backgrou
 .guide-item:first-child { border-top: 0; }
 .guide-item .where { color: var(--ink-3); font-size: var(--fs-sm); }
 @media (max-width: 720px) { .guide-item { grid-template-columns: 1fr; } }
+
+/* team history */
+.season-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.season-chips .chip { height: 30px; }
+.season-chips .chip .dot, .season-cell .dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+.season-chips .chip:disabled { opacity: 0.45; cursor: not-allowed; }
+.season-chips .chip-note { margin-left: 4px; font-size: var(--fs-xs); color: var(--ink-3); }
+.season-cell { display: inline-flex; align-items: center; gap: 8px; }
+table.data tr.row-muted { opacity: 0.6; cursor: default; }

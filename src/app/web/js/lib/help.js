@@ -161,6 +161,33 @@ export const HELP = {
     bad: "A tougher run-in than the games already played.",
   },
 
+  // Team history
+  "Seasons to compare": {
+    what: "Pick which of this team's seasons to lay over each other. Each keeps its own colour in every chart and in the table.",
+    good: "Five seasons is a good window: enough to see a pattern without the chart getting crowded.",
+    bad: "Seasons where the team was in a lower division cannot be drawn and are listed as 'not in the league'.",
+  },
+  "Seasons side by side": {
+    what: "One row per season: final position, points, expected points (xPts), goal difference and expected goal difference (xGD).",
+    good: "Points close to xPts and xGD in line with GD mean the finish was earned by the chances.",
+    bad: "Points far above xPts (blue) means a lucky finish that often fades the next year; far below (orange) means an unlucky one.",
+  },
+  "Points by matchweek": {
+    what: "Running total of league points after each of the team's matches, one line per season. Matchweek means the team's nth match, so a postponed game shifts later weeks.",
+    good: "A line that is higher and steeper than the others: a faster start or a better run.",
+    bad: "A line that flattens early shows a stall. Compare the finish, not just the start: the lines can cross.",
+  },
+  "League position by matchweek": {
+    what: "The team's table position after each round, one line per season. 1st is at the top.",
+    good: "Lines near the top of the chart, especially staying there.",
+    bad: "Lines sinking toward the bottom places. Early-season positions swing a lot, so read the later weeks.",
+  },
+  "Chances trend by matchweek": {
+    what: "Chances created minus chances allowed (xG difference). 'Running total' adds it up over the season; 'Last 5 matches' shows the current form of the chances.",
+    good: "Above the zero line and rising: the team keeps creating more than it allows.",
+    bad: "Below zero means being outplayed. A season with good points but a low xG line is likely to slip.",
+  },
+
   // Forecast and compare
   "Markets": {
     what: "The model's probabilities for common bets, such as over 2.5 goals and both teams scoring.",
@@ -217,6 +244,7 @@ export const FEATURES = [
   { name: "Lucky or unlucky finishers", where: "Scout → 'Unlucky finishers' and 'Running hot' lenses", what: "Players scoring well below or above what their chances say.", href: "/scout" },
   { name: "Compare two players or two teams", where: "Compare, or tick players in Scout", what: "Side-by-side percentile profiles with the differences spelled out.", href: "/compare" },
   { name: "Next fixtures and match odds", where: "Forecast → 'Fixtures' and 'Match lab'", what: "Win, draw and loss chances and likely scores for any pairing.", href: "/forecast" },
+  { name: "Compare a team across seasons", where: "League → click a team → 'History' tab", what: "Points, league position and chances by matchweek, with up to 8 of the team's seasons laid over each other.", href: "/league" },
   { name: "Track players you like", where: "Star any player, then open Shortlist", what: "Live numbers and your own notes.", href: "/shortlist" },
   { name: "Sync more leagues and seasons", where: "Data", what: "Fetch other leagues or older seasons and check the connection.", href: "/data" },
   { name: "What a number means", where: "Method, or hover any (i) button", what: "Plain-language definitions of every metric.", href: "/method" },

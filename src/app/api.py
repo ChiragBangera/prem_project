@@ -143,6 +143,10 @@ def create_app(settings: Settings | None = None, *, provider=None, today: date |
     async def team(request: Request, team: str, league: str = "EPL", season: str = "auto"):
         return ok(await wb(request).team_view(league, season, team))
 
+    @app.get("/api/team/history")
+    async def team_history(request: Request, team: str, league: str = "EPL", seasons: str = ""):
+        return ok(await wb(request).team_history_view(league, team, _ints(seasons)))
+
     @app.get("/api/team/chances")
     async def team_chances(request: Request, team: str, league: str = "EPL", season: str = "auto"):
         return ok(await wb(request).team_chances_view(league, season, team))

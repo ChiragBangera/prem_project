@@ -79,6 +79,31 @@ def test_league_table_and_filters(client):
     assert get(client, "/api/league", season="2019", last=0).status_code == 422
 
 
+def test_team_history_compares_seasons_and_flags_the_ones_it_cannot_load(client):
+    body = get(client, "/api/team/history", team="arsenal", seasons="2019,2020").json()
+    assert body["team"] == "Arsenal" and [s["season"] for s in body["seasons"]] == [2020, 2019]
+    done, live = body["seasons"][1], body["seasons"][0]
+    assert done["available"] and done["complete"] and len(done["points"]) == 38
+    assert live["available"] and not live["complete"] and len(live["points"]) < 38
+    assert body["rounds_max"] == 38 and body["n_teams_max"] == 20 and body["scope"]["league"] == "EPL"
+
+    partial = get(client, "/api/team/history", team="Arsenal", seasons="2019,2015").json()  # the demo world starts in 2019
+    gone = next(s for s in partial["seasons"] if s["season"] == 2015)
+    assert not gone["available"] and gone["reason"] and next(s for s in partial["seasons"] if s["season"] == 2019)["available"]
+
+
+def test_team_history_defaults_and_validation(client):
+    default = get(client, "/api/team/history", team="Arsenal").json()  # newest 5 seasons: 2020..2016
+    assert [s["season"] for s in default["seasons"]] == [2020, 2019, 2018, 2017, 2016]
+    assert [s["season"] for s in default["seasons"] if s["available"]] == [2020, 2019]
+
+    missing = get(client, "/api/team/history", team="Nowhere FC", seasons="2019")
+    assert missing.status_code == 404 and missing.json()["hint"]
+    assert get(client, "/api/team/history", team="Arsenal", seasons="2019,abc").status_code == 422
+    too_many = get(client, "/api/team/history", team="Arsenal", seasons=",".join(str(y) for y in range(2010, 2019)))
+    assert too_many.status_code == 422 and "at most" in too_many.json()["message"]
+
+
 def test_team_view_and_chances(client):
     body = get(client, "/api/team", team="Arsenal", season="2019").json()
     profile = body["profile"]

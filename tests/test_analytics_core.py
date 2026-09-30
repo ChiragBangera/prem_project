@@ -19,7 +19,7 @@ from app.analytics.table import (
     strengths,
     team_percentiles,
 )
-from app.analytics.team import find_team, team_profile
+from app.analytics.team import find_team, team_history, team_profile
 from app.data.models import Shot
 from app.data.normalize import normalize_match_page, normalize_player_page
 from app.errors import NotFound
@@ -166,6 +166,28 @@ def test_team_lookup_accepts_short_names_and_reports_unknowns(demo_league):
     assert arsenal.name == "Arsenal" and find_team(demo_league, "ARS").name == "Arsenal"
     with pytest.raises(NotFound):
         find_team(demo_league, "Not A Team")
+
+
+def test_team_history_series_line_up_with_the_table(demo_league):
+    top = compute_table(demo_league)[0]
+    h = team_history(demo_league, top["team"])
+    assert h["played"] == 38 and h["complete"] and h["n_teams"] == 20 and h["rounds_total"] == 38
+    for key in ("points", "xpts_cum", "rank", "xg_cum", "xga_cum", "xgd_cum", "xgd_roll"):
+        assert len(h[key]) == 38, key
+    assert h["final_rank"] == h["rank"][-1] == 1
+    assert h["points"][-1] == h["pts"] == top["pts"]
+    assert all(b >= a for a, b in zip(h["points"], h["points"][1:]))  # points only ever go up
+    assert h["xgd_cum"][-1] == pytest.approx(h["xg_cum"][-1] - h["xga_cum"][-1], abs=0.01) == pytest.approx(h["xgd"], abs=0.01)
+    assert sum(1 for v in h["xgd_roll"] if v is None) == 4 and h["xgd_roll"][-1] is not None  # window of 5
+    assert h["gd"] == top["gd"]
+
+
+def test_team_history_of_a_season_in_progress_is_shorter(demo_league_partial):
+    h = team_history(demo_league_partial, "Arsenal")
+    assert not h["complete"] and h["played"] < h["rounds_total"]
+    assert len(h["points"]) == len(h["rank"]) == len(h["xgd_cum"]) == h["played"]
+    with pytest.raises(NotFound):
+        team_history(demo_league_partial, "Not A Team")
 
 
 def test_partial_season_team_profile_has_upcoming_and_schedule(demo_league_partial):
