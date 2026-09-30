@@ -290,7 +290,7 @@ export default function Scout() {
     if (!running) return undefined;
     const t = setInterval(() => q.reload(), 6000);
     return () => clearInterval(t);
-  }, [running]);
+  }, [running, q.reload]);
   useDocumentTitle("Scout");
   return html`<${Async} q=${q}>${(d) => html`<${ScoutView} d=${d} f=${f} set=${set} scope=${scope} meta=${meta.meta} catalog=${meta.catalog} />`}</${Async}>`;
 }
