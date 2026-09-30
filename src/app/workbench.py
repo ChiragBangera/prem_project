@@ -382,12 +382,20 @@ class Workbench:
         profile = team_profile(ls, t.name, eras=self.eras_for(code, t.name))
         cfg = LEAGUES[code]
         insights = rank(team_insights(profile, ucl_places=cfg.ucl_places, relegation_places=cfg.relegation_places))
-        forecasts = []
+        forecasts, mine = [], []
         try:
             fc = await self._forecaster(code, s)
-            forecasts = [fc.row(f) for f in sorted(ls.upcoming, key=lambda f: f.dt) if t.name in (f.home, f.away)][:6]
+            mine = [fc.row(f) for f in sorted(ls.upcoming, key=lambda f: f.dt) if t.name in (f.home, f.away)]
+            forecasts = mine[:6]
         except (AppError, ValueError):
             pass
+        # Understat often has no forecast for upcoming fixtures; use the ratings model, from this team's side.
+        by_id = {f["id"]: f for f in mine}
+        for u in profile["upcoming"]:
+            f = by_id.get(u["match_id"])
+            if u["forecast"] is None and f:
+                home = u["venue"] == "h"
+                u["forecast"] = {"win": f["p_home"] if home else f["p_away"], "draw": f["p_draw"], "loss": f["p_away"] if home else f["p_home"]}
         return {"scope": scope, "meta": fetched.meta.to_dict(), "profile": profile, "insights": dicts(insights), "forecasts": forecasts,
                 "teams": [{"name": x.name, "short": x.short} for x in sorted(ls.teams.values(), key=lambda x: x.name)]}
 

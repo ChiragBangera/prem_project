@@ -64,7 +64,7 @@ function Fixtures({ upcoming, schedule, team }) {
         return html`<a class="fixture team-fixture" key=${f.match_id} href=${f.venue === "h" ? labHref(team, f.opponent) : labHref(f.opponent, team)}>
           <div class="when num"><b>${weekday(f.date)} ${dateShort(f.date)}</b><span class="muted">${timeOf(f.dt)}</span></div>
           <div class="teams"><span class="t"><${Crest} team=${f.opponent} short=${f.opponent_short} size=${22} /><span class="truncate">${f.venue === "h" ? "vs" : "at"} ${f.opponent}</span></span></div>
-          <div class="prob"><${ProbBar} home=${f.forecast.win} draw=${f.forecast.draw} away=${f.forecast.loss} homeLabel="Win" awayLabel="Loss" compact /></div>
+          <div class="prob">${f.forecast ? html`<${ProbBar} home=${f.forecast.win} draw=${f.forecast.draw} away=${f.forecast.loss} homeLabel="Win" awayLabel="Loss" compact />` : html`<span class="muted small">No forecast yet</span>`}</div>
           <div class="exp"><${Badge} tone=${d.tone} title="Strength of the opponent on the ratings model">${d.label}</${Badge}></div>
         </a>`;
       })}
