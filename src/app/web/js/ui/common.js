@@ -4,6 +4,7 @@ import { Icon } from "../lib/icons.js";
 import { href } from "../lib/router.js";
 import { cls, hueOf, initials, nf, signed } from "../lib/format.js";
 import { tooltip } from "../lib/tooltip.js";
+import { helpFor } from "../lib/help.js";
 import { api, invalidate } from "../lib/api.js";
 import { shortlistStore, useStore } from "../lib/store.js";
 
@@ -60,13 +61,21 @@ export function Delta({ value, digits = 1, suffix = "", inverse = false, class: 
   return html`<span class=${cls("delta-val", flat ? "" : up ? "pos" : "neg", klass)}>${signed(value, digits)}${suffix}</span>`;
 }
 
+/** (i) button. `text` is a string, or { what, good, bad } from lib/help.js. Opens on hover, focus or tap. */
 export function Info({ text, label = "About this" }) {
   const ref = useRef(null);
+  const body = typeof text === "string" || !text
+    ? text
+    : html`<div class="help-body">
+        ${text.what ? html`<p>${text.what}</p>` : null}
+        ${text.good ? html`<p><b>Good: </b>${text.good}</p>` : null}
+        ${text.bad ? html`<p><b>Watch for: </b>${text.bad}</p>` : null}
+      </div>`;
   const show = () => {
     const r = ref.current.getBoundingClientRect();
-    tooltip.at(r.left + r.width / 2, r.bottom + 4, html`<div style=${{ maxWidth: "260px" }}>${text}</div>`);
+    tooltip.at(r.left + r.width / 2, r.bottom + 4, html`<div style=${{ maxWidth: "300px" }}>${body}</div>`);
   };
-  return html`<button class="info" type="button" ref=${ref} aria-label=${label} onMouseEnter=${show} onFocus=${show} onMouseLeave=${tooltip.hide} onBlur=${tooltip.hide}><${Icon} name="info" size="sm" /></button>`;
+  return html`<button class="info" type="button" ref=${ref} aria-label=${label} onMouseEnter=${show} onFocus=${show} onClick=${show} onMouseLeave=${tooltip.hide} onBlur=${tooltip.hide}><${Icon} name="info" size="sm" /></button>`;
 }
 
 // ------------------------------------------------------------------ layout
@@ -82,19 +91,21 @@ export function PageHead({ title, sub, eyebrow, actions, lead }) {
   </header>`;
 }
 
-export function Card({ title, sub, actions, children, flush, class: klass, id, pad = true }) {
+export function Card({ title, sub, actions, children, flush, class: klass, id, pad = true, info }) {
+  const help = info || helpFor(title);
   return html`<section class=${cls("card", klass)} id=${id}>
     ${title || actions ? html`<div class="card-head">
-      <div style=${{ minWidth: 0 }}>${title ? html`<h2 class="card-title">${title}</h2>` : null}${sub ? html`<p class="card-sub">${sub}</p>` : null}</div>
+      <div style=${{ minWidth: 0 }}>${title ? html`<h2 class="card-title">${title}${help ? html` <${Info} text=${help} label=${`About: ${typeof title === "string" ? title : "this chart"}`} />` : null}</h2>` : null}${sub ? html`<p class="card-sub">${sub}</p>` : null}</div>
       ${actions ? html`<div class="chart-actions">${actions}</div>` : null}
     </div>` : null}
     <div class=${cls("card-body", flush && "flush", !pad && "flush")}>${children}</div>
   </section>`;
 }
 
-export function Section({ title, sub, actions, children, id }) {
+export function Section({ title, sub, actions, children, id, info }) {
+  const help = info || helpFor(title);
   return html`<section class="stack" style=${{ "--gap": "12px" }} id=${id}>
-    <div class="row between wrap"><div class="section-title"><h2>${title}</h2>${sub ? html`<span class="sub">${sub}</span>` : null}</div>${actions ? html`<div class="row">${actions}</div>` : null}</div>
+    <div class="row between wrap"><div class="section-title"><h2>${title}${help ? html` <${Info} text=${help} label=${`About: ${typeof title === "string" ? title : "this section"}`} />` : null}</h2>${sub ? html`<span class="sub">${sub}</span>` : null}</div>${actions ? html`<div class="row">${actions}</div>` : null}</div>
     ${children}
   </section>`;
 }

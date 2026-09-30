@@ -16,6 +16,9 @@ export const PAGES = [
   { path: "/shortlist", name: "Shortlist", icon: "star", hint: "Players you are tracking" },
   { path: "/forecast", name: "Forecast", icon: "forecast", hint: "Fixtures, match lab, season simulation" },
   { path: "/data", name: "Data", icon: "database", hint: "Sync, coverage, cache" },
+  { path: "/guide", name: "Guide: where to find things", icon: "info", hint: "Shot maps, pitch maps, xPts and every other chart: where each one lives" },
+  { path: "/scout", name: "Shot map (player)", icon: "scout", hint: "Scout, click a player, then the Finishing and shots tab" },
+  { path: "/matches", name: "Shot map (match)", icon: "calendar", hint: "Matches, click a match, then the Shot map card" },
   { path: "/method", name: "Method", icon: "book", hint: "How every number is made" },
 ];
 
@@ -47,7 +50,7 @@ export function Palette({ onClose }) {
     const out = [];
     const needle = fold(term);
     const pages = PAGES.filter((p) => !needle || fold(p.name).includes(needle) || fold(p.hint).includes(needle));
-    if (pages.length && (!needle || pages.length < PAGES.length)) out.push({ title: needle ? "Pages" : "Go to", items: pages.map((p) => ({ key: p.path, label: p.name, meta: p.hint, icon: p.icon, go: () => navigate(p.path) })) });
+    if (pages.length && (!needle || pages.length < PAGES.length)) out.push({ title: needle ? "Pages" : "Go to", items: pages.map((p) => ({ key: p.path + p.name, label: p.name, meta: p.hint, icon: p.icon, go: () => navigate(p.path) })) });
     if (term.length >= 2 && search.data) {
       const teams = (search.data.teams || []).map((t) => ({ key: "t" + t.league + t.name, label: t.name, meta: `Team · ${t.league}`, crest: t, go: () => navigate(`/team/${encodeURIComponent(t.name)}`) }));
       const players = (search.data.players || []).map((p) => ({

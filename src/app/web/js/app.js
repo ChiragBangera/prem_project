@@ -23,6 +23,7 @@ import Forecast from "./pages/forecast.js";
 import Shortlist from "./pages/shortlist.js";
 import DataPage from "./pages/data.js";
 import Method from "./pages/method.js";
+import Guide from "./pages/guide.js";
 
 const routes = compile([
   { path: "/", page: Briefing, nav: "/" },
@@ -37,6 +38,7 @@ const routes = compile([
   { path: "/shortlist", page: Shortlist, nav: "/shortlist" },
   { path: "/data", page: DataPage, nav: "/data" },
   { path: "/method", page: Method, nav: "/method" },
+  { path: "/guide", page: Guide, nav: "/guide" },
 ]);
 
 const NAV = [
@@ -52,6 +54,9 @@ const NAV = [
   ] },
   { label: "Predict", items: [
     { path: "/forecast", name: "Forecast", icon: "forecast" },
+  ] },
+  { label: "Help", items: [
+    { path: "/guide", name: "Guide", icon: "info" },
   ] },
   { label: "System", items: [
     { path: "/data", name: "Data", icon: "database", mobile: false },

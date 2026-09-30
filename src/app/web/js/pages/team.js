@@ -144,6 +144,8 @@ function TeamView({ d, team, tab }) {
   const t = p.team;
   const idx = p.matches.map((m) => m.n);
   const rolling = p.rolling;
+  // A line needs two points; the five-match average only starts at match five.
+  const rollingReady = rolling.xg.filter((v) => v != null).length >= 2;
   const others = teams.filter((x) => x.name !== team).map((x) => ({ value: x.name, label: x.name }));
   useEffect(() => { rememberVisit({ kind: "team", href: teamHref(team), label: team, sub: `${scope.league_name} ${scope.label}` }); }, [team, scope.season]);
 
@@ -178,8 +180,8 @@ function TeamView({ d, team, tab }) {
         </${Card}>
       </div>
       <div class="grid cols-2">
-        <${Card} title="Chances created and allowed" sub="Rolling five-match average of xG for and against.">
-          <${LineChart} x=${idx} series=${[{ key: "xg", label: "xG for", values: rolling.xg, color: "var(--c1)", endLabel: "for" }, { key: "xga", label: "xG against", values: rolling.xga, color: "var(--c2)", endLabel: "against" }]}
+        <${Card} title="Chances created and allowed" sub=${rollingReady ? "Rolling five-match average of xG for and against." : "xG for and against in each match. The rolling five-match average appears once six matches are played."}>
+          <${LineChart} x=${idx} series=${[{ key: "xg", label: "xG for", values: rollingReady ? rolling.xg : p.matches.map((m) => m.xg), color: "var(--c1)", endLabel: "for" }, { key: "xga", label: "xG against", values: rollingReady ? rolling.xga : p.matches.map((m) => m.xga), color: "var(--c2)", endLabel: "against" }]}
             height=${260} yFormat=${(v) => nf(v, 1)} xFormat=${(v) => String(v)} xLabel="Matchweek" tooltipTitle=${(i) => `Matchweek ${idx[i]} · vs ${p.matches[i].opponent}`} tooltipFormat=${(v) => nf(v, 2)} />
         </${Card}>
         <${Card} title="Points and expected points" sub="Running totals. The gap between the lines is the luck, good or bad, banked so far.">
