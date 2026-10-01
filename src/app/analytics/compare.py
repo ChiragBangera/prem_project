@@ -7,12 +7,34 @@ from typing import Sequence
 from app.data.models import LeagueSeason
 from app.errors import BadRequest
 
-from .metrics import METRIC_BY_KEY, PROFILE_METRICS
+from .metrics import EVENT_BY_KEY, EVENT_MIXED, EVENT_PROFILE, METRIC_BY_KEY, PROFILE_METRICS
 from .table import compute_table, team_percentiles
 from .team import find_team
 
 SHARED_PLAYER_METRICS = ("npxg90", "shots90", "xgps", "xa90", "kp90", "xgchain90", "xgbuildup90")
 MAX_PLAYERS = 6
+
+
+def _event_metrics(rows: Sequence[dict]) -> list[dict]:
+    """The same side-by-side for the optional event data; only when at least two of the players have any."""
+    if sum(1 for r in rows if r.get("ev_minutes")) < 2:
+        return []
+    keys = EVENT_PROFILE.get(rows[0]["group"], EVENT_MIXED) if len({r["group"] for r in rows}) == 1 else EVENT_MIXED
+    out = []
+    for key in keys:
+        m = EVENT_BY_KEY[key]
+        values = [r.get(key) for r in rows]
+        eligible = [(v, i) for i, v in enumerate(values) if v is not None and r_in_pool(rows[i])]
+        best = (max(eligible) if m.higher_is_better else min(eligible))[1] if len(eligible) >= 2 else None
+        out.append({
+            "key": key, "label": m.label, "short": m.short, "unit": m.unit, "decimals": m.decimals, "higher_is_better": m.higher_is_better,
+            "values": values, "pct": [r["evpct"].get(key) for r in rows], "best": best,
+        })
+    return out
+
+
+def r_in_pool(row: dict) -> bool:
+    return bool(row.get("ev_in_pool"))
 
 
 def compare_players(rows: Sequence[dict]) -> dict:
@@ -43,10 +65,11 @@ def compare_players(rows: Sequence[dict]) -> dict:
     return {
         "players": [
             {k: r.get(k) for k in ("id", "name", "team", "league", "age", "group", "minutes", "games", "output", "tags", "sample", "pool_n",
-                                    "goals", "xg", "assists", "xa", "shots", "g_xg", "g_xg_z", "npxg", "group_source")}
+                                    "goals", "xg", "assists", "xa", "shots", "g_xg", "g_xg_z", "npxg", "group_source", "ev_minutes", "ev_in_pool")}
             for r in rows
         ],
         "metrics": metrics,
+        "event_metrics": _event_metrics(rows),
         "mixed_groups": mixed,
         "note": "Players come from different role groups; percentiles are each measured against their own peers." if mixed else None,
     }

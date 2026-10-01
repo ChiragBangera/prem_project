@@ -117,6 +117,64 @@ def cmd_status(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_events_sync(args: argparse.Namespace) -> int:
+    """Fetch event data (passes, duels, tackles) from WhoScored into the local store. Slow; safe to stop and resume."""
+    _apply_env(args)
+    from app.data.store import Store
+    from app.events.fetch import FetchUnavailable, sync_season
+    from app.events.store import EventStore
+
+    settings = Settings.from_env()
+    seasons = [int(x) for x in args.seasons.split(",") if x.strip()] if args.seasons else [current_season()]
+    store = Store(settings.db_path)
+    events = EventStore(store)
+    work = (settings.data_dir / "soccerdata").resolve()
+    work.mkdir(parents=True, exist_ok=True)
+    os.chdir(work)  # the browser tooling drops lock files in the working folder: keep them inside the data folder, not the project
+    try:
+        for season in seasons:
+            print(f"\n{args.league} {season}: fetching event data from WhoScored (a match takes about 15 seconds; Ctrl+C is safe, run it again to carry on)")
+            status = sync_season(events, args.league, season, data_dir=settings.data_dir, browser=args.browser, headless=not args.visible, limit=args.limit, pause=args.pause)
+            print(f"{args.league} {season}: {len(events.match_ids(args.league, season))} matches stored ({status['done']} fetched now, {status['failed']} failed).")
+    except FetchUnavailable as exc:
+        print(f"\n{exc}")
+        return 2
+    finally:
+        store.close()
+    return 0
+
+
+def cmd_events_status(args: argparse.Namespace) -> int:
+    _apply_env(args)
+    from app.data.store import Store
+    from app.events.store import EventStore
+
+    settings = Settings.from_env()
+    if not settings.db_path.exists():
+        print("No data yet.")
+        return 0
+    store = Store(settings.db_path)
+    events = EventStore(store)
+    found = events.seasons()
+    if not found:
+        print("No event data yet. Fetch some with: uv run --extra events prem events sync --league EPL --season 2025")
+    for league, season, n in found:
+        status = events.status(league, season) or {}
+        state = "running" if status.get("running") else "stalled" if status.get("stalled") else "idle"
+        total = status.get("finished_matches")
+        print(f"  {league} {season}: {n}{f' of {total}' if total else ''} matches stored ({state}{', last error: ' + status['last_error'] if status.get('last_error') else ''})")
+    store.close()
+    return 0
+
+
+def cmd_events(args: argparse.Namespace) -> int:
+    handler = {"sync": cmd_events_sync, "status": cmd_events_status}.get(getattr(args, "events_command", None))
+    if handler is None:
+        print("Use `prem events sync` to fetch event data or `prem events status` to see what is stored.")
+        return 1
+    return handler(args)
+
+
 def cmd_clear(args: argparse.Namespace) -> int:
     _apply_env(args)
     from app.data.store import Store
@@ -125,13 +183,15 @@ def cmd_clear(args: argparse.Namespace) -> int:
     if not settings.db_path.exists():
         print("Nothing to clear.")
         return 0
+    keep = () if getattr(args, "events", False) else ("events",)  # hours of fetching: only deleted when asked for
     if not args.yes:
-        print(f"This deletes cached match and player data at {settings.db_path} (your shortlist is kept). Re-run with --yes to confirm.")
+        kept = "" if not keep else " Event data is kept (add --events to delete it too)."
+        print(f"This deletes cached match and player data at {settings.db_path} (your shortlist is kept).{kept} Re-run with --yes to confirm.")
         return 1
     store = Store(settings.db_path)
-    store.clear()
+    store.clear(keep=keep)
     store.close()
-    print("Cache cleared (shortlist kept).")
+    print("Cache cleared (shortlist kept" + ("; event data kept)." if keep else "; event data deleted too)."))
     return 0
 
 
@@ -172,7 +232,22 @@ def build_parser() -> argparse.ArgumentParser:
     clear = sub.add_parser("clear", help="delete cached data")
     common(clear)
     clear.add_argument("--yes", action="store_true")
+    clear.add_argument("--events", action="store_true", help="also delete event data (it takes hours to fetch again)")
     clear.set_defaults(func=cmd_clear)
+
+    events = sub.add_parser("events", help="optional event data (passes, duels, tackles) from WhoScored")
+    events.set_defaults(func=cmd_events)
+    esub = events.add_subparsers(dest="events_command")
+    esync = esub.add_parser("sync", help="fetch event data into the local store (slow, resumable)")
+    esync.add_argument("--data-dir", help="where the cache lives (default: <repo>/.prem-data)")
+    esync.add_argument("--league", default="EPL", help=f"one of: {', '.join(LEAGUES)}")
+    esync.add_argument("--seasons", default="", help="comma-separated start years (default: current season)")
+    esync.add_argument("--limit", type=int, help="fetch at most this many matches (to try it out)")
+    esync.add_argument("--pause", type=float, default=3.0, help="seconds to wait between matches (default 3)")
+    esync.add_argument("--browser", help="path to Chrome, Chromium, Brave or Edge (found automatically if omitted)")
+    esync.add_argument("--visible", action="store_true", help="show the browser window; can help if the site blocks the hidden one")
+    estatus = esub.add_parser("status", help="show what event data is stored")
+    estatus.add_argument("--data-dir", help="where the cache lives (default: <repo>/.prem-data)")
     return parser
 
 

@@ -26,15 +26,34 @@ function findMetric(blocks, key) {
 
 // ------------------------------------------------------------------ profile
 
-function AllMetrics({ blocks, group }) {
-  return html`<${Card} flush title="Every metric" sub=${`Each row is ranked among ${group}s with enough minutes. The bar is the percentile; hover a metric for what it means.`}>
+function AllMetrics({ blocks, group, title = "Every metric", sub, extra }) {
+  return html`<${Card} flush title=${title} sub=${sub || `Each row is ranked among ${group}s with enough minutes. The bar is the percentile; hover a metric for what it means.`}>
     <div class="table-wrap"><table class="data dense metric-table">
       <thead><tr><th>Metric</th><th class="num">Per 90 / total</th><th>Percentile</th><th class="num">Rank</th></tr></thead>
       <tbody>
         ${blocks.map((b) => html`<${BlockRows} key=${b.category} block=${b} />`)}
       </tbody>
     </table></div>
+    ${extra || null}
   </${Card}>`;
+}
+
+/** Defending and passing, from the optional WhoScored event data. Same table as "Every metric", ranked among role peers who have event data. */
+function EventCard({ ev, group }) {
+  if (!ev || (!ev.available && !ev.stored)) return null;
+  if (!ev.available) {
+    return html`<${Card} title="Defending and passing"><p class="muted small">No event data for this player in this view. Event data (duels, tackles, passing) only covers the league seasons you have fetched with <code>prem events sync</code>, and only players it could match to Understat.</p></${Card}>`;
+  }
+  const order = [...new Set(ev.items.map((i) => i.category))];
+  const blocks = order.map((category) => ({ category, items: ev.items.filter((i) => i.category === category).map((i) => ({ ...i, pool_n: ev.pool_n })) }));
+  const note = html`<div class="card-foot row wrap" style=${{ gap: "12px" }}>
+    <span>Based on ${plural(ev.matches, "match", "matches")} and ${int(ev.minutes)} minutes of event data (WhoScored).</span>
+    ${ev.in_pool ? null : html`<${Badge} tone="warn" title=${`Below ${ev.pool_minutes} minutes, so the ranking is pulled toward the role average`}>Few minutes: read with care</${Badge}>`}
+  </div>`;
+  return html`<${AllMetrics} blocks=${blocks} group=${group} title="Defending and passing"
+    sub=${ev.pool_n > 1
+      ? `Ranked among ${ev.pool_n} ${group}s who have event data (${ev.pool_minutes}+ minutes). Duels are tackles, challenges and aerial duels as the defending side; hover a metric for its exact definition.`
+      : `Too little event data to rank ${group}s yet: percentiles appear as more matches are fetched. Duels are tackles, challenges and aerial duels as the defending side.`} extra=${note} />`;
 }
 
 function BlockRows({ block }) {
@@ -252,6 +271,7 @@ function PlayerView({ d, id, tab, span, setSpan }) {
         <${RoleFacts} d=${detail} />
       </div>
       ${detail.blocks.length ? html`<${AllMetrics} blocks=${detail.blocks} group=${detail.group_label.toLowerCase()} />` : null}
+      <${EventCard} ev=${detail.events} group=${detail.group_label.toLowerCase()} />
     </div>` : null}
     ${tab === "finishing" ? html`<${Finishing} d=${detail} />` : null}
     ${tab === "seasons" ? html`<${Seasons} career=${detail.career} />` : null}

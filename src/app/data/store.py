@@ -116,9 +116,13 @@ class Store:
             self._db.commit()
             return cur.rowcount
 
-    def clear(self) -> None:
+    def clear(self, keep: tuple[str, ...] = ()) -> None:
+        """Delete cached payloads, except the kinds in ``keep`` (data that is slow to collect again)."""
         with self._lock:
-            self._db.execute("DELETE FROM payload")
+            if keep:
+                self._db.execute(f"DELETE FROM payload WHERE kind NOT IN ({','.join('?' * len(keep))})", keep)
+            else:
+                self._db.execute("DELETE FROM payload")
             self._db.commit()
 
     def keys(self, kind: str) -> list[tuple[str, float, bool]]:
@@ -127,6 +131,14 @@ class Store:
                 "SELECT key, fetched_at, complete FROM payload WHERE kind=? ORDER BY key", (kind,)
             ).fetchall()
         return [(key, fetched_at, bool(complete)) for key, fetched_at, complete in rows]
+
+    def keys_prefix(self, kind: str, prefix: str) -> list[tuple[str, float]]:
+        """``(key, fetched_at)`` for the keys of one kind that start with ``prefix`` (an indexed range scan, not a full read)."""
+        with self._lock:
+            rows = self._db.execute(
+                "SELECT key, fetched_at FROM payload WHERE kind=? AND key >= ? AND key < ? ORDER BY key", (kind, prefix, prefix + "\uffff")
+            ).fetchall()
+        return [(key, fetched_at) for key, fetched_at in rows]
 
     def meta(self, kind: str, key: str) -> tuple[float, str, bool] | None:
         with self._lock:
@@ -170,6 +182,18 @@ class Store:
                 (key, json.dumps(value, ensure_ascii=False), time.time()),
             )
             self._db.commit()
+
+    def kv_prefix(self, prefix: str) -> dict[str, Any]:
+        """Every key/value pair whose key starts with ``prefix``."""
+        with self._lock:
+            rows = self._db.execute("SELECT k, v FROM kv WHERE k LIKE ? ESCAPE '\\'", (prefix.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%",)).fetchall()
+        out: dict[str, Any] = {}
+        for k, v in rows:
+            try:
+                out[k] = json.loads(v)
+            except json.JSONDecodeError:
+                continue
+        return out
 
     def close(self) -> None:
         with self._lock:

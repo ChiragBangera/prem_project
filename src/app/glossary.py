@@ -41,6 +41,24 @@ GROUPS: list[dict] = [
         ],
     },
     {
+        "group": "Passing and defending (event data)",
+        "blurb": "Optional extras from WhoScored that Understat does not have. They exist only for the league seasons you have fetched with `prem events sync`.",
+        "entries": [
+            ("events", "Event data", "Every pass, tackle, duel and interception, fetched from WhoScored on request and kept on this computer.",
+             "Only players the app can match safely to Understat by name and club are included, so some are left out rather than guessed. Playing time is scaled so a full match is 90 minutes."),
+            ("fwd_pass_ratio", "Forward pass ratio", "The share of open-play passes that move the ball at least 5% of the pitch (about 5 metres) toward goal.",
+             "How direct a player's passing is. Compare within a role: centre-backs and holding midfielders naturally pass less forward than attackers."),
+            ("prog_passes", "Progressive passes", "Completed passes that move the ball at least 10% of the pitch (about 10 metres) toward goal and end in the attacking 60% of the pitch.",
+             "Who moves the team up the pitch with the ball. Compare with xGBuildup, which measures involvement in possessions that end in shots."),
+            ("restarts", "Open-play passes", "Passes without throw-ins, goal kicks, corners, keeper throws and crosses.", "Restarts are not play, and crosses are chance creation, so they would distort passing ratios."),
+            ("def_duel", "Defensive duel", "A tackle, a challenge (the defender is dribbled past) or an aerial duel in which he was the defending side. A tackle or a won aerial is a win; being dribbled past or losing in the air is a loss.",
+             "This is the app's own definition: the source has no event with that name. A busy defender may simply play for a team that defends a lot, so read the win rate and the volume together."),
+            ("tackle", "Tackle", "A tackle in which the defender took the ball off an opponent.", "Being beaten by a dribble is not a tackle. It counts as a lost duel."),
+            ("interception", "Interception", "A pass the defender read and cut out.", "Positioning and anticipation rather than one-on-one defending."),
+            ("recovery", "Ball recovery", "Winning back a loose or contested ball.", "A measure of work rate off the ball."),
+        ],
+    },
+    {
         "group": "Roles and scouting",
         "blurb": "Understat lists broad positions only. Here is how the app deals with that.",
         "entries": [
@@ -92,8 +110,8 @@ GROUPS: list[dict] = [
         "blurb": "What the source can and cannot tell you.",
         "entries": [
             ("source", "Understat", "The source of all match, shot and player data.", "Free, public, covering the top five European leagues from 2014/15. Not affiliated with this app."),
-            ("no_defence", "No defensive data", "Understat has no tackles, interceptions, pressures or goalkeeper metrics.",
-             "Defenders are judged on build-up and set-piece threat; goalkeepers cannot be assessed at all. Take defender percentiles as partial."),
+            ("no_defence", "No defensive data in Understat", "Understat has no tackles, interceptions, pressures or goalkeeper metrics.",
+             "Defenders are judged on build-up and set-piece threat; goalkeepers cannot be assessed at all. Take defender percentiles as partial. The optional event data adds duels, tackles, interceptions and passing for the seasons you fetch, but it is still not a full picture of defending."),
             ("coords", "Shot coordinates", "The position where the shot ended up being taken from, on a 0-1 pitch.", "There is no ball path, goalkeeper position or pass origin."),
             ("cache", "Local cache", "Everything fetched is stored on this machine.", "Finished seasons never need refreshing; the current season refreshes automatically around matchdays."),
         ],

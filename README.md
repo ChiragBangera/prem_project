@@ -66,6 +66,23 @@ Understat is read at a polite pace (a few requests per second, with retries), so
 | `PREM_OFFLINE=1` | Never touch the network; serve what is cached |
 | `PREM_TODAY=YYYY-MM-DD` | Pretend today is this date (demo and testing) |
 
+### Event data (optional): duels, tackles and passing
+
+Understat only records shots, so it has no defensive duels, tackles, interceptions or passing measures. An optional second source, WhoScored (read through the [`soccerdata`](https://soccerdata.readthedocs.io) package), fills that gap. It is off until you fetch some, and nothing else in the app depends on it.
+
+```bash
+uv run --extra events prem events sync --league EPL --seasons 2025
+uv run prem events status
+```
+
+- **Slow, once.** A match takes about 15 seconds, so a full league season is roughly two hours. Every match is stored in the local database as soon as it is read and is never fetched again. Stop it any time (Ctrl+C) and run the same command to carry on; later runs only fetch matches played since.
+- **Raw pages are kept too.** `soccerdata` caches each match page in `<data dir>/soccerdata` (about 0.3 MB a match), so a definition can be improved and everything re-read without going back to the website. Delete that folder to reclaim the space; matches already stored keep working.
+- **Needs a browser.** Chrome, Chromium, Brave or Edge must be installed (it is found automatically; `--browser PATH` overrides). Add `--visible` if the site blocks the hidden window.
+- **Where it shows up.** Scout gets a **Defending & passing** column set and two lenses (Ball winners, Progressors); each player page gets a **Defending and passing** table; the Data page shows progress and which players could not be matched safely. Definitions are on the Method page.
+- **What it adds:** forward-pass ratio, progressive passes, defensive duels with win rate, tackles, interceptions, recoveries and aerial win rate, all per 90 and ranked among players in the same role who have event data. Playing time is scaled so a full match is 90 minutes. Existing role scores and percentiles are never changed by it.
+- **Safe by design.** Players are matched to Understat by name and club and left out rather than guessed. `prem clear` keeps event data unless you add `--events`.
+- **Personal use only.** It reads a public website, which that site's terms may not allow, so it only runs when you start it and keeps what it reads on your own computer. Do not publish the data.
+
 ### Ages
 
 Understat has no birthdates, so ages are looked up on Wikidata by name and club. Wikidata has many retired namesakes, so the app is deliberately strict: it only trusts a match that is a plausible footballing age on the date in question, prefers a club the player is at *now* (a club someone left years ago does not count), and refuses to guess for single-word names. Where it cannot be sure the age stays blank, and an age matched by name alone is shown with a `?`.

@@ -5,18 +5,21 @@ import { tooltip, Tip } from "../lib/tooltip.js";
 import { seqColor } from "../charts/core.js";
 import { playerHref, metricValue, POS_LABEL } from "./common.js";
 
-const tip = (e, def, row, value, p) => tooltip.move(e, html`<${Tip} title=${def.label} sub=${`${row.name} · ${POS_LABEL[row.group]}s with enough minutes`} rows=${[
-  { label: "Per-90 value", value: metricValue(def, value) },
-  { label: "Percentile among peers", value: Math.round(p) },
-  { label: "Rank", value: row.rank?.[def.key] ? `${row.rank[def.key]} of ${row.pool_n}` : "–" },
+const tip = (e, def, row, value, p, events) => tooltip.move(e, html`<${Tip} title=${def.label} sub=${events
+  ? `${row.name} · ${row.ev_matches} matches, ${row.ev_minutes} min of event data`
+  : `${row.name} · ${POS_LABEL[row.group]}s with enough minutes`} rows=${[
+  { label: events && def.unit !== "share" ? "Per-90 value" : events ? "Value" : "Per-90 value", value: metricValue(def, value) },
+  { label: events ? `Percentile among ${POS_LABEL[row.group]?.toLowerCase()}s with event data` : "Percentile among peers", value: Math.round(p) },
+  { label: "Rank", value: (events ? row.evrank : row.rank)?.[def.key] ? `${(events ? row.evrank : row.rank)[def.key]} of ${events ? row.ev_pool_n : row.pool_n}` : "–" },
 ]} />`);
 const hideTip = () => tooltip.hide();
 
-/** A rate with its percentile drawn as a thin bar underneath. Faded when the sample is small. */
-export function PctCell({ row, metric, def }) {
+/** A rate with its percentile drawn as a thin bar underneath. Faded when the sample is small. `events` reads the event-data percentile instead. */
+export function PctCell({ row, metric, def, events = false }) {
   const value = row[metric];
-  const p = row.pct?.[metric];
-  return html`<span class=${cls("pctcell", !row.in_pool && "dim")} onMouseMove=${(e) => p != null && tip(e, def, row, value, p)} onMouseLeave=${hideTip}>
+  const p = (events ? row.evpct : row.pct)?.[metric];
+  const small = events ? !row.ev_in_pool : !row.in_pool;
+  return html`<span class=${cls("pctcell", small && "dim")} onMouseMove=${(e) => p != null && tip(e, def, row, value, p, events)} onMouseLeave=${hideTip}>
     <span class="v">${metricValue(def, value)}</span>
     <span class="b" aria-hidden="true"><i style=${{ width: (p ?? 0) + "%", background: seqColor(0.3 + 0.62 * ((p ?? 0) / 100)) }}></i></span>
   </span>`;

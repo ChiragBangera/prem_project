@@ -183,6 +183,13 @@ export const HELP = {
     bad: "Below zero means being outplayed. A season with good points but a low xG line is likely to slip.",
   },
 
+  // Optional event data
+  "Defending and passing": {
+    what: "Duels, tackles, interceptions and passing from WhoScored's event data, each ranked among players in the same role who have event data. Defensive duels are tackles, challenges and aerial duels as the defending side.",
+    good: "Long bars. A high duel win rate on plenty of duels, strong interception and recovery numbers, and passing that is both accurate and moves the ball forward.",
+    bad: "A high duel count can just mean a team that defends a lot, and a high forward-pass ratio with poor accuracy is losing the ball. Read volume and rate together, and watch the minutes behind each number.",
+  },
+
   // Forecast and compare
   "Markets": {
     what: "The model's probabilities for common bets, such as over 2.5 goals and both teams scoring.",
@@ -240,6 +247,7 @@ export const FEATURES = [
   { name: "Compare two players or two teams", where: "Compare, or tick players in Scout", what: "Side-by-side percentile profiles with the differences spelled out.", href: "/compare" },
   { name: "Next fixtures and match odds", where: "Forecast → 'Fixtures' and 'Match lab'", what: "Win, draw and loss chances and likely scores for any pairing.", href: "/forecast" },
   { name: "Compare a team across seasons", where: "League → click a team → 'History' tab", what: "Points, league position and chances by matchweek, with up to 8 of the team's seasons laid over each other.", href: "/league" },
+  { name: "Defending and passing metrics", where: "Scout → 'Defending & passing' columns (after fetching event data); the player page card", what: "Defensive duels, tackles, interceptions, forward-pass ratio and progressive passes per 90, ranked among players in the same role. Optional: needs event data fetched with prem events sync.", href: "/scout" },
   { name: "Track players you like", where: "Star any player, then open Shortlist", what: "Live numbers and your own notes.", href: "/shortlist" },
   { name: "Sync more leagues and seasons", where: "Data", what: "Fetch other leagues or older seasons and check the connection.", href: "/data" },
   { name: "What a number means", where: "Method, or hover any (i) button", what: "Plain-language definitions of every metric.", href: "/method" },

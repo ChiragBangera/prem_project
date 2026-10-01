@@ -32,6 +32,10 @@ dev = [
     "pytest>=8",
     "pytest-asyncio>=0.24",
 ]
+# Optional event data (passes, duels, tackles) read from WhoScored; needs Chrome, Chromium, Brave or Edge installed.
+events = [
+    "soccerdata>=1.9,<2",
+]
 
 [project.scripts]
 prem = "app.cli:main"

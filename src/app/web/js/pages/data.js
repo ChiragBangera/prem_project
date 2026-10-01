@@ -98,6 +98,40 @@ function Enrichment({ status }) {
   </${Card}>`;
 }
 
+/** Optional event data (WhoScored). Fetching is a slow command-line job, so this card shows progress and coverage rather than a button. */
+function EventData({ status, meta }) {
+  const items = status.events || [];
+  const command = (league, season) => `uv run --extra events prem events sync --league ${league} --seasons ${season}`;
+  const now = Date.now() / 1000;
+  return html`<${Card} title="Event data (WhoScored)" sub="Passes, duels, tackles and interceptions, which Understat does not have. Optional, fetched on request, kept on this computer.">
+    ${items.length ? html`<div class="stack" style=${{ "--gap": "18px" }}>
+      ${items.map((e) => {
+        const run = e.status || {};
+        const total = e.total ?? run.finished_matches ?? null;
+        const state = run.running ? "Fetching now" : run.stalled ? "Stopped" : total && e.matches >= total ? "Complete" : "Partial";
+        return html`<div key=${e.league + e.season} class="stack" style=${{ "--gap": "6px" }}>
+          <div class="row between"><b>${leagueName(meta.meta, e.league)} ${seasonLabel(e.season)}</b><${Badge} tone=${state === "Complete" ? "good" : state === "Fetching now" ? "accent" : "warn"}>${state}</${Badge}></div>
+          <${Progress} done=${e.matches} total=${total || e.matches || 1} failed=${0} />
+          <div class="row between xsmall muted">
+            <span>${e.matches}${total ? ` of ${total}` : ""} matches stored${run.running && run.total ? ` · this run: ${run.done || 0} of ${run.total}` : ""}${run.failed ? ` · ${run.failed} failed` : ""}</span>
+            <span>${run.running ? "" : run.updated ? `Last run ${relTime(now - run.updated)}` : ""}</span>
+          </div>
+          ${e.linked != null ? html`<div class="xsmall muted"><b class="num">${e.linked}</b> players matched to Understat${e.unlinked_n ? `, ${e.unlinked_n} with 90+ minutes could not be matched safely and are left out` : ""}.</div>` : null}
+          ${run.last_error ? html`<div class="xsmall muted">Last error: ${run.last_error}</div>` : null}
+          ${e.unlinked?.length ? html`<details class="xsmall"><summary class="muted">Players left out</summary>
+            <ul class="plain">${e.unlinked.map((u) => html`<li key=${u.id}>${u.name} <span class="muted">· ${u.teams.join(" / ")} · ${Math.round(u.minutes)} min${u.candidates?.length > 1 ? " · ambiguous name" : ""}</span></li>`)}</ul></details>` : null}
+          ${run.running ? html`<div class="xsmall muted">Running in a separate terminal process. This page updates by itself, and it is safe to stop and run it again later.</div>`
+            : state === "Complete" ? null : html`<div class="xsmall"><span class="muted">To fetch the rest: </span><code>${command(e.league, e.season)}</code></div>`}
+        </div>`;
+      })}
+    </div>` : html`<div class="stack" style=${{ "--gap": "10px" }}>
+      <p class="small">None fetched yet. Run this in a terminal to fetch a season (about 15 seconds a match, so a full league season takes around two hours; stop and run it again at any time to carry on):</p>
+      <pre class="code">${command("EPL", meta.meta.current_season)}</pre>
+      <p class="xsmall muted">It needs Chrome, Chromium, Brave or Edge installed. It reads WhoScored's public pages for personal use only, which that site's terms may not allow, so it runs only when you start it. Once a match is stored it is never fetched again, and everything works offline afterwards.</p>
+    </div>`}
+  </${Card}>`;
+}
+
 function DataView({ status, meta, reload }) {
   const cache = status.leagues;
   const rows = [...cache].sort((a, b) => a.league.localeCompare(b.league) || b.season - a.season);
@@ -109,7 +143,7 @@ function DataView({ status, meta, reload }) {
     { key: "fetched_at", label: "Fetched", sortable: false, render: (r) => relTime(now - r.fetched_at) },
   ];
   const kinds = Object.entries(status.store.kinds);
-  const KIND = { league: "League seasons", player: "Player pages", match: "Match shot maps", team: "Team pages", fav: "Favourite positions", ages: "Birthdates", kv: "Your data" };
+  const KIND = { league: "League seasons", player: "Player pages", match: "Match shot maps", team: "Team pages", fav: "Favourite positions", ages: "Birthdates", dob: "Birthdates", events: "Event data (WhoScored)", kv: "Your data" };
   return html`
     <${PageHead} eyebrow="System" title="Data" sub=${status.mode.demo ? "You are looking at a synthetic demo world." : "Everything you see is served from a local cache. Understat is only contacted when you ask for fresh data."}
       actions=${html`<${Button} icon="refresh" onClick=${reload}>Refresh</${Button}>`} />
@@ -123,6 +157,7 @@ function DataView({ status, meta, reload }) {
         <${SyncCard} status=${status} meta=${meta} onStarted=${reload} />
         <${CheckCard} status=${status} />
         <${Enrichment} status=${status} />
+        <${EventData} status=${status} meta=${meta} />
       </div>
       <div class="stack">
         <${Card} flush title="League seasons on this computer" sub="Live seasons refresh when they get old; final seasons are kept for good.">
@@ -130,7 +165,7 @@ function DataView({ status, meta, reload }) {
         </${Card}>
         <${Card} title="Storage" sub=${status.store.path}>
           <dl class="kv">${kinds.map(([k, v]) => html`<dt key=${k + "d"}>${KIND[k] || k}</dt><dd key=${k}>${v.count} · ${bytes(v.bytes)}</dd>`)}</dl>
-          <p class="xsmall muted" style=${{ marginTop: "12px" }}>Your shortlist and notes live in the same file and survive cache clears. Clear the cache with <code>prem clear --yes</code>.</p>
+          <p class="xsmall muted" style=${{ marginTop: "12px" }}>Your shortlist and notes live in the same file and survive cache clears. Clear the cache with <code>prem clear --yes</code> (event data, which is slow to fetch, is kept unless you add <code>--events</code>).</p>
         </${Card}>
       </div>
     </div>`;

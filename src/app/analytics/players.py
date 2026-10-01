@@ -22,6 +22,7 @@ from datetime import date
 from typing import Callable, Iterable, Sequence
 
 from app.data.models import LeagueSeason, PlayerSeason
+from app.events.rates import EVENT_KEYS, EVENT_SHRINK_MINUTES, PER90, RATIOS, event_rates, with_duels
 from app.leagues import fold
 from app.stats import per90, safe_div
 
@@ -74,6 +75,8 @@ class ScoutDataset:
     ages_known: int = 0
     inferred: int = 0
     notes: list[str] = field(default_factory=list)
+    event_players: int = 0  # players with event data (WhoScored); 0 when none has been fetched
+    event_pool_minutes: int = 0
     age_reference: str | None = None  # the date every age is worked out on
 
 
@@ -164,6 +167,7 @@ def build_dataset(
     dob_of: Callable[[str, str | None], str | None] | None = None,
     dob_info: Callable[[str, list, date], tuple[str | None, str | None]] | None = None,  # (dob, basis); preferred over dob_of
     favorite_of: Callable[[int], str | None] | None = None,
+    events_of: Callable[[int], dict | None] | None = None,  # Understat id -> summed event counts, if any were fetched
     today: date | None = None,
     pool_minutes: int | None = None,
 ) -> ScoutDataset:
@@ -216,6 +220,38 @@ def build_dataset(
             prior = group_rate[group][metric]
             return (value * m.minutes + prior * SHRINK_MINUTES) / (m.minutes + SHRINK_MINUTES)
         return value
+
+    # ---- event data (optional): per-90 rates, ratios and percentiles among role peers who have it
+    ev_totals: dict[int, dict] = {}
+    if events_of:
+        for m in merged:
+            t = events_of(m.id)
+            if t and t.get("min", 0) > 0:
+                ev_totals[m.id] = with_duels(t)
+    ev_rates = {pid: event_rates(t) for pid, t in ev_totals.items()}
+    ev_pool_min = 0
+    ev_pools: dict[tuple[str, str], list[float]] = {}
+    ev_prior: dict[tuple[str, str], float] = {}
+    ev_group_n: dict[str, int] = {}
+    if ev_totals:
+        # like the Understat pool: a quarter of the most any player has, with a floor of 180 minutes. While only a few matches are
+        # fetched nobody reaches that floor, so it can never exceed half of what the busiest player has: the pool is never empty.
+        top = max(t["min"] for t in ev_totals.values())
+        ev_pool_min = int(min(900, max(0.25 * top, min(180.0, 0.5 * top))))
+        for group in GROUP_ORDER:
+            if group == "GK":
+                continue
+            members = [pid for pid in ev_totals if group_of[pid][0] == group and ev_totals[pid]["min"] >= ev_pool_min]
+            ev_group_n[group] = len(members)
+            minutes = sum(ev_totals[pid]["min"] for pid in members)
+            for key, (num, den, _k) in RATIOS.items():
+                attempts = sum(ev_totals[pid][den] for pid in members)
+                ev_prior[(group, key)] = safe_div(sum(ev_totals[pid][num] for pid in members), attempts) if attempts else 0.0
+            for key, src in PER90.items():
+                ev_prior[(group, key)] = per90(sum(ev_totals[pid][src] for pid in members), minutes) if minutes else 0.0
+            for key in EVENT_KEYS:
+                values = (_ev_ranked(ev_totals[pid], ev_rates[pid], key, ev_prior[(group, key)]) for pid in members)
+                ev_pools[(group, key)] = sorted(v for v in values if v is not None)
 
     # ---- pools: sorted ranked values per (group, metric)
     metrics_needed = {k for keys in PROFILE_METRICS.values() for k in keys} | {"contrib90", "goals90", "xgps"}
@@ -303,6 +339,27 @@ def build_dataset(
             "pool_n": group_sizes.get(group, 0),
             "output": output_index,
         }
+        et = ev_totals.get(m.id)
+        er = ev_rates.get(m.id, {})
+        for key in EVENT_KEYS:
+            row[key] = round(er[key], 3) if er.get(key) is not None else None
+        evpct: dict[str, float] = {}
+        evrank: dict[str, int] = {}
+        if et and group != "GK":
+            for key in EVENT_KEYS:
+                value = _ev_ranked(et, er, key, ev_prior.get((group, key), 0.0))
+                sample = ev_pools.get((group, key))
+                if value is None or not sample:
+                    continue
+                below = bisect_left(sample, value)
+                evpct[key] = round(100.0 * (below + 0.5 * (bisect_right(sample, value) - below)) / len(sample), 1)
+                evrank[key] = len(sample) - bisect_right(sample, value) + 1
+        row["ev_minutes"] = round(et["min"]) if et else 0
+        row["ev_matches"] = et["matches"] if et else 0
+        row["ev_in_pool"] = bool(et and et["min"] >= ev_pool_min)
+        row["ev_pool_n"] = ev_group_n.get(group, 0)
+        row["ev_pool_minutes"] = ev_pool_min
+        row["evpct"], row["evrank"] = evpct, evrank
         row["tags"] = archetype_tags(row) if group != "GK" and m.minutes >= 270 else []
         rows.append(row)
 
@@ -316,7 +373,20 @@ def build_dataset(
         ages_known=ages_known,
         inferred=sum(1 for r in rows if r["group_source"] == "inferred"),
         age_reference=reference.isoformat(),
+        event_players=len(ev_totals),
+        event_pool_minutes=ev_pool_min,
     )
+
+
+def _ev_ranked(t: dict, rates: dict, key: str, prior: float) -> float | None:
+    """The value a metric is ranked on: pulled toward the role average in proportion to how little stands behind it."""
+    if key in RATIOS:
+        num, den, k = RATIOS[key]
+        return (t[num] + prior * k) / (t[den] + k) if t[den] > 0 else None
+    value = rates.get(key)
+    if value is None:
+        return None
+    return (value * t["min"] + prior * EVENT_SHRINK_MINUTES) / (t["min"] + EVENT_SHRINK_MINUTES)
 
 
 def _age_on(dob: str | None, reference: date) -> int | None:

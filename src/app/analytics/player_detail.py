@@ -9,7 +9,7 @@ from typing import Sequence
 from app.data.models import CareerSeason, PlayerPage, Shot
 from app.stats import per90, safe_div, shot_luck
 
-from .metrics import GROUP_LABELS, METRIC_BY_KEY, PROFILE_METRICS
+from .metrics import EVENT_BY_KEY, EVENT_PROFILE, GROUP_LABELS, METRIC_BY_KEY, PROFILE_METRICS
 
 PITCH_L, PITCH_W = 105.0, 68.0
 
@@ -42,6 +42,28 @@ def metric_blocks(row: dict) -> list[dict]:
         if items:
             blocks.append({"category": category, "items": items})
     return blocks
+
+
+def event_card(row: dict) -> dict:
+    """The "defending and passing" card: every event metric he has, role-relevant ones first, each with its percentile among role peers."""
+    if not row.get("ev_minutes"):
+        return {"available": False}
+    focus = EVENT_PROFILE.get(row["group"], ())
+    items = []
+    for key in (*focus, *(k for k in EVENT_BY_KEY if k not in focus)):
+        value = row.get(key)
+        if value is None:
+            continue
+        m = EVENT_BY_KEY[key]
+        items.append({
+            "key": key, "label": m.label, "short": m.short, "category": m.category, "unit": m.unit, "decimals": m.decimals, "value": value,
+            "pct": row["evpct"].get(key), "rank": row["evrank"].get(key), "higher_is_better": m.higher_is_better, "what": m.what, "read": m.read,
+            "focus": key in focus,
+        })
+    return {
+        "available": True, "minutes": row["ev_minutes"], "matches": row["ev_matches"], "in_pool": row["ev_in_pool"],
+        "pool_n": row["ev_pool_n"], "pool_minutes": row["ev_pool_minutes"], "items": items,
+    }
 
 
 def profile(row: dict) -> list[dict]:
@@ -177,6 +199,7 @@ def player_detail(row: dict, page: PlayerPage | None, seasons: Sequence[int], te
         "group_label": GROUP_LABELS.get(row["group"], row["group"]),
         "profile": profile(row),
         "blocks": metric_blocks(row),
+        "events": event_card(row),
         "totals": {k: row[k] for k in ("goals", "npg", "assists", "shots", "kp", "yellow", "red", "xg", "npxg", "xa", "xgchain", "xgbuildup", "g_xg", "a_xa", "g_xg_z")},
         "finishing": finishing(shots) if shots else None,
         "shots": shot_rows(shots),

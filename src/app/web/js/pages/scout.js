@@ -22,6 +22,8 @@ const GROUPS = [
 const DEFAULT_GROUPS = ["ATT", "MID", "DEF"];
 const MIXED = ["contrib90", "npxg90", "xa90", "xgchain90", "xgbuildup90"];
 const MAP_METRICS = ["npxg90", "xa90", "contrib90", "shots90", "kp90", "xgps", "xgchain90", "xgbuildup90", "goals90", "g_xg", "output", "minutes"];
+// Optional event data (WhoScored): only offered when some has been fetched
+const EVENT_MAP_METRICS = ["fwd_pass_ratio", "prog_passes90", "def_duels90", "def_duel_win", "tackles90", "interceptions90", "recoveries90", "passes90", "pass_acc", "aerial_win"];
 const GROUP_COLOR = { ATT: "var(--c2)", MID: "var(--c1)", DEF: "var(--c3)", GK: "var(--c4)" };
 
 /** Lenses: each is a saved question. They only set filters and a sort, so the result is always inspectable. */
@@ -34,6 +36,8 @@ const PRESETS = [
   { key: "hot", label: "Running hot", hint: "Scoring well above xG: expect a slowdown", patch: { groups: "ATT,MID", luck: "over", sort: "g_xg_z", dir: "desc", part: null, age: null } },
   { key: "gems", label: "Hidden gems", hint: "Strong role score but not yet regular starters", patch: { groups: null, part: "rotation", sort: "output", dir: "desc", luck: null, age: null } },
   { key: "young", label: "Young and good", hint: "Aged 23 or under, ranked by role score", patch: { groups: null, age: "16-23", unk: "0", sort: "output", dir: "desc", luck: null, part: null } },
+  { key: "winners", events: true, label: "Ball winners", hint: "Defenders and midfielders ranked by defensive duels per 90 (event data)", patch: { groups: "DEF,MID", cols: "events", sort: "def_duels90", dir: "desc", luck: null, part: null, age: null } },
+  { key: "progressors", events: true, label: "Progressors", hint: "Midfielders and defenders ranked by progressive passes per 90 (event data)", patch: { groups: "MID,DEF", cols: "events", sort: "prog_passes90", dir: "desc", luck: null, part: null, age: null } },
 ];
 
 const csvList = (v) => (v ? v.split(",").filter(Boolean) : []);
@@ -56,6 +60,7 @@ function readFilters(query, scope) {
     sort: query.sort || "output",
     dir: query.dir || "desc",
     view: query.view === "map" ? "map" : "table",
+    cols: query.cols === "events" ? "events" : "output", // which set of metric columns the table shows
     mx: query.mx || "xa90",
     my: query.my || "npxg90",
     cmp: (query.cmp || "").split(",").filter(Boolean).map(Number),
@@ -67,6 +72,7 @@ function applyFilters(rows, f) {
   const needle = fold(f.q);
   const teams = new Set(f.teams);
   return rows.filter((r) => {
+    if (f.cols === "events" && !(r.ev_minutes > 0)) return false; // the event columns are empty for players without event data
     if (f.groups.length && !f.groups.includes(r.group)) return false;
     if (r.minutes < f.minutes) return false;
     if (f.small && !r.in_pool && f.minutes >= 90 && r.minutes < 270) return false;
@@ -84,6 +90,12 @@ function applyFilters(rows, f) {
   });
 }
 
+function eventKeys(groups, catalog) {
+  const ep = catalog.event_profiles || {};
+  if (groups.length === 1 && groups[0] !== "GK" && ep[groups[0]]) return ep[groups[0]].slice(0, 6);
+  return ep.MIXED || [];
+}
+
 function metricKeys(groups, catalog) {
   if (groups.length === 1 && groups[0] !== "GK" && catalog.profiles[groups[0]]) return catalog.profiles[groups[0]].filter((k) => k !== "yellow90").slice(0, 5);
   return MIXED;
@@ -91,7 +103,7 @@ function metricKeys(groups, catalog) {
 
 // ------------------------------------------------------------------ filter bar
 
-function FilterBar({ f, set, meta, rowsAll, scope, ageRef }) {
+function FilterBar({ f, set, meta, rowsAll, scope, ageRef, eventsOn }) {
   const teamOptions = useMemo(() => [...new Set(rowsAll.flatMap((r) => r.teams))].sort().map((t) => ({ value: t, label: t })), [rowsAll]);
   const [text, setText] = useState(f.q);
   const push = useMemo(() => debounce((v) => set({ q: v || null }), 220), []);
@@ -135,7 +147,7 @@ function FilterBar({ f, set, meta, rowsAll, scope, ageRef }) {
     </div>
     <div class="filter-row presets" role="group" aria-label="Lenses">
       <span class="eyebrow">Lenses</span>
-      ${PRESETS.map((p) => html`<button type="button" class="chip" key=${p.key} title=${p.hint} aria-pressed=${String(f.preset === p.key)} onClick=${() => set({ ...p.patch, preset: p.key })}>${p.label}</button>`)}
+      ${PRESETS.filter((p) => !p.events || eventsOn).map((p) => html`<button type="button" class="chip" key=${p.key} title=${p.hint} aria-pressed=${String(f.preset === p.key)} onClick=${() => set({ cols: null, ...p.patch, preset: p.key })}>${p.label}</button>`)}
     </div>
   </div>`;
 }
@@ -157,7 +169,8 @@ function ChecklistChipInline({ options, value, onChange }) {
 // ------------------------------------------------------------------ table + map
 
 function ResultsTable({ rows, f, set, catalog, scope, shortlist }) {
-  const keys = metricKeys(f.groups, catalog);
+  const events = f.cols === "events";
+  const keys = events ? eventKeys(f.groups, catalog) : metricKeys(f.groups, catalog);
   const cmp = new Set(f.cmp);
   const columns = useMemo(() => [
     { key: "pick", label: "", sortable: false, csv: false, width: "34px", render: (r) => html`<input type="checkbox" aria-label=${`Select ${r.name} to compare`} checked=${cmp.has(r.id)}
@@ -165,26 +178,28 @@ function ResultsTable({ rows, f, set, catalog, scope, shortlist }) {
     { key: "star", label: "", sortable: false, csv: false, width: "34px", render: (r) => html`<${Star} player=${r} />` },
     { key: "name", label: "Player", sticky: true, firstDir: "asc", render: (r) => html`<${PlayerCell} row=${r} season=${scope.season} />`, value: (r) => r.name },
     { key: "output", label: "Role score", num: true, render: (r) => html`<${ScoreCell} row=${r} />`, title: "Average percentile across the metrics that matter for this role, ranked against peers with enough minutes. Small samples are pulled toward the average." },
-    { key: "minutes", label: "Min", num: true, render: (r) => html`<span class=${!r.in_pool ? "muted" : ""}>${r.minutes}</span>`, title: "League minutes played." },
+    events
+      ? { key: "ev_minutes", label: "Min (events)", num: true, render: (r) => html`<span class=${!r.ev_in_pool ? "muted" : ""}>${r.ev_minutes}</span>`, title: "Minutes covered by the event data. Rates are per 90 of these minutes; a partly fetched season covers fewer minutes than the league table." }
+      : { key: "minutes", label: "Min", num: true, render: (r) => html`<span class=${!r.in_pool ? "muted" : ""}>${r.minutes}</span>`, title: "League minutes played." },
     ...keys.map((k) => {
       const def = catalog.metrics[k];
-      return { key: k, label: def.short, num: true, title: `${def.what} ${def.read}`, value: (r) => r[k], csvLabel: def.label, render: (r) => html`<${PctCell} row=${r} metric=${k} def=${def} />` };
+      return { key: k, label: def.short, num: true, title: `${def.what} ${def.read}`, value: (r) => r[k], csvLabel: def.label, render: (r) => html`<${PctCell} row=${r} metric=${k} def=${def} events=${events} />` };
     }),
-    { key: "g_xg_z", label: "G − xG", num: true, title: "Goals minus expected goals; the small number is how surprising that is (z). Beyond ±2 is rare.", value: (r) => r.g_xg_z,
+    ...(events ? [] : [{ key: "g_xg_z", label: "G − xG", num: true, title: "Goals minus expected goals; the small number is how surprising that is (z). Beyond ±2 is rare.", value: (r) => r.g_xg_z,
       render: (r) => html`<span class="luckcell"><span class=${"delta-val " + (r.g_xg > 0.5 ? "pos" : r.g_xg < -0.5 ? "neg" : "")}>${signed(r.g_xg, 1)}</span><span class="muted xsmall">z ${signed(r.g_xg_z, 1)}</span></span>` },
-    { key: "tags", label: "Profile", sortable: false, csv: false, render: (r) => html`<${TagCell} row=${r} />` },
-  ], [keys.join(), f.cmp.join(), catalog]);
+    { key: "tags", label: "Profile", sortable: false, csv: false, render: (r) => html`<${TagCell} row=${r} />` }]),
+  ], [keys.join(), f.cmp.join(), catalog, events]);
 
   return html`<${DataTable} columns=${columns} rows=${rows} rowKey=${(r) => r.id} pageSize=${50} tight
     sort=${{ key: f.sort, dir: f.dir }} onSort=${(s) => set({ sort: s.key === "output" && s.dir === "desc" ? null : s.key, dir: s.dir === "desc" && s.key === "output" ? null : s.dir, preset: null })}
     onRowClick=${(r) => navigate(`/player/${r.id}`, { league: r.league, season: r.seasons?.length === 1 ? r.seasons[0] : scope.season })} caption="Players" />`;
 }
 
-function ScoutMap({ rows, f, set, catalog, scope }) {
+function ScoutMap({ rows, f, set, catalog, scope, eventsOn }) {
   const shortlist = useStore(shortlistStore, (s) => s.items);
   const marked = new Set(shortlist.map((i) => Number(i.id)));
   const label = (k) => (k === "output" ? "Role score" : catalog.metrics[k]?.short || k);
-  const opts = MAP_METRICS.map((k) => ({ value: k, label: label(k) }));
+  const opts = [...MAP_METRICS, ...(eventsOn ? EVENT_MAP_METRICS : [])].map((k) => ({ value: k, label: label(k) }));
   const multi = new Set(rows.map((r) => r.group)).size > 1;
   const top = new Set([...rows].sort((a, b) => (b.output ?? 0) - (a.output ?? 0)).slice(0, 12).map((r) => r.id));
   const points = rows.filter((r) => Number.isFinite(r[f.mx]) && Number.isFinite(r[f.my])).map((r) => ({
@@ -222,9 +237,12 @@ function CompareTray({ ids, rows, set }) {
 
 // ------------------------------------------------------------------ page
 
-function ScoutView({ d, f, set, scope, meta, catalog }) {
+function ScoutView({ d, f: requested, set, scope, meta, catalog }) {
+  const eventsOn = (d.coverage?.event_players || 0) > 0;
+  // the event columns only exist where event data was fetched: elsewhere fall back to the normal view instead of an empty table
+  const f = requested.cols === "events" && !eventsOn ? { ...requested, cols: "output" } : requested;
   const rowsAll = d.rows;
-  const rows = useMemo(() => applyFilters(rowsAll, f), [rowsAll, f.groups.join(), f.minutes, f.age.join(), f.ageOn, f.unknownAge, f.q, f.teams.join(), f.part, f.luck, f.small]);
+  const rows = useMemo(() => applyFilters(rowsAll, f), [rowsAll, f.groups.join(), f.minutes, f.age.join(), f.ageOn, f.unknownAge, f.q, f.teams.join(), f.part, f.luck, f.small, f.cols]);
   const sorted = useMemo(() => {
     const get = (r) => (f.sort === "name" ? r.name : r[f.sort]);
     const dir = f.dir === "asc" ? 1 : -1;
@@ -242,8 +260,8 @@ function ScoutView({ d, f, set, scope, meta, catalog }) {
   const csvCols = useMemo(() => [
     { label: "Player", value: (r) => r.name }, { label: "Team", value: (r) => r.team }, { label: "League", value: (r) => r.league }, { label: "Role", value: (r) => r.group },
     { label: "Age", value: (r) => r.age }, { label: "Minutes", value: (r) => r.minutes }, { label: "Role score", value: (r) => r.output },
-    ...MAP_METRICS.filter((k) => catalog.metrics[k]).map((k) => ({ label: catalog.metrics[k].label, value: (r) => r[k] })),
-  ], [catalog]);
+    ...[...MAP_METRICS, ...(eventsOn ? EVENT_MAP_METRICS : [])].filter((k) => catalog.metrics[k]).map((k) => ({ label: catalog.metrics[k].label, value: (r) => r[k] })),
+  ], [catalog, eventsOn]);
 
   return html`
     <${PageHead} eyebrow=${`${d.scope.leagues.map((l) => leagueName(meta, l)).join(" + ")} · ${d.scope.labels.join(", ")}`} title="Scout"
@@ -253,7 +271,9 @@ function ScoutView({ d, f, set, scope, meta, catalog }) {
     ${agesPct < 0.6 ? html`<${Notice} icon="clock">Ages are known for ${cov.ages_known} of ${cov.players} players${enr.ages.running ? ` (loading ${enr.ages.done} of ${enr.ages.total} from Wikidata now)` : ""}. Age filters only apply to players with a known age; ${d.coverage.inferred_roles ? `${d.coverage.inferred_roles} roles are inferred from minutes and sharpen as position data arrives.` : ""}</${Notice}>` : null}
     ${f.view === "table" && !f.q && !f.preset ? html`<${Insights} items=${d.highlights} scope=${scope} limit=${3} compact expandable />` : null}
 
-    <${FilterBar} f=${f} set=${set} meta=${meta} rowsAll=${rowsAll} scope=${scope} ageRef=${d.scope.age_reference} />
+    ${requested.cols === "events" && !eventsOn ? html`<${Notice} icon="info">There is no event data for this league and season yet, so the normal columns are shown. Fetch it with <code>prem events sync</code> (see the <a class="link" href=${href("/data")}>Data page</a>).</${Notice}>` : null}
+    ${f.cols === "events" ? html`<${Notice} icon="info">Showing defending and passing measures from WhoScored event data for ${plural(rowsAll.filter((r) => r.ev_minutes > 0).length, "player")} (${cov.event_matches} matches fetched). Players without event data are hidden here, and percentiles compare players in the same role who have it. <a class="link" href=${href("/guide")}>How these are defined</a></${Notice}>` : null}
+    <${FilterBar} f=${f} set=${set} meta=${meta} rowsAll=${rowsAll} scope=${scope} ageRef=${d.scope.age_reference} eventsOn=${eventsOn} />
 
     <div class="card">
       <div class="results-bar">
@@ -262,13 +282,14 @@ function ScoutView({ d, f, set, scope, meta, catalog }) {
           <span class="muted small">${f.view === "map" ? "Each dot is a player. Hover for detail, click to open the profile." : preset ? preset.hint : `Sorted by ${f.sort === "output" ? "role score" : catalog.metrics[f.sort]?.label || f.sort}, ${f.dir === "asc" ? "lowest first" : "highest first"}. Click any header to re-sort.`}</span>
         </div>
         <div class="row wrap" style=${{ gap: "8px" }}>
-          ${f.preset || f.q || f.teams.length || f.ageOn || f.part || f.luck || f.minutes !== 450 || f.groups.join() !== DEFAULT_GROUPS.join() ? html`<${Button} kind="quiet" size="sm" icon="x" onClick=${() => set({ groups: null, leagues: null, seasons: null, min: null, age: null, unk: null, q: null, team: null, part: null, luck: null, sort: null, dir: null, preset: null })}>Reset</${Button}>` : null}
+          ${eventsOn ? html`<${Segmented} small label="Columns" options=${[{ value: "output", label: "Output", title: "Shooting, creation and involvement (Understat)" }, { value: "events", label: "Defending & passing", title: "Duels, tackles, interceptions and passing (WhoScored event data)" }]} value=${f.cols} onChange=${(v) => set({ cols: v === "output" ? null : v, sort: null, dir: null, preset: null })} />` : null}
+          ${f.cols === "events" || f.preset || f.q || f.teams.length || f.ageOn || f.part || f.luck || f.minutes !== 450 || f.groups.join() !== DEFAULT_GROUPS.join() ? html`<${Button} kind="quiet" size="sm" icon="x" onClick=${() => set({ cols: null, groups: null, leagues: null, seasons: null, min: null, age: null, unk: null, q: null, team: null, part: null, luck: null, sort: null, dir: null, preset: null })}>Reset</${Button}>` : null}
           <${Segmented} small label="View" options=${[{ value: "table", label: "Table" }, { value: "map", label: "Map" }]} value=${f.view} onChange=${(v) => set({ view: v === "table" ? null : v })} />
         </div>
       </div>
       ${sorted.length
         ? f.view === "map"
-          ? html`<div class="card-body"><${ScoutMap} rows=${sorted} f=${f} set=${set} catalog=${catalog} scope=${scope} /></div>`
+          ? html`<div class="card-body"><${ScoutMap} rows=${sorted} f=${f} set=${set} catalog=${catalog} scope=${scope} eventsOn=${eventsOn} /></div>`
           : html`<${ResultsTable} rows=${sorted} f=${f} set=${set} catalog=${catalog} scope=${scope} />`
         : html`<${EmptyState} title="No players match" text="Try a lower minutes threshold, more roles, or reset the filters." action=${html`<${Button} onClick=${() => set({ groups: null, min: null, age: null, unk: null, q: null, team: null, part: null, luck: null, preset: null })}>Reset filters</${Button}>`} />`}
     </div>

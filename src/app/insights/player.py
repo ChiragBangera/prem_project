@@ -5,7 +5,7 @@ from __future__ import annotations
 import math
 from typing import Sequence
 
-from app.analytics.metrics import METRIC_BY_KEY, GROUP_LABELS
+from app.analytics.metrics import EVENT_BY_KEY, EVENT_PROFILE, METRIC_BY_KEY, GROUP_LABELS
 
 from .core import (
     Insight, clamp_score, confidence_from_minutes, ev, f1, f2, ordinal, plural, player_link, signed,
@@ -14,6 +14,47 @@ from .core import (
 WORDS = {"ATT": "attackers", "MID": "midfielders", "DEF": "defenders", "GK": "goalkeepers"}
 SHORT = {"npxg90": "non-penalty xG", "xa90": "xA", "kp90": "key passes", "shots90": "shots", "xgps": "shot quality",
          "xgchain90": "involvement in attacks (xGChain)", "xgbuildup90": "build-up play", "contrib90": "npxG + xA", "yellow90": "cards"}
+
+
+EVENT_WORDS = {
+    "def_duels90": "defensive duels", "def_duel_win": "winning defensive duels", "tackles90": "tackling", "interceptions90": "interceptions",
+    "recoveries90": "ball recoveries", "aerial_win": "winning aerial duels", "fwd_pass_ratio": "forward passing", "prog_passes90": "progressive passing",
+}
+MIN_EVENT_PEERS = 15  # a rank among fewer role peers than this says little
+
+
+def _event_value(key: str, value: float) -> str:
+    m = EVENT_BY_KEY[key]
+    return f"{round(100 * value)}%" if m.unit == "share" else f"{value:.{m.decimals}f} per 90"
+
+
+def _event_insights(row: dict, ent: list[dict], link: dict) -> list[Insight]:
+    """Strengths and a warning from the optional event data, only when enough role peers have it for a rank to mean something."""
+    if row["group"] == "GK" or not row.get("ev_in_pool") or row.get("ev_pool_n", 0) < MIN_EVENT_PEERS:
+        return []
+    group, evpct, evrank, pool = row["group"], row["evpct"], row["evrank"], row["ev_pool_n"]
+    confidence = confidence_from_minutes(row["ev_minutes"])
+    out: list[Insight] = []
+    ranked = sorted(((k, evpct[k]) for k in EVENT_PROFILE.get(group, ()) if k in evpct and k in EVENT_WORDS), key=lambda kv: -kv[1])
+    if ranked and ranked[0][1] >= 85:
+        key, p = ranked[0]
+        out.append(Insight(
+            f"player.{row['id']}.event_strength", "profile",
+            f"{'Elite' if p >= 92 else 'Very strong'} for {EVENT_WORDS[key]}: {ordinal(evrank[key])} of {pool} {WORDS[group]} with event data ({_event_value(key, row[key])}).",
+            "From WhoScored event data, ranked among players in the same role who have it.",
+            tone="positive", score=clamp_score(46 + 0.45 * (p - 85) + 10), confidence=confidence,
+            evidence=[ev(EVENT_BY_KEY[key].short, _event_value(key, row[key])), ev("Percentile", f"{round(p)}"), ev("Event minutes", row["ev_minutes"])],
+            entities=ent, link=link))
+    duels = (row.get("def_duels90") or 0) * row["ev_minutes"] / 90
+    if group in ("DEF", "MID") and duels >= 25 and evpct.get("def_duel_win", 100) <= 15:
+        out.append(Insight(
+            f"player.{row['id']}.event_duels", "profile",
+            f"Loses most of his defensive duels: wins only {round(100 * row['def_duel_win'])}% of {round(duels)}, bottom {max(1, round(evpct['def_duel_win']))}% of {WORDS[group]} with event data.",
+            "A duel is a tackle, a challenge or an aerial duel as the defending side; being dribbled past or losing in the air is a loss.",
+            tone="negative", score=38, confidence=confidence,
+            evidence=[ev("Duel win rate", f"{round(100 * row['def_duel_win'])}%"), ev("Duels", round(duels)), ev("Event minutes", row["ev_minutes"])],
+            entities=ent, link=link))
+    return out
 
 
 def _rate(row: dict, key: str) -> str:
@@ -59,6 +100,9 @@ def player_insights(row: dict, *, finishing: dict | None = None, career: Sequenc
                 f"player.{row['id']}.gap", "profile",
                 f"Weakest area: {SHORT[k]} ({_rate(row, k)} per 90, bottom {max(1, round(v))}% of {WORDS[group]}).", "",
                 tone="negative", score=36, confidence=confidence, evidence=[ev(METRIC_BY_KEY[k].short, _rate(row, k))], entities=ent, link=link))
+
+    # -- defending and passing (optional event data)
+    out += _event_insights(row, ent, link)
 
     # -- luck and sustainability (shot-level when we have the shots)
     if finishing and finishing["np_shots"] >= 20:
@@ -216,5 +260,29 @@ def scouting_highlights(rows: Sequence[dict], *, limit_each: int = 3) -> list[In
                 f"{r['name']} ({r['team']}) is the standout {WORDS[group][:-1]} for {label}: {f2(r[key])} xGBuildup per 90.",
                 f"Top {max(1, round(100 - r['pct'][key]))}% of {WORDS[group]}.", tone="positive", score=48, confidence=confidence_from_minutes(r["minutes"]),
                 evidence=[ev("Buildup/90", f2(r[key])), ev("Percentile", round(r["pct"][key]))],
+                entities=[{"type": "player", "id": r["id"], "name": r["name"]}], link=player_link(r["id"])))
+
+    # optional event data: only players with solid minutes, ranked against enough role peers who have it
+    solid = [r for r in pool if r.get("ev_in_pool") and r.get("ev_pool_n", 0) >= MIN_EVENT_PEERS and r.get("ev_minutes", 0) >= 270 and r["group"] in ("DEF", "MID")]
+    for group in ("DEF", "MID"):
+        winners = sorted((r for r in solid if r["group"] == group and r["evpct"].get("def_duel_win", 0) >= 85 and r["evpct"].get("def_duels90", 0) >= 60),
+                         key=lambda r: -r["evpct"]["def_duel_win"])
+        for r in winners[:1]:
+            add(Insight(
+                f"scout.winner.{group}.{r['id']}", "events",
+                f"{r['name']} ({r['team']}) wins {round(100 * r['def_duel_win'])}% of his defensive duels, with {f1(r['def_duels90'])} a game: top {max(1, round(100 - r['evpct']['def_duel_win']))}% of {WORDS[group]} with event data.",
+                "A duel is a tackle, a challenge or an aerial duel as the defending side. From WhoScored event data.",
+                tone="positive", score=47, confidence=confidence_from_minutes(r["ev_minutes"]),
+                evidence=[ev("Duel win rate", f"{round(100 * r['def_duel_win'])}%"), ev("Duels/90", f1(r["def_duels90"])), ev("Event min", r["ev_minutes"])],
+                entities=[{"type": "player", "id": r["id"], "name": r["name"]}], link=player_link(r["id"])))
+        movers = sorted((r for r in solid if r["group"] == group and r["evpct"].get("prog_passes90", 0) >= 90 and r["evpct"].get("pass_acc", 0) >= 50),
+                        key=lambda r: -r["evpct"]["prog_passes90"])
+        for r in movers[:1]:
+            add(Insight(
+                f"scout.progressor.{group}.{r['id']}", "events",
+                f"{r['name']} ({r['team']}) moves the ball up the pitch more than almost any {WORDS[group][:-1]}: {f1(r['prog_passes90'])} progressive passes per 90 at {round(100 * r['pass_acc'])}% accuracy.",
+                f"Top {max(1, round(100 - r['evpct']['prog_passes90']))}% of {WORDS[group]} with event data, without giving the ball away more than average.",
+                tone="positive", score=46, confidence=confidence_from_minutes(r["ev_minutes"]),
+                evidence=[ev("Prog/90", f1(r["prog_passes90"])), ev("Pass %", f"{round(100 * r['pass_acc'])}%"), ev("Event min", r["ev_minutes"])],
                 entities=[{"type": "player", "id": r["id"], "name": r["name"]}], link=player_link(r["id"])))
     return out

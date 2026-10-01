@@ -21,7 +21,7 @@ from app import __version__, glossary
 from app.analytics import compare as compare_engine
 from app.analytics.chances import MIN_LEAGUE_TEAMS, chance_insights, compare_to_league, league_baseline, prepare_breakdowns
 from app.analytics.match import match_report
-from app.analytics.metrics import GROUP_LABELS, PLAYER_METRICS, PROFILE_METRICS, TEAM_METRICS
+from app.analytics.metrics import EVENT_METRICS, EVENT_MIXED, EVENT_PROFILE, GROUP_LABELS, PLAYER_METRICS, PROFILE_METRICS, TEAM_METRICS
 from app.analytics.player_detail import player_detail
 from app.analytics.players import build_dataset
 from app.analytics.similarity import similar_players
@@ -35,6 +35,9 @@ from app.data.understat import UnderstatClient
 from app.data.normalize import normalize_league as parse_league, normalize_match_page, normalize_player_page
 from app.data.wikidata import BirthdateResolver
 from app.enrich import Enricher, FavoriteIndex
+from app.events.link import link_season
+from app.events.rates import merge_totals
+from app.events.store import STATUS_PREFIX, EventStore
 from app.errors import AppError, BadRequest, DataUnavailable, NotFound, UpstreamError
 from app.forecast.calibrate import calibrate
 from app.forecast.model import Forecaster, build_forecaster, fixtures_forecast
@@ -75,6 +78,7 @@ class Workbench:
         self.repo = Repository(self.store, provider, self.settings)
         self.resolver = BirthdateResolver(self.store, self.settings)
         self.favorites = FavoriteIndex(self.store)
+        self.events = EventStore(self.store)
         self.enricher = Enricher(self.repo, self.store, self.resolver, self.favorites)
         self.jobs = JobManager(self.repo, on_change=self.repo.invalidate)
         self.managers = self._load_managers()
@@ -184,7 +188,8 @@ class Workbench:
 
     def catalog(self) -> dict:
         return {
-            "metrics": {m.key: m.to_dict() for m in PLAYER_METRICS},
+            "metrics": {m.key: m.to_dict() for m in (*PLAYER_METRICS, *EVENT_METRICS)},
+            "event_profiles": {**EVENT_PROFILE, "MIXED": EVENT_MIXED},
             "team_metrics": {m.key: m.to_dict() for m in TEAM_METRICS},
             "profiles": {g: list(keys) for g, keys in PROFILE_METRICS.items()},
             "groups": GROUP_LABELS,
@@ -256,13 +261,58 @@ class Workbench:
 
     async def _dataset(self, code_seasons: list[tuple[str, int]]):
         fetched = [await self._load(code, s) for code, s in code_seasons]
-        version = self._v(*code_seasons)
+        version = (*self._v(*code_seasons), *(self.events.version(code, s) for code, s in code_seasons))
         key = ("dataset", tuple(code_seasons))
 
         def compute():
-            return build_dataset([f.data for f in fetched], dob_of=self.dob_of, dob_info=self.dob_info, favorite_of=self.favorite_of, today=self.today)
+            return build_dataset([f.data for f in fetched], dob_of=self.dob_of, dob_info=self.dob_info, favorite_of=self.favorite_of,
+                                 events_of=self._events_of(code_seasons, fetched), today=self.today)
 
         return await self._memo_async(key, version, compute), fetched
+
+    def _events_of(self, code_seasons: list[tuple[str, int]], fetched) -> Callable[[int], dict | None] | None:
+        """Understat player id -> event counts summed over the seasons in this view; None when no events are stored for any of them."""
+        parts: dict[int, list[dict]] = {}
+        for (code, season), f in zip(code_seasons, fetched):
+            totals = self.events.season_totals(code, season)
+            if not totals:
+                continue
+            linked, _unlinked = link_season(totals, f.data.players)
+            for pid, t in linked.items():
+                parts.setdefault(pid, []).append(t)
+        if not parts:
+            return None
+        merged = {pid: merge_totals(ps) for pid, ps in parts.items()}
+        return merged.get
+
+    async def event_status(self) -> list[dict]:
+        """Per league-season: matches stored, how many exist, how well players link, and the state of any fetching run."""
+        seen: dict[tuple[str, int], None] = {(l, s): None for l, s, _n in self.events.seasons()}
+        for key in self.store.kv_prefix(STATUS_PREFIX):
+            league, _, season = key[len(STATUS_PREFIX):].partition(":")
+            if season.isdigit():
+                seen.setdefault((league, int(season)), None)
+        out = []
+        for league, season in sorted(seen):
+            entry: dict = {"league": league, "season": season, "matches": len(self.events.match_ids(league, season)), "total": None,
+                           "status": self.events.status(league, season), "linked": None, "unlinked": []}
+            if self.store.meta("league", f"{league}:{season}") is not None:   # only from the cache: this must never go to the network
+                try:
+                    fetched = await self._load(league, season)
+                    entry["total"] = len(fetched.data.played)
+                    totals = self.events.season_totals(league, season)
+                    if totals:
+                        version = (self.events.version(league, season), self.repo.version("league", f"{league}:{season}"))
+
+                        def report(totals=totals, players=fetched.data.players):
+                            linked, unlinked = link_season(totals, players)
+                            return {"linked": len(linked), "unlinked": sorted(unlinked, key=lambda u: -u["minutes"])[:10], "unlinked_n": len(unlinked)}
+
+                        entry.update(await self._memo_async(("events-link", league, season), version, report))
+                except AppError:
+                    pass
+            out.append(entry)
+        return out
 
     async def players_view(self, leagues: list[str], seasons: list[str | int], *, min_minutes: int = 90) -> dict:
         codes = [self._league_code(l) for l in leagues] or [DEFAULT_LEAGUE]
@@ -299,7 +349,9 @@ class Workbench:
             },
             "meta": {"stale": any(f.meta.stale for f in fetched), "source": fetched[0].meta.source,
                      "fetched_at": fetched[0].meta.to_dict()["fetched_at"], "errors": [f.meta.error for f in fetched if f.meta.error]},
-            "coverage": {"ages_known": ds.ages_known, "players": len(ds.rows), "inferred_roles": ds.inferred, "roles_known": len(self.favorites)},
+            "coverage": {"ages_known": ds.ages_known, "players": len(ds.rows), "inferred_roles": ds.inferred, "roles_known": len(self.favorites),
+                         "event_players": ds.event_players, "event_pool_minutes": ds.event_pool_minutes,
+                         "event_matches": sum(len(self.events.match_ids(c, s)) for c, s in targets)},
             "enrichment": self.enricher.status(),
             "rows": rows,
             "highlights": dicts(rank(scouting_highlights(ds.rows), limit=12, per_kind=2, diversify=True)),
@@ -351,6 +403,8 @@ class Workbench:
             if mine:
                 team_ctx = {"team": team_name, "chain_share": mine["chain_share"], "share_npxg": mine["share_npxg"], "share_xa": mine["share_xa"]}
         detail = player_detail(row, page, want, team_ctx)
+        if not detail["events"]["available"]:
+            detail["events"]["stored"] = bool(self.events.seasons())  # lets the page say "not fetched for this season" only when event data exists elsewhere
         similar = similar_players(row, ds.rows, limit=8)
         insights = rank(player_insights(row, finishing=detail["finishing"], career=detail["career"], similar=similar, team_context=team_ctx))
         if not self.settings.demo and row.get("age") is None:
@@ -807,6 +861,7 @@ class Workbench:
             "jobs": self.jobs.recent(6),
             "upstream": {"requests": getattr(self.provider, "requests_made", None)},
             "coverage": {"favorites": len(self.favorites)},
+            "events": await self.event_status(),
         }
 
     def start_sync(self, leagues: list[str], seasons: list[int], force: bool = False) -> dict:

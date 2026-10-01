@@ -86,6 +86,48 @@ PLAYER_METRICS: tuple[Metric, ...] = (
     _m("age", "Age", "Age", "Profile", "age", 0, False, "Age from Wikidata's date of birth.", "Blank when Wikidata has no unambiguous match."),
 )
 
+# Optional event data (WhoScored, see app.events). Kept apart from PLAYER_METRICS so the role score, similarity
+# and every existing percentile are untouched by whether event data has been fetched or not.
+EVENT_METRICS: tuple[Metric, ...] = (
+    # --- passing
+    _m("passes90", "Passes per 90", "Passes/90", "Passing", "per90", 0, True,
+       "Open-play passes attempted per 90 minutes. Throw-ins, goal kicks, corners, keeper throws and crosses are left out.",
+       "Volume: how much of the team's play goes through him. Not quality on its own."),
+    _m("pass_acc", "Pass accuracy", "Pass %", "Passing", "share", 0, True,
+       "The share of open-play passes that found a team-mate.",
+       "Depends on how risky the passes are: a high figure with few forward passes is safe play, not necessarily good play."),
+    _m("fwd_pass_ratio", "Forward pass ratio", "Fwd pass %", "Passing", "share", 0, True,
+       "The share of open-play passes that move the ball at least 5% of the pitch (about 5 metres) toward the opponent's goal.",
+       "How direct his passing is. Compare within a role: centre-backs and holding midfielders naturally pass less forward than attackers."),
+    _m("prog_passes90", "Progressive passes per 90", "Prog/90", "Passing", "per90", 1, True,
+       "Completed passes that move the ball at least 10% of the pitch (about 10 metres) toward goal and end in the attacking 60% of the pitch.",
+       "Who moves the team up the pitch with the ball. Compare with xGBuildup, which measures involvement in possessions that end in shots."),
+    # --- defending
+    _m("def_duels90", "Defensive duels per 90", "Duels/90", "Defending", "per90", 1, True,
+       "Tackles, challenges (beaten by a dribble) and aerial duels where he was the defending side, per 90 minutes. This is our own definition: the data has no event with that name.",
+       "How often he is asked to defend one-on-one. A busy defender may simply play for a team that defends a lot, so read it with the win rate."),
+    _m("def_duel_win", "Defensive duel win rate", "Duel win %", "Defending", "share", 0, True,
+       "The share of those duels he won: a tackle or an aerial duel won counts as a win, being dribbled past or losing in the air as a loss.",
+       "A high rate on few duels can mean he avoids contact: check the volume."),
+    _m("tackles90", "Tackles per 90", "Tackles/90", "Defending", "per90", 1, True,
+       "Times he took the ball off an opponent with a tackle (being dribbled past is not counted here).", ""),
+    _m("interceptions90", "Interceptions per 90", "Int/90", "Defending", "per90", 1, True,
+       "Passes he read and cut out, per 90.", "Positioning and anticipation rather than one-on-one defending."),
+    _m("recoveries90", "Ball recoveries per 90", "Recov/90", "Defending", "per90", 1, True,
+       "Loose or contested balls he won back for his team, per 90.", "Work rate off the ball."),
+    _m("aerial_win", "Aerial duel win rate", "Aerial win %", "Defending", "share", 0, True,
+       "The share of all aerial duels (anywhere on the pitch) he won.", "Matters most for centre-backs and target forwards."),
+)
+
+# What tells the story of each role, in display order (Scout columns and the player page card).
+EVENT_PROFILE: dict[str, tuple[str, ...]] = {
+    "DEF": ("def_duels90", "def_duel_win", "tackles90", "interceptions90", "aerial_win", "fwd_pass_ratio", "prog_passes90", "pass_acc"),
+    "MID": ("prog_passes90", "fwd_pass_ratio", "pass_acc", "passes90", "tackles90", "interceptions90", "recoveries90", "def_duels90"),
+    "ATT": ("prog_passes90", "fwd_pass_ratio", "pass_acc", "passes90", "recoveries90", "tackles90", "aerial_win"),
+}
+EVENT_MIXED = ("def_duels90", "def_duel_win", "tackles90", "interceptions90", "prog_passes90", "fwd_pass_ratio", "pass_acc")
+EVENT_BY_KEY = {m.key: m for m in EVENT_METRICS}
+
 METRIC_BY_KEY = {m.key: m for m in PLAYER_METRICS}
 
 # Which metrics tell the story for each role group, in display order.

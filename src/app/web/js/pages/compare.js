@@ -47,6 +47,9 @@ function PlayerPicker({ chosen, onAdd, max = 4 }) {
 function PlayersView({ d, ids, remove, scope, colors }) {
   const players = d.players;
   const dots = d.metrics.map((m) => ({ key: m.key, label: m.short || m.label, values: m.values, pct: m.pct, best: m.best, format: (v) => (v == null ? "–" : metricValue({ unit: m.key === "output" ? "count" : undefined, decimals: m.decimals }, v)) }));
+  // optional event data: shown only when at least two of the players have some
+  const eventDots = (d.event_metrics || []).map((m) => ({ key: m.key, label: m.short || m.label, values: m.values, pct: m.pct, best: m.best, format: (v) => (v == null ? "–" : metricValue({ unit: m.unit, decimals: m.decimals }, v)) }));
+  const noEvents = players.filter((p) => !p.ev_minutes).map((p) => p.name);
   const rows = [
     { key: "minutes", label: "Minutes", get: (p) => p.minutes }, { key: "goals", label: "Goals", get: (p) => p.goals },
     { key: "xg", label: "xG", get: (p) => nf(p.xg, 1) }, { key: "g_xg", label: "Goals − xG", get: (p) => signed(p.g_xg, 1) },
@@ -69,6 +72,10 @@ function PlayersView({ d, ids, remove, scope, colors }) {
       <${PercentileDots} metrics=${dots} subjects=${players} colors=${colors} />
       <div class="legend" style=${{ marginTop: "14px" }}>${players.map((p, i) => html`<span class="item" key=${p.id}><span class="swatch dot" style=${{ background: colors[i] }}></span>${p.name}</span>`)}</div>
     </${Card}>
+    ${eventDots.length ? html`<${Card} title="Defending and passing" sub="From WhoScored event data, ranked among players in the same role who have it. Ringed: best in the row.">
+      <${PercentileDots} metrics=${eventDots} subjects=${players} colors=${colors} />
+      ${noEvents.length ? html`<p class="xsmall muted" style=${{ marginTop: "12px" }}>No event data for ${noEvents.join(", ")} in this season, so there are no dots for ${noEvents.length > 1 ? "them" : "him"}.</p>` : null}
+    </${Card}>` : null}
     <${Card} flush title="Season totals">
       <div class="table-wrap"><table class="data dense">
         <thead><tr><th>Stat</th>${players.map((p, i) => html`<th class="num" key=${p.id}><span class="cmp-dot small" style=${{ background: colors[i] }}></span> ${p.name.split(" ").slice(-1)[0]}</th>`)}</tr></thead>

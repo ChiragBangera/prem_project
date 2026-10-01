@@ -488,3 +488,7 @@ table.data tr.row-muted { opacity: 0.6; cursor: default; }
 @media (max-width: 720px) { .tiles.four { grid-template-columns: repeat(2, minmax(0, 1fr)); } .zone-pair { gap: 8px; } .zr-head, .zr-row { grid-template-columns: 1.1fr 1fr 1fr; } .zr-head span:last-child, .zr-row span:last-child { display: none; } }
 
 .age-unsure { text-decoration: underline dotted; text-underline-offset: 3px; cursor: help; }
+
+/* event data card */
+pre.code { margin: 0; padding: 10px 12px; background: var(--surface-2, rgba(128,128,128,.12)); border-radius: var(--r-md, 8px); font-size: var(--fs-xs); overflow-x: auto; }
+ul.plain { margin: 6px 0 0; padding-left: 18px; display: grid; gap: 3px; }

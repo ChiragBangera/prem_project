@@ -83,6 +83,17 @@ def _same_club(hint: str, team: str) -> bool:
     return bool(hint in folded or (folded and folded in hint) or (wanted and wanted <= _tokens(team)))
 
 
+def same_club(a: str, b: str) -> bool:
+    """Whether two spellings plausibly name the same club ("Celta Vigo" / "RC Celta de Vigo", "Newcastle" / "Newcastle United")."""
+    fa, fb = fold(a), fold(b)
+    if not fa or not fb:
+        return False
+    if fa == fb or fa in fb or fb in fa:
+        return True
+    ta, tb = _tokens(a), _tokens(b)
+    return bool(ta and tb and (ta <= tb or tb <= ta))
+
+
 def _year(value: str | None) -> int | None:
     try:
         return int(value[:4]) if value else None
