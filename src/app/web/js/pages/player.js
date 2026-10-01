@@ -3,7 +3,7 @@ import { html, useEffect, useMemo, useState } from "../lib/html.js";
 import { useApi } from "../lib/api.js";
 import { useScope, useMeta } from "../lib/scope.js";
 import { navigate, setQuery, useLocation } from "../lib/router.js";
-import { cls, hueOf, initials, int, nf, ordinal, pct, plural, seasonLabel, signed } from "../lib/format.js";
+import { cls, dateLong, hueOf, initials, int, nf, ordinal, pct, plural, seasonLabel, signed } from "../lib/format.js";
 import { Tip } from "../lib/tooltip.js";
 import { poissonBinomial, tails } from "../lib/stats.js";
 import { Icon } from "../lib/icons.js";
@@ -244,7 +244,7 @@ function PlayerView({ d, id, tab, span, setSpan }) {
   const teamLinks = (p.teams || [p.team]).map((tm, i) => html`${i ? " / " : ""}<a class="link" href=${teamHref(tm)} key=${tm}>${tm}</a>`);
   return html`
     <${PageHead} lead=${html`<${Avatar} name=${p.name} />`} eyebrow=${`${detail.group_label} · ${dScope.league_name}`} title=${p.name}
-      sub=${html`${teamLinks}${p.age != null ? ` · ${p.age} years old${p.dob_basis === "name" ? " (unconfirmed: matched by name only)" : ""}` : ""} · ${int(p.minutes)} minutes in ${plural(p.games, "game")} (${dScope.labels.join(", ")})`}
+      sub=${html`${teamLinks}${p.age != null ? ` · ${p.age} years old${p.dob_basis === "name" ? " (unconfirmed: matched by name only)" : p.dob ? ` (born ${dateLong(p.dob)})` : ""}` : ""} · ${int(p.minutes)} minutes in ${plural(p.games, "game")} (${dScope.labels.join(", ")})`}
       actions=${html`<div class="row wrap" style=${{ gap: "8px" }}>
         <${Select} compact label="Seasons included" value=${String(span)} options=${[{ value: "1", label: "This season" }, { value: "2", label: "Last two seasons" }, { value: "3", label: "Last three seasons" }]} onChange=${setSpan} />
         <${Star} player=${{ id: p.id, name: p.name, team: p.team, league: dScope.league }} />

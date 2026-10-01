@@ -165,7 +165,7 @@ def build_dataset(
     seasons: Sequence[LeagueSeason],
     *,
     dob_of: Callable[[str, str | None], str | None] | None = None,
-    dob_info: Callable[[str, list, date], tuple[str | None, str | None]] | None = None,  # (dob, basis); preferred over dob_of
+    dob_info: Callable[[str, list, date, int], tuple[str | None, str | None]] | None = None,  # (name, teams, reference, id) -> (dob, basis); preferred over dob_of
     favorite_of: Callable[[int], str | None] | None = None,
     events_of: Callable[[int], dict | None] | None = None,  # Understat id -> summed event counts, if any were fetched
     today: date | None = None,
@@ -287,7 +287,7 @@ def build_dataset(
         favorite = favorite_of(m.id) if favorite_of else None
         basis = None
         if dob_info:
-            dob, basis = dob_info(m.name, m.teams, reference)
+            dob, basis = dob_info(m.name, m.teams, reference, m.id)
         else:
             dob = dob_of(m.name, m.teams[0] if m.teams else None) if dob_of else None
         age = _age_on(dob, reference)

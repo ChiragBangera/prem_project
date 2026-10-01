@@ -52,6 +52,9 @@ export function plural(n, one, many) {
   return `${n} ${n === 1 ? one : many || one + "s"}`;
 }
 
+/** A player's age unless it came from a name match alone (shown with a "?", it may belong to a namesake), so it never decides a filter. */
+export const sureAge = (row) => (row.dob_basis === "name" ? null : row.age ?? null);
+
 export function seasonLabel(s) {
   const n = Number(s);
   return Number.isFinite(n) ? `${n}/${String(n + 1).slice(-2)}` : String(s);

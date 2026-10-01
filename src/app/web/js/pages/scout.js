@@ -3,7 +3,7 @@ import { html, useEffect, useMemo, useState } from "../lib/html.js";
 import { useApi } from "../lib/api.js";
 import { useScope, useMeta, leagueName } from "../lib/scope.js";
 import { navigate, setQuery, useLocation, href } from "../lib/router.js";
-import { fold, nf, plural, signed, debounce, cls, seasonLabel } from "../lib/format.js";
+import { fold, nf, plural, signed, debounce, cls, seasonLabel, sureAge } from "../lib/format.js";
 import { Tip } from "../lib/tooltip.js";
 import { Icon } from "../lib/icons.js";
 import { shortlistStore, useStore } from "../lib/store.js";
@@ -51,7 +51,7 @@ function readFilters(query, scope) {
     minutes: query.min ? Number(query.min) : 450,
     age: Number.isFinite(ageLo) && Number.isFinite(ageHi) && query.age ? [ageLo, ageHi] : [16, 40],
     ageOn: Boolean(query.age),
-    unknownAge: query.unk !== "0",
+    unknownAge: query.unk === "1", // opt in: an age filter should filter by age, so players with no known age are hidden unless asked for
     q: query.q || "",
     teams: (query.team || "").split("|").filter(Boolean),
     part: query.part || "",
@@ -79,8 +79,9 @@ function applyFilters(rows, f) {
     if (needle && !fold(`${r.name} ${r.team}`).includes(needle)) return false;
     if (teams.size && !r.teams.some((t) => teams.has(t))) return false;
     if (f.ageOn) {
-      if (r.age == null) { if (!f.unknownAge) return false; }
-      else if (r.age < f.age[0] || r.age > f.age[1]) return false;
+      const age = sureAge(r); // an age from a name match alone ("?") is not sure enough to decide
+      if (age == null) { if (!f.unknownAge) return false; }
+      else if (age < f.age[0] || age > f.age[1]) return false;
     }
     if (f.part === "starter" && r.minutes_share < 0.6) return false;
     if (f.part === "rotation" && r.minutes_share >= 0.6) return false;
@@ -103,7 +104,7 @@ function metricKeys(groups, catalog) {
 
 // ------------------------------------------------------------------ filter bar
 
-function FilterBar({ f, set, meta, rowsAll, scope, ageRef, eventsOn }) {
+function FilterBar({ f, set, meta, rowsAll, scope, ageRef, eventsOn, unknownN }) {
   const teamOptions = useMemo(() => [...new Set(rowsAll.flatMap((r) => r.teams))].sort().map((t) => ({ value: t, label: t })), [rowsAll]);
   const [text, setText] = useState(f.q);
   const push = useMemo(() => debounce((v) => set({ q: v || null }), 220), []);
@@ -124,8 +125,8 @@ function FilterBar({ f, set, meta, rowsAll, scope, ageRef, eventsOn }) {
       </${Popover}>
       <${Popover} label="Age" summary=${f.ageOn ? `${f.age[0]}–${f.age[1]}` : "Any"} active=${f.ageOn} width=${290} align="right">
         <${RangeSlider} label="Age range" min=${16} max=${40} value=${f.age} format=${(v) => v} onChange=${(v) => set({ age: v[0] === 16 && v[1] === 40 ? null : `${v[0]}-${v[1]}`, preset: null })} />
-        <${Switch} checked=${f.unknownAge} onChange=${(v) => set({ unk: v ? null : "0" })}>Include players whose age is unknown</${Switch}>
-        <p class="xsmall muted">${ageRef ? `Ages are as of ${new Date(ageRef).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}. ` : ""}Ages come from Wikidata, matched by name and club. A "?" means only the name matched and the club could not be confirmed. Where there is no safe match the age stays blank rather than being guessed. To fix one yourself, add it to <code>birthdates.json</code> in the data folder (see the README).</p>
+        <${Switch} checked=${f.unknownAge} onChange=${(v) => set({ unk: v ? "1" : null })}>Also show players whose age is unknown${unknownN ? ` (${unknownN})` : ""}</${Switch}>
+        <p class="xsmall muted">${ageRef ? `Ages are as of ${new Date(ageRef).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}. ` : ""}Exact birthdates come from club squad lists (ESPN). For the few players a list leaves out, the age comes from Wikidata, matched by name and club, and a "?" means only the name matched, so it could be a namesake and the filter does not trust it. Where there is no safe match the age stays blank rather than being guessed. The age filter hides players with no sure age unless you switch the option above on. To fix one yourself, add it to <code>birthdates.json</code> in the data folder (see the README).</p>
       </${Popover}>
       <${Popover} label="More" summary=${extra ? `${extra} on` : ""} active=${extra > 0} width=${340} align="right">
         <${Field} label="Leagues">
@@ -256,6 +257,8 @@ function ScoutView({ d, f: requested, set, scope, meta, catalog }) {
   }, [rows, f.sort, f.dir]);
   const cov = d.coverage, enr = d.enrichment;
   const agesPct = cov.players ? cov.ages_known / cov.players : 1;
+  // players who pass every other filter but have no known age: the age filter hides them, so say so
+  const unknownN = useMemo(() => applyFilters(rowsAll, { ...f, ageOn: false }).filter((r) => sureAge(r) == null).length, [rowsAll, f.groups.join(), f.minutes, f.q, f.teams.join(), f.part, f.luck, f.small, f.cols]);
   const preset = PRESETS.find((p) => p.key === f.preset);
   const csvCols = useMemo(() => [
     { label: "Player", value: (r) => r.name }, { label: "Team", value: (r) => r.team }, { label: "League", value: (r) => r.league }, { label: "Role", value: (r) => r.group },
@@ -268,18 +271,19 @@ function ScoutView({ d, f: requested, set, scope, meta, catalog }) {
       sub=${`${plural(d.scope.n, "player")} with at least 90 minutes. Rankings compare each player only with peers in the same role who have played enough (${d.scope.pool_minutes}+ minutes), and pull small samples toward the average.`}
       actions=${html`<${CsvButton} columns=${csvCols} rows=${sorted} filename="prem-lab-scout.csv" />`} />
     <${DataNotices} scope=${{ note: d.scope.notes?.[0] }} meta=${d.meta} />
-    ${agesPct < 0.6 ? html`<${Notice} icon="clock">Ages are known for ${cov.ages_known} of ${cov.players} players${enr.ages.running ? ` (loading ${enr.ages.done} of ${enr.ages.total} from Wikidata now)` : ""}. Age filters only apply to players with a known age; ${d.coverage.inferred_roles ? `${d.coverage.inferred_roles} roles are inferred from minutes and sharpen as position data arrives.` : ""}</${Notice}>` : null}
+    ${agesPct < 0.6 || enr.rosters?.running ? html`<${Notice} icon="clock">Ages are known for ${cov.ages_known} of ${cov.players} players${enr.rosters?.running ? " (fetching club squad lists now: exact birthdates arrive in a minute or so)" : enr.ages.running ? ` (looking up ${enr.ages.done} of ${enr.ages.total} more on Wikidata now)` : ""}. Age filters only apply to players with a known age; ${d.coverage.inferred_roles ? `${d.coverage.inferred_roles} roles are inferred from minutes and sharpen as position data arrives.` : ""}</${Notice}>` : null}
     ${f.view === "table" && !f.q && !f.preset ? html`<${Insights} items=${d.highlights} scope=${scope} limit=${3} compact expandable />` : null}
 
     ${requested.cols === "events" && !eventsOn ? html`<${Notice} icon="info">There is no event data for this league and season yet, so the normal columns are shown. Fetch it with <code>prem events sync</code> (see the <a class="link" href=${href("/data")}>Data page</a>).</${Notice}>` : null}
     ${f.cols === "events" ? html`<${Notice} icon="info">Showing defending and passing measures from WhoScored event data for ${plural(rowsAll.filter((r) => r.ev_minutes > 0).length, "player")} (${cov.event_matches} matches fetched). Players without event data are hidden here, and percentiles compare players in the same role who have it. <a class="link" href=${href("/guide")}>How these are defined</a></${Notice}>` : null}
-    <${FilterBar} f=${f} set=${set} meta=${meta} rowsAll=${rowsAll} scope=${scope} ageRef=${d.scope.age_reference} eventsOn=${eventsOn} />
+    <${FilterBar} f=${f} set=${set} meta=${meta} rowsAll=${rowsAll} scope=${scope} ageRef=${d.scope.age_reference} eventsOn=${eventsOn} unknownN=${unknownN} />
 
     <div class="card">
       <div class="results-bar">
         <div class="stack" style=${{ "--gap": "2px" }}>
           <b>${plural(sorted.length, "player")}</b>
           <span class="muted small">${f.view === "map" ? "Each dot is a player. Hover for detail, click to open the profile." : preset ? preset.hint : `Sorted by ${f.sort === "output" ? "role score" : catalog.metrics[f.sort]?.label || f.sort}, ${f.dir === "asc" ? "lowest first" : "highest first"}. Click any header to re-sort.`}</span>
+          ${f.ageOn && !f.unknownAge && unknownN ? html`<span class="muted small">${plural(unknownN, "player")} with no known age ${unknownN === 1 ? "is" : "are"} hidden by the age filter. <${Button} kind="quiet" size="sm" onClick=${() => set({ unk: "1" })}>Show anyway</${Button}></span>` : null}
         </div>
         <div class="row wrap" style=${{ gap: "8px" }}>
           ${eventsOn ? html`<${Segmented} small label="Columns" options=${[{ value: "output", label: "Output", title: "Shooting, creation and involvement (Understat)" }, { value: "events", label: "Defending & passing", title: "Duels, tackles, interceptions and passing (WhoScored event data)" }]} value=${f.cols} onChange=${(v) => set({ cols: v === "output" ? null : v, sort: null, dir: null, preset: null })} />` : null}
@@ -306,7 +310,8 @@ export default function Scout() {
   const leagues = f.leagues.length ? f.leagues : [scope.league];
   const seasons = f.seasons.length ? f.seasons : [scope.season];
   const q = useApi("/api/players", { leagues, seasons, min_minutes: 90 }, { pollMs: 0 });
-  const running = q.data?.enrichment && (q.data.enrichment.ages.running || q.data.enrichment.roles.running);
+  const enrichment = q.data?.enrichment;
+  const running = enrichment && (enrichment.ages.running || enrichment.roles.running || enrichment.rosters?.running);
   useEffect(() => {
     if (!running) return undefined;
     const t = setInterval(() => q.reload(), 6000);

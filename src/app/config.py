@@ -46,6 +46,7 @@ class Settings:
     ttl_team_live: int = 12 * HOUR
     ttl_dob_hit: int = 365 * DAY
     ttl_dob_miss: int = 14 * DAY
+    ttl_roster_live: int = 24 * HOUR  # squads change in transfer windows; finished seasons never refresh
 
     @property
     def db_path(self) -> Path:

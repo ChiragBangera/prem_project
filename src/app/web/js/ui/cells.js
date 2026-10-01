@@ -30,11 +30,17 @@ export function ScoreCell({ row }) {
   return html`<span class=${cls("scorecell", !row.in_pool && "dim")}><b class="num">${Math.round(row.output)}</b><span class="bar-inline" aria-hidden="true"><i style=${{ width: row.output + "%" }}></i></span></span>`;
 }
 
+const AGE_SOURCE = {
+  manual: "your own correction",
+  roster: "the club's squad list",
+  club: "Wikidata, matched to his club",
+};
+
 export function PlayerCell({ row, season }) {
   const unsure = row.age != null && row.dob_basis === "name";
   const age = row.age == null ? null : unsure
     ? html`<span class="age-unsure" title="Birthdate found on Wikidata by name only. The club could not be confirmed, so this could be a namesake.">${row.age}?</span>`
-    : html`<span title=${row.dob_basis === "manual" ? "Your own correction" : "Birthdate from Wikidata, matched to his club"}>${row.age}</span>`;
+    : html`<span title=${`Born ${row.dob}, from ${AGE_SOURCE[row.dob_basis] || AGE_SOURCE.club}`}>${row.age}</span>`;
   const sub = [row.team, POS_LABEL[row.group]].filter(Boolean).join(" · ");
   return html`<a class="cell-player" href=${playerHref(row.id, { league: row.league, season: row.seasons?.length === 1 ? row.seasons[0] : season })}>
     <span class="name">${row.name}${!row.in_pool ? html` <span class="badge outline" title="Fewer minutes than the role pool uses for rankings">Small sample</span>` : null}</span>

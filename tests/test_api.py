@@ -304,7 +304,7 @@ def test_offline_mode_refuses_to_sync_and_serves_the_cache(tmp_path):
 def test_connection_check_walks_the_data_path_on_the_demo_world(client):
     result = client.post("/api/data/check").json()
     assert result["ok"] and result["mode"]["demo"]
-    assert [s["name"] for s in result["steps"]] == ["Load the league", "Read the league page", "Read a match", "Read a player", "Look up birthdates"]
+    assert [s["name"] for s in result["steps"]] == ["Load the league", "Read the league page", "Read a match", "Read a player", "Read a squad list", "Look up birthdates"]
     assert all(s["ok"] and isinstance(s["ms"], int) for s in result["steps"])
     assert "20 teams" in result["steps"][1]["detail"]
 

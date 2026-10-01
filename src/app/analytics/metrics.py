@@ -83,7 +83,7 @@ PLAYER_METRICS: tuple[Metric, ...] = (
        "Above 80% is a fixture in the side; under 40% is a rotation or bench player."),
     _m("mins_per_app", "Minutes per appearance", "Min/App", "Availability", "count", 0, True,
        "Average minutes when he plays.", "Under 45 means he is mostly a substitute."),
-    _m("age", "Age", "Age", "Profile", "age", 0, False, "Age from Wikidata's date of birth.", "Blank when Wikidata has no unambiguous match."),
+    _m("age", "Age", "Age", "Profile", "age", 0, False, "Age from the exact date of birth on the club's squad list, or Wikidata's.", "Blank when there is no unambiguous match."),
 )
 
 # Optional event data (WhoScored, see app.events). Kept apart from PLAYER_METRICS so the role score, similarity

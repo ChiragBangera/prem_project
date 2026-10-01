@@ -38,7 +38,7 @@ function SyncCard({ status, meta, onStarted }) {
     setError(null);
     try { setJob(await api.post("/api/data/sync", { leagues: picked, seasons: years, force })); } catch (e) { setError(e); }
   };
-  return html`<${Card} title="Fetch from Understat" sub="Understat is slow to read on purpose (a few requests per second), so a large sync takes a while. It keeps running if you leave this page.">
+  return html`<${Card} title="Fetch from Understat" sub="Understat is slow to read on purpose (a few requests per second), so a large sync takes a while. It keeps running if you leave this page. Each league season also gets its club squad lists, which give exact birthdates.">
     ${blocked ? html`<${Notice} tone="warn" icon="alert">${status.mode.demo ? "Demo mode: everything is synthetic and there is nothing to fetch. Start the app without --demo to load real data." : "Offline mode is on: fetching is disabled."}</${Notice}>` : null}
     <div class="stack" style=${{ "--gap": "16px", marginTop: blocked ? "14px" : 0 }}>
       <${Field} label="Leagues"><div class="chipgroup">${leagues.map((l) => html`<button type="button" class="chip" key=${l.code} aria-pressed=${String(picked.includes(l.code))} onClick=${() => toggle(picked, setPicked, l.code)}>${l.name}</button>`)}</div></${Field}>
@@ -66,7 +66,7 @@ function CheckCard({ status }) {
     setRunning(true); setError(null);
     try { setResult(await api.post("/api/data/check")); } catch (e) { setError(e); } finally { setRunning(false); }
   };
-  return html`<${Card} title="Connection check" sub=${status.mode.demo ? "Runs the same steps against the demo world." : "Reads a league, a match and a player from Understat, and a birthdate from Wikidata, without saving anything. Run it when a page shows an error."}
+  return html`<${Card} title="Connection check" sub=${status.mode.demo ? "Runs the same steps against the demo world." : "Reads a league, a match and a player from Understat, a squad list from ESPN and a birthdate from Wikidata, without saving anything. Run it when a page shows an error."}
     actions=${html`<${Button} size="sm" icon="refresh" disabled=${running || status.mode.offline} onClick=${run}>${running ? "Checking…" : result ? "Run again" : "Run check"}</${Button}>`}>
     ${error ? html`<${Notice} tone="crit" icon="alert">${error.message}</${Notice}>` : null}
     ${result ? html`<div class="stack" style=${{ "--gap": "10px" }}>
@@ -81,8 +81,10 @@ function CheckCard({ status }) {
 }
 
 function Enrichment({ status }) {
+  const idle = { kind: "rosters", total: 0, done: 0, failed: 0, running: false, last_error: null };
   const rows = [
-    { key: "ages", label: "Player ages", source: "Wikidata", p: status.enrichment.ages, note: "Matched by name and club. Only used for the age filter and youth insights." },
+    { key: "rosters", label: "Squad lists", source: "ESPN", p: status.enrichment.rosters || idle, note: "Exact birthdates, goalkeepers included. One league season is about 20 requests; finished seasons are fetched once and kept." },
+    { key: "ages", label: "Other player ages", source: "Wikidata", p: status.enrichment.ages, note: "Only for players a squad list leaves out. Matched by name and club, and left blank when not sure." },
     { key: "roles", label: "Favourite positions", source: "Understat player pages", p: status.enrichment.roles, note: "Sharpens the role of players who play in several positions." },
   ];
   return html`<${Card} title="Background enrichment" sub="Optional details that fill in quietly after a page has loaded.">
@@ -95,6 +97,36 @@ function Enrichment({ status }) {
       </div>`)}
       <div class="small"><b class="num">${status.enrichment.favorites_known}</b> players have a known favourite position.</div>
     </div>
+  </${Card}>`;
+}
+
+/** Exact birthdates from club squad lists: what is stored, how well it matched Understat's players, and who is still unknown. */
+function Birthdates({ status, meta }) {
+  const items = status.birthdates || [];
+  const now = Date.now() / 1000;
+  return html`<${Card} title="Player ages" sub="Understat has no birthdates. Each club's squad list (ESPN) does, so ages are exact. Fetched in the background when you open Scout, then kept on this computer.">
+    ${items.length ? html`<div class="stack" style=${{ "--gap": "18px" }}>
+      ${items.map((e) => {
+        const share = e.regulars ? e.regulars_linked / e.regulars : null;
+        return html`<div key=${e.league + e.season} class="stack" style=${{ "--gap": "6px" }}>
+          <div class="row between"><b>${leagueName(meta.meta, e.league)} ${seasonLabel(e.season)}</b><${Badge} tone=${e.pending.length || e.sparse ? "warn" : "good"}>${e.sparse ? "Sparse" : e.pending.length ? "Partial" : e.final ? "Final" : "Live"}</${Badge}></div>
+          ${share != null ? html`<${Progress} done=${e.regulars_linked} total=${e.regulars} failed=${0} />` : null}
+          <div class="row between xsmall muted">
+            <span>${plural(e.clubs, "club")} · ${plural(e.players, "player")} listed${e.linked != null ? ` · ${e.linked} matched to Understat` : ""}</span>
+            <span>${relTime(now - e.fetched)}</span>
+          </div>
+          ${share != null ? html`<div class="xsmall muted"><b class="num">${e.regulars_linked}</b> of ${e.regulars} players with 450+ minutes have an exact birthdate (${Math.round(share * 100)}%). The rest stay blank unless Wikidata is sure of them.</div>` : null}
+          ${e.sparse ? html`<div class="xsmall muted">ESPN lists only about ${e.median_squad} ${e.median_squad === 1 ? "player" : "players"} a club for this season, so most ages here come from Wikidata. It is asked again after a week.</div>` : null}
+          ${e.pending.length ? html`<div class="xsmall muted">Not read yet, retried automatically: ${e.pending.join(", ")}.</div>` : null}
+          ${e.compared ? html`<div class="xsmall muted">Cross-check: Wikidata, sure of the club, was also found for <b class="num">${e.compared}</b> of them and gives another date for <b class="num">${e.disagree}</b>${e.blank ? ` (${e.blank} by more than a year, so ${e.blank === 1 ? "that age is" : "those ages are"} left blank)` : ""}.</div>` : null}
+          ${e.disagree ? html`<details class="xsmall"><summary class="muted">Where the two sources differ</summary>
+            <ul class="plain">${e.disagree_examples.map((x) => html`<li key=${x.name}>${x.name} <span class="muted">· ${x.team} · squad list ${x.squad_list}, Wikidata ${x.wikidata}${x.blank ? " · age left blank" : " · squad list used"}</span></li>`)}</ul>
+            <p class="muted">To settle one yourself, add the right date to <code>birthdates.json</code> (see the README).</p></details>` : null}
+          ${e.missing?.length ? html`<details class="xsmall"><summary class="muted">Regulars without an exact birthdate</summary>
+            <ul class="plain">${e.missing.map((m) => html`<li key=${m.id}>${m.name} <span class="muted">· ${m.team} · ${m.minutes} min</span></li>`)}</ul></details>` : null}
+        </div>`;
+      })}
+    </div>` : html`<p class="small muted">${status.mode.demo ? "Demo mode: ages come from the demo world." : status.mode.offline ? "Offline mode: squad lists are not fetched." : "None fetched yet. Open Scout and they are fetched in the background (about 20 requests for a league and season)."}</p>`}
   </${Card}>`;
 }
 
@@ -143,7 +175,7 @@ function DataView({ status, meta, reload }) {
     { key: "fetched_at", label: "Fetched", sortable: false, render: (r) => relTime(now - r.fetched_at) },
   ];
   const kinds = Object.entries(status.store.kinds);
-  const KIND = { league: "League seasons", player: "Player pages", match: "Match shot maps", team: "Team pages", fav: "Favourite positions", ages: "Birthdates", dob: "Birthdates", events: "Event data (WhoScored)", kv: "Your data" };
+  const KIND = { league: "League seasons", player: "Player pages", match: "Match shot maps", team: "Team pages", fav: "Favourite positions", ages: "Birthdates", dob: "Birthdates (Wikidata)", roster: "Squad lists (birthdates)", events: "Event data (WhoScored)", kv: "Your data" };
   return html`
     <${PageHead} eyebrow="System" title="Data" sub=${status.mode.demo ? "You are looking at a synthetic demo world." : "Everything you see is served from a local cache. Understat is only contacted when you ask for fresh data."}
       actions=${html`<${Button} icon="refresh" onClick=${reload}>Refresh</${Button}>`} />
@@ -157,6 +189,7 @@ function DataView({ status, meta, reload }) {
         <${SyncCard} status=${status} meta=${meta} onStarted=${reload} />
         <${CheckCard} status=${status} />
         <${Enrichment} status=${status} />
+        <${Birthdates} status=${status} meta=${meta} />
         <${EventData} status=${status} meta=${meta} />
       </div>
       <div class="stack">

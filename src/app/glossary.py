@@ -68,7 +68,7 @@ GROUPS: list[dict] = [
             ("archetype", "Archetype tags", "Labels such as Poacher or Deep progressor, awarded by simple rules on percentiles.", "Each tag says which numbers earned it. They are descriptions, not black-box classifications."),
             ("similarity", "Similarity", "100 minus the average percentile gap between two players across their role's key metrics.",
              "A similarity of 90 means that on average the two are within 10 percentile points on every metric."),
-            ("age", "Age", "From Wikidata's date of birth (CC0), matched by name and club.", "Blank when there is no unambiguous match. The app never guesses."),
+            ("age", "Age", "From the exact date of birth on the club's squad list (ESPN), or, for players a list leaves out, from Wikidata (CC0) matched by name and club.", "Blank when there is no unambiguous match. The app never guesses, and the Scout age filter hides players whose age is blank unless you ask for them."),
             ("shortlist", "Shortlist", "Players you have starred, with your own notes.", "Stored in the local database next to the cached data."),
         ],
     },

@@ -81,10 +81,15 @@ def available_seasons(today: date | None = None) -> list[int]:
     return list(range(current_season(today), FIRST_SEASON - 1, -1))
 
 
+# letters that no accent-stripping turns into ASCII, written the way another source would transliterate them
+_UNACCENTED = str.maketrans({"ø": "o", "Ø": "O", "ß": "ss", "æ": "ae", "Æ": "AE", "œ": "oe", "Œ": "OE", "đ": "d", "Đ": "D",
+                             "ð": "d", "Ð": "D", "þ": "th", "Þ": "TH", "ł": "l", "Ł": "L", "ı": "i"})
+
+
 def fold(text: str | None) -> str:
     """Lower-case, accent-free, punctuation-free key for name matching."""
     if not text:
         return ""
-    text = unicodedata.normalize("NFKD", text.replace("ø", "o").replace("Ø", "O").replace("ß", "ss"))
+    text = unicodedata.normalize("NFKD", text.translate(_UNACCENTED))
     text = "".join(ch for ch in text if not unicodedata.combining(ch))
     return re.sub(r"[^a-z0-9]+", " ", text.lower()).strip()

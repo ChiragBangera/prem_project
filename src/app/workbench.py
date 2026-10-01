@@ -29,6 +29,7 @@ from app.analytics.table import compute_table, league_context, rank_trajectories
 from app.analytics.team import find_team, squad_rows, team_history, team_profile
 from app.config import Settings
 from app.data.demo import DemoProvider
+from app.data.rosters import RosterClient, link_roster
 from app.data.repository import Fetched, Repository
 from app.data.store import Store
 from app.data.understat import UnderstatClient
@@ -52,6 +53,7 @@ from app.jobs import JobManager
 from app.leagues import DEFAULT_LEAGUE, FIRST_SEASON, LEAGUES, available_seasons, current_season, fold, normalize_league, season_label
 
 MIN_ROUNDS_FOR_DEFAULT = 3  # a season with fewer rounds than this is not yet worth defaulting to
+CONTESTED_DAYS = 366  # a squad list and a club-confirmed Wikidata entry more than a year apart cannot both be right about one man
 HISTORY_DEFAULT_SEASONS = 5
 HISTORY_MAX_SEASONS = 8  # one colour each in the charts
 PACKAGED_MANAGERS = Path(__file__).parent / "data" / "managers.json"
@@ -79,8 +81,11 @@ class Workbench:
         self.resolver = BirthdateResolver(self.store, self.settings)
         self.favorites = FavoriteIndex(self.store)
         self.events = EventStore(self.store)
-        self.enricher = Enricher(self.repo, self.store, self.resolver, self.favorites)
-        self.jobs = JobManager(self.repo, on_change=self.repo.invalidate)
+        self.rosters = RosterClient(self.store, self.settings, today=lambda: self.today)
+        self._roster_links: dict[tuple[str, int], tuple[Any, tuple[dict, list]]] = {}
+        self._dob_index: tuple[tuple, dict[int, str]] | None = None
+        self.enricher = Enricher(self.repo, self.store, self.resolver, self.favorites, roster_client=self.rosters)
+        self.jobs = JobManager(self.repo, on_change=self.repo.invalidate, rosters=self.rosters)
         self.managers = self._load_managers()
         self.birthdates = self._load_birthdates()
         self._memo: dict[tuple, tuple[Any, Any]] = {}
@@ -92,6 +97,7 @@ class Workbench:
     async def close(self) -> None:
         await self.jobs.close()
         await self.enricher.close()
+        await self.rosters.close()
         await self.repo.close()
         self.store.close()
 
@@ -130,8 +136,9 @@ class Workbench:
             return []  # the curated stints describe real clubs
         return [s for s in self.managers if s.get("league") == league and s.get("team") == team]
 
-    def dob_info(self, name: str, teams, reference: date | None = None) -> tuple[str | None, str | None]:
-        """``(dob, basis)``: your correction (``"manual"``), or Wikidata matched on a ``"club"`` or on the ``"name"`` alone."""
+    def dob_info(self, name: str, teams, reference: date | None = None, pid: int | None = None, roster: dict[int, str] | None = None) -> tuple[str | None, str | None]:
+        """``(dob, basis)``. In order of trust: your correction (``"manual"``), the club's squad list (``"roster"``: exact, and the
+        person is already known to be at that club), then Wikidata matched on a ``"club"`` or on the ``"name"`` alone."""
         clubs = [t for t in ([teams] if isinstance(teams, str) else list(teams or [])) if t]
         key = fold(name)
         for club in clubs:
@@ -139,9 +146,20 @@ class Workbench:
                 return hit, "manual"
         if hit := self.birthdates.get(key):
             return hit, "manual"
+        if roster and pid in roster:
+            if self._contested(roster[pid], name, clubs, reference):
+                return None, None  # two sources that cannot both be right: a blank age beats a coin toss (the Data page lists these)
+            return roster[pid], "roster"
         if self.settings.demo:
             return getattr(self.provider, "birthdate", lambda n, t=None: None)(name, clubs[0] if clubs else None), None
         return self.resolver.cached_info(name, clubs, reference)
+
+    def _contested(self, dob: str, name: str, clubs: list[str], reference: date | None) -> str | None:
+        """Wikidata's date for him when it is sure of the club and is more than a year from ``dob``; otherwise None."""
+        other, basis = self.resolver.cached_info(name, clubs, reference)
+        if other and basis == "club" and abs((date.fromisoformat(other) - date.fromisoformat(dob)).days) > CONTESTED_DAYS:
+            return other
+        return None
 
     def dob_of(self, name: str, team: str | None, reference: date | None = None) -> str | None:
         return self.dob_info(name, team, reference)[0]
@@ -261,14 +279,62 @@ class Workbench:
 
     async def _dataset(self, code_seasons: list[tuple[str, int]]):
         fetched = [await self._load(code, s) for code, s in code_seasons]
-        version = (*self._v(*code_seasons), *(self.events.version(code, s) for code, s in code_seasons))
+        version = (*self._v(*code_seasons), *(self.events.version(code, s) for code, s in code_seasons), self._roster_version())
         key = ("dataset", tuple(code_seasons))
 
         def compute():
-            return build_dataset([f.data for f in fetched], dob_of=self.dob_of, dob_info=self.dob_info, favorite_of=self.favorite_of,
-                                 events_of=self._events_of(code_seasons, fetched), today=self.today)
+            roster = self._roster_dobs()
+            return build_dataset([f.data for f in fetched], dob_of=self.dob_of, favorite_of=self.favorite_of, today=self.today,
+                                 dob_info=lambda name, teams, reference, pid: self.dob_info(name, teams, reference, pid, roster),
+                                 events_of=self._events_of(code_seasons, fetched))
 
         return await self._memo_async(key, version, compute), fetched
+
+    # ------------------------------------------------------------------ squad lists (exact birthdates)
+
+    def _linked_roster(self, code: str, season: int, players=None) -> tuple[dict[int, dict], list[dict]]:
+        """``({Understat id: squad-list player}, squad-list players matched to nobody)``, remembered until either side changes.
+
+        ``players`` are the league season's players; left out, they are read from the local cache (so call it from a thread).
+        """
+        key = f"{code}:{season}"
+        version = (self.rosters.fetched_at(code, season), self.repo.version("league", key))
+        hit = self._roster_links.get((code, season))
+        if hit is None or hit[0] != version:
+            body = self.rosters.cached(code, season)
+            if body is None:
+                return {}, []
+            if players is None:
+                league = self.repo.cached_league(code, season)
+                if league is None:
+                    return {}, []
+                players = league.players
+            hit = self._roster_links[(code, season)] = (version, link_roster(body, players))
+        return hit[1]
+
+    def _roster_version(self) -> tuple:
+        """A cheap token that changes when any stored squad list, or the league season it is matched against, does."""
+        stamp = self.rosters.stamp()
+        return stamp, tuple(self.repo.version("league", key) for key, _fetched, _complete in stamp)
+
+    def _roster_dobs(self) -> dict[int, str]:
+        """Understat player id -> exact date of birth, from every squad list on this computer, each matched within its own league season.
+
+        A man has one birthdate whichever season or league a view shows, so someone who has since left his club (and is missing from
+        its newer lists) is still found where he went. If two lists disagree about one player, one of the two matches is wrong, so he
+        is left out: a blank age beats a wrong one.
+        """
+        version = self._roster_version()
+        if self._dob_index is not None and self._dob_index[0] == version:
+            return self._dob_index[1]
+        found: dict[int, set[str]] = {}
+        for league, season in self.rosters.seasons():
+            linked, _unmatched = self._linked_roster(league, season)
+            for pid, player in linked.items():
+                found.setdefault(pid, set()).add(player["dob"])
+        index = {pid: next(iter(dobs)) for pid, dobs in found.items() if len(dobs) == 1}
+        self._dob_index = (version, index)
+        return index
 
     def _events_of(self, code_seasons: list[tuple[str, int]], fetched) -> Callable[[int], dict | None] | None:
         """Understat player id -> event counts summed over the seasons in this view; None when no events are stored for any of them."""
@@ -314,6 +380,49 @@ class Workbench:
             out.append(entry)
         return out
 
+    def _roster_audit(self, league: str, season: int, fetched) -> dict:
+        """How well one squad list matched Understat's players, and where Wikidata (when it is sure of the club) disagrees."""
+        players = fetched.data.players
+        linked, _unmatched = self._linked_roster(league, season, players)
+        reference = min(self.today, date(season + 1, 6, 30))
+        regulars = [p for p in players if p.minutes >= 450]
+        missing = sorted((p for p in regulars if p.id not in linked), key=lambda p: -p.minutes)
+        compared, disagree = 0, []
+        for p in players:
+            if p.id in linked:
+                dob, basis = self.resolver.cached_info(p.name, p.teams, reference)
+                if dob and basis == "club":
+                    compared += 1
+                    gap = abs((date.fromisoformat(dob) - date.fromisoformat(linked[p.id]["dob"])).days)
+                    if gap:
+                        disagree.append({"name": p.name, "team": p.team, "squad_list": linked[p.id]["dob"], "wikidata": dob, "days": gap, "blank": gap > CONTESTED_DAYS})
+        disagree.sort(key=lambda x: -x["days"])
+        return {"players_total": len(players), "linked": len(linked), "regulars": len(regulars), "regulars_linked": len(regulars) - len(missing),
+                "missing": [{"id": p.id, "name": p.name, "team": p.team, "minutes": p.minutes} for p in missing[:8]],
+                "compared": compared, "disagree": len(disagree), "blank": sum(x["blank"] for x in disagree), "disagree_examples": disagree[:6]}
+
+    async def birthdate_status(self) -> list[dict]:
+        """Per stored squad list: what it holds, how well it matched Understat's players, and what is left. Reads only what is stored."""
+        out = []
+        token = self._roster_version()
+        for league, season in sorted(self.rosters.seasons(), key=lambda k: (k[0], -k[1])):
+            body = self.rosters.cached(league, season)
+            if body is None:
+                continue
+            entry: dict = {"league": league, "season": season, "clubs": len(body["teams"]), "players": sum(len(t["players"]) for t in body["teams"]),
+                           "fetched": body["fetched"], "pending": [t["name"] for t in body.get("pending", [])], "final": self.rosters.is_final(season), "sparse": bool(body.get("sparse")),
+                           "median_squad": sorted(len(t["players"]) for t in body["teams"])[len(body["teams"]) // 2],
+                           "players_total": None, "linked": None, "regulars": None, "regulars_linked": None, "missing": [], "compared": 0, "disagree": 0, "blank": 0, "disagree_examples": []}
+            if self.store.meta("league", f"{league}:{season}") is not None:   # only from the cache: this must never go to the network
+                try:
+                    fetched = await self._load(league, season)
+                    version = (self.rosters.fetched_at(league, season), self.repo.version("league", f"{league}:{season}"), token, self.enricher.epoch)
+                    entry.update(await self._memo_async(("roster-audit", league, season), version, lambda f=fetched: self._roster_audit(league, season, f)))
+                except AppError:
+                    pass
+            out.append(entry)
+        return out
+
     async def players_view(self, leagues: list[str], seasons: list[str | int], *, min_minutes: int = 90) -> dict:
         codes = [self._league_code(l) for l in leagues] or [DEFAULT_LEAGUE]
         targets: list[tuple[str, int]] = []
@@ -333,11 +442,14 @@ class Workbench:
         ds, fetched = await self._dataset(targets)
         rows = [r for r in ds.rows if r["minutes"] >= min_minutes]
 
-        # background enrichment: ages for players who count, positions for the ambiguous ones
+        # background enrichment: exact birthdates from squad lists, then Wikidata for whoever they leave out (goalkeepers and
+        # fringe players included, most minutes first), then positions for the ambiguous ones
         in_pool = [r for r in ds.rows if r["in_pool"] and r["group"] != "GK"]
         if not self.settings.offline:
-            if not self.settings.demo:
-                self.enricher.schedule_ages((r["name"], r["teams"][0] if r["teams"] else None) for r in in_pool)
+            self.enricher.schedule_rosters(targets)
+            if not self.settings.demo and not self.enricher.squads_pending(targets):
+                unknown = sorted((r for r in ds.rows if r["age"] is None), key=lambda r: -r["minutes"])
+                self.enricher.schedule_ages((r["name"], r["teams"][0] if r["teams"] else None) for r in unknown)
             self.enricher.schedule_roles([r["id"] for r in in_pool if r["group_source"] == "inferred"], limit=120)
 
         return {
@@ -407,8 +519,10 @@ class Workbench:
             detail["events"]["stored"] = bool(self.events.seasons())  # lets the page say "not fetched for this season" only when event data exists elsewhere
         similar = similar_players(row, ds.rows, limit=8)
         insights = rank(player_insights(row, finishing=detail["finishing"], career=detail["career"], similar=similar, team_context=team_ctx))
-        if not self.settings.demo and row.get("age") is None:
-            self.enricher.schedule_ages([(row["name"], team_name)])
+        if not self.settings.offline:
+            self.enricher.schedule_rosters([(code, s) for s in want])
+            if not self.settings.demo and row.get("age") is None and not self.enricher.squads_pending([(code, s) for s in want]):
+                self.enricher.schedule_ages([(row["name"], team_name)])
         shortlist = {item["id"] for item in self.store.kv_get("shortlist", [])}
         return {
             "scope": {"league": code, "league_name": LEAGUES[code].name, "seasons": want, "labels": [season_label(s) for s in want], "note": note,
@@ -757,7 +871,7 @@ class Workbench:
     # ------------------------------------------------------------------ diagnostics
 
     async def check_connection(self) -> dict:
-        """Walk the real data path once (league -> match -> player -> birthdates) and say which step breaks.
+        """Walk the real data path once (league -> match -> player -> squad list -> birthdates) and say which step breaks.
 
         Nothing is written to the cache: this is what to run when Understat changes its pages or the network is odd.
         """
@@ -823,9 +937,17 @@ class Workbench:
             value = next(iter(found.values()), None)
             return f"Wikidata answered: Erling Haaland born {value}" if value else "Wikidata answered but had no birthdate for the test player."
 
+        async def read_squads() -> str:
+            if self.settings.demo:
+                return "Demo mode: squad lists are not used."
+            if self.settings.offline:
+                return "Offline mode: ESPN was not contacted."
+            return await self.rosters.probe(code, season)
+
         if await step("Reach Understat" if not self.settings.demo else "Load the league", fetch_league) and await step("Read the league page", read_league):
             await step("Read a match", read_match)
             await step("Read a player", read_player)
+        await step("Read a squad list", read_squads)
         await step("Look up birthdates", read_birthdates)
         return {"ok": all(s["ok"] for s in steps), "mode": {"demo": self.settings.demo, "offline": self.settings.offline}, "steps": steps}
 
@@ -862,6 +984,7 @@ class Workbench:
             "upstream": {"requests": getattr(self.provider, "requests_made", None)},
             "coverage": {"favorites": len(self.favorites)},
             "events": await self.event_status(),
+            "birthdates": await self.birthdate_status(),
         }
 
     def start_sync(self, leagues: list[str], seasons: list[int], force: bool = False) -> dict:

@@ -355,3 +355,20 @@ def test_chance_insights_without_a_league_make_no_league_claims_and_ignore_tiny_
     assert all("league" not in i["headline"].lower() and "of 20" not in i["headline"] for ins in out.values() for i in ins)
     assert not any("corner" in i["headline"].lower() for i in out["situation"])  # 5 shots is noise
     assert any("on target" in i["headline"] for i in out["result"])
+
+
+def test_an_age_from_a_name_match_alone_never_decides_a_similar_player_search_or_a_young_talent_highlight(demo_league):
+    from app.analytics.ages import sure_age
+    from app.insights.player import scouting_highlights
+
+    assert [sure_age({"age": 21, "dob_basis": b}) for b in ("roster", "club", "manual", None, "name")] == [21, 21, 21, 21, None]
+    ds = build_dataset([demo_league], today=date(2020, 6, 1))
+    star = max((r for r in ds.rows if r["in_pool"] and r["group"] == "ATT"), key=lambda r: r["output"])
+    sure = similar_players(star, [{**r, "age": 21, "dob_basis": "roster"} for r in ds.rows], max_age=22)
+    guessed = similar_players(star, [{**r, "age": 21, "dob_basis": "name"} for r in ds.rows], max_age=22)
+    assert sure and guessed == []                                                                   # "21?" is not a sure 21
+
+    good = [{**r, "age": 19, "dob_basis": "roster"} if r["in_pool"] and r["group"] != "GK" and r["output"] >= 65 else r for r in ds.rows]
+    unsure = [{**r, "age": 19, "dob_basis": "name"} if r["in_pool"] and r["group"] != "GK" and r["output"] >= 65 else r for r in ds.rows]
+    assert any(i.id.startswith("scout.young.") for i in scouting_highlights(good))
+    assert not any(i.id.startswith("scout.young.") for i in scouting_highlights(unsure))

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { nf, signed, pct, probText, ordinal, plural, seasonLabel, dateShort, dateLong, weekday, timeOf, relTime, bytes, initials, fold, clamp, int } from "../../src/app/web/js/lib/format.js";
+import { nf, signed, pct, probText, ordinal, plural, seasonLabel, dateShort, dateLong, weekday, timeOf, relTime, bytes, initials, fold, clamp, int, sureAge } from "../../src/app/web/js/lib/format.js";
 
 test("numbers use a true minus sign and never show negative zero", () => {
   assert.equal(nf(-1.234, 2), "−1.23");
@@ -55,4 +55,13 @@ test("names fold for search: accents, case and punctuation vanish", () => {
   assert.equal(initials("Luka Milović"), "LM");
   assert.equal(initials("Kai"), "KA");
   assert.equal(clamp(5, 0, 3), 3);
+});
+
+test("sureAge trusts every source except a name-only match", () => {
+  assert.equal(sureAge({ age: 24, dob_basis: "roster" }), 24);
+  assert.equal(sureAge({ age: 24, dob_basis: "club" }), 24);
+  assert.equal(sureAge({ age: 24, dob_basis: "manual" }), 24);
+  assert.equal(sureAge({ age: 24, dob_basis: "name" }), null);
+  assert.equal(sureAge({ age: null, dob_basis: null }), null);
+  assert.equal(sureAge({}), null);
 });

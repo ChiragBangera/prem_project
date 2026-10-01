@@ -8,6 +8,7 @@ import uuid
 from dataclasses import dataclass, field
 
 from app.data.repository import Repository
+from app.data.rosters import RosterClient
 from app.errors import AppError
 from app.leagues import LEAGUES
 
@@ -33,8 +34,9 @@ class Job:
 
 
 class JobManager:
-    def __init__(self, repo: Repository, on_change=None):
+    def __init__(self, repo: Repository, on_change=None, rosters: RosterClient | None = None):
         self.repo = repo
+        self.rosters = rosters
         self.jobs: dict[str, Job] = {}
         self._tasks: dict[str, asyncio.Task] = {}
         self._on_change = on_change
@@ -56,6 +58,7 @@ class JobManager:
                 job.done += 1
                 verb = "cached" if fetched.meta.complete and not force else "fetched"
                 job.log.append(f"{league} {season}: {verb} ({fetched.data.n_played} matches played)")
+                await self._squads(job, league, season)
             except AppError as exc:
                 job.failed += 1
                 job.log.append(f"{league} {season}: {exc.message}")
@@ -66,6 +69,22 @@ class JobManager:
                 self._on_change()
         job.state = "finished" if job.failed < job.total else "failed"
         job.finished = time.time()
+
+    async def _squads(self, job: Job, league: str, season: int) -> None:
+        """Squad lists (exact birthdates) for the same league season. Best effort: ages fall back to Wikidata, so a failure is only logged."""
+        if self.rosters is None or not self.rosters.needs_fetch(league, season):
+            return
+        try:
+            body = await self.rosters.ensure(league, season)
+        except Exception as exc:  # pragma: no cover - defensive
+            job.log.append(f"{league} {season}: squad lists failed ({type(exc).__name__})")
+            return
+        if body is None:
+            job.log.append(f"{league} {season}: squad lists unavailable, ages will come from Wikidata")
+            return
+        players = sum(len(t["players"]) for t in body["teams"])
+        note = ", sparse: the feed has little for this season" if body.get("sparse") else f", {len(body['pending'])} clubs to retry" if body.get("pending") else ""
+        job.log.append(f"{league} {season}: squad lists for {len(body['teams'])} clubs, {players} players{note}")
 
     def get(self, job_id: str) -> Job | None:
         return self.jobs.get(job_id)

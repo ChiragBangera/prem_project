@@ -34,8 +34,8 @@ async def test_unreachable_upstream_stops_at_the_first_step(tmp_path):
     first = result["steps"][0]
     assert first["name"] == "Reach Understat" and not first["ok"]
     assert "understat.com" in first["detail"] and first["hint"] == "Check the network or a proxy."
-    # later league-dependent steps are skipped, but the independent birthdate step still reports
-    assert [s["name"] for s in result["steps"]] == ["Reach Understat", "Look up birthdates"]
+    # later league-dependent steps are skipped, but the independent squad-list and birthdate steps still report
+    assert [s["name"] for s in result["steps"]] == ["Reach Understat", "Read a squad list", "Look up birthdates"]
 
 
 async def test_a_changed_page_format_is_reported_as_such(tmp_path):

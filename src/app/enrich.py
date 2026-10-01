@@ -1,6 +1,7 @@
-"""Background enrichment: ages (Wikidata) and favourite positions (Understat player pages).
+"""Background enrichment: exact birthdates (club squad lists), the ages squad lists leave out (Wikidata) and favourite positions
+(Understat player pages).
 
-Both are slow, network-bound and optional, so they must never block a page. A
+All are slow, network-bound and optional, so they must never block a page. A
 page renders immediately with what is known; enrichment fills the rest in the
 background, and the UI polls ``status()`` to refresh when it lands.
 """
@@ -13,6 +14,7 @@ from dataclasses import dataclass, field
 from typing import Awaitable, Callable, Iterable
 
 from app.data.repository import Repository
+from app.data.rosters import RosterClient
 from app.data.store import Store
 from app.data.wikidata import BirthdateResolver
 from app.errors import AppError
@@ -70,13 +72,16 @@ class FavoriteIndex:
 
 
 class Enricher:
-    def __init__(self, repo: Repository, store: Store, resolver: BirthdateResolver, favorites: FavoriteIndex, *, batch: int = 4):
+    def __init__(self, repo: Repository, store: Store, resolver: BirthdateResolver, favorites: FavoriteIndex, *, batch: int = 4,
+                 roster_client: RosterClient | None = None):
         self.repo = repo
         self.resolver = resolver
         self.favorites = favorites
+        self.roster_client = roster_client
         self.epoch = 0  # bumped whenever new information lands, so derived caches know to rebuild
         self.ages = Progress("ages")
         self.roles = Progress("roles")
+        self.rosters = Progress("rosters")
         self._tasks: dict[str, asyncio.Task] = {}
         self._batch = batch
 
@@ -89,6 +94,24 @@ class Enricher:
         self.ages = Progress("ages", total=len(pending), running=True)
         self._tasks["ages"] = asyncio.create_task(self._run_ages(pending))
         return len(pending)
+
+    def schedule_rosters(self, targets: Iterable[tuple[str, int]]) -> int:
+        """Fetch, in the background, the squad lists (exact birthdates) that these league-seasons lack. Returns how many are waiting."""
+        if self.roster_client is None:
+            return 0
+        pending = [t for t in dict.fromkeys(targets) if self.roster_client.needs_fetch(*t)]
+        if not pending or "rosters" in self._tasks and not self._tasks["rosters"].done():
+            return len(pending)
+        self.rosters = Progress("rosters", total=len(pending), running=True)
+        self._tasks["rosters"] = asyncio.create_task(self._run_rosters(pending))
+        return len(pending)
+
+    def squads_pending(self, targets: Iterable[tuple[str, int]]) -> bool:
+        """True while squad lists for these league-seasons are being fetched or are about to be. Wikidata is only asked about the
+        players the squad lists leave out, so it waits for them."""
+        if self.roster_client is None:
+            return False
+        return self.rosters.running or any(self.roster_client.needs_fetch(*t) for t in targets)
 
     def schedule_roles(self, player_ids: Iterable[int], limit: int = 240) -> int:
         pending = [pid for pid in dict.fromkeys(player_ids) if not self.favorites.known(pid)][:limit]
@@ -112,6 +135,25 @@ class Enricher:
             log.warning("age enrichment failed: %s", exc)
         finally:
             self.ages.running = False
+
+    async def _run_rosters(self, targets: list[tuple[str, int]]) -> None:
+        client = self.roster_client
+        try:
+            for league, season in targets:
+                before = client.version(league, season)
+                try:
+                    await client.ensure(league, season)
+                except Exception as exc:  # never let a background job crash the app
+                    self.rosters.failed += 1
+                    client.last_error = f"{league} {season}: {str(exc)[:160]}"
+                    client.cool_down()
+                    log.warning("squad lists for %s %s failed: %s", league, season, exc)
+                self.rosters.done += 1
+                self.rosters.last_error = client.last_error
+                if client.version(league, season) != before:
+                    self.epoch += 1  # new birthdates: anything built from the old ones is stale
+        finally:
+            self.rosters.running = False
 
     async def _run_roles(self, ids: list[int]) -> None:
         sem = asyncio.Semaphore(self._batch)
@@ -140,11 +182,12 @@ class Enricher:
     # ------------------------------------------------------------------ status
 
     def status(self) -> dict:
-        return {"ages": self.ages.to_dict(), "roles": self.roles.to_dict(), "favorites_known": len(self.favorites), "epoch": self.epoch}
+        return {"ages": self.ages.to_dict(), "roles": self.roles.to_dict(), "rosters": self.rosters.to_dict(),
+                "favorites_known": len(self.favorites), "epoch": self.epoch}
 
     @property
     def busy(self) -> bool:
-        return self.ages.running or self.roles.running
+        return self.ages.running or self.roles.running or self.rosters.running
 
     async def close(self) -> None:
         for task in self._tasks.values():

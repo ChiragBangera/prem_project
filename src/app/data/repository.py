@@ -183,6 +183,20 @@ class Repository:
 
     # ------------------------------------------------------------------ inspection
 
+    def cached_league(self, league: str, season: int) -> LeagueSeason | None:
+        """The parsed league season if it is on this computer, however old. Never touches the network, and blocks: call it from a thread."""
+        key = f"{league}:{season}"
+        entry = self._mem.get(("league", key))  # a plain read: this runs on worker threads, so it must not reorder the cache
+        if entry is not None:
+            return entry.value
+        record = self.store.get("league", key)
+        if record is None:
+            return None
+        try:
+            return normalize_league(record.body, league, season)
+        except (ValueError, TypeError, KeyError):
+            return None  # an unreadable cache row is a miss
+
     def cached_leagues(self) -> list[dict]:
         """League-seasons present in the local cache (used for search and the Data page)."""
         out = []

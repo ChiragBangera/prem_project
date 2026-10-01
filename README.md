@@ -50,7 +50,7 @@ Just want to look around first? `uv run prem serve --demo` serves a synthetic le
 | Command | What it does |
 | --- | --- |
 | `prem serve` | Run the app. `--demo`, `--offline`, `--port`, `--data-dir`, `--no-open`, `--reload` |
-| `prem sync` | Fetch league seasons into the cache (`--leagues EPL,La_liga`, `--seasons 2025,2026`, `--force`) |
+| `prem sync` | Fetch league seasons, and their club squad lists (exact birthdates), into the cache (`--leagues EPL,La_liga`, `--seasons 2025,2026`, `--force`) |
 | `prem doctor` | Walk the real data path once and report which step fails |
 | `prem status` | Show what is cached and how old it is |
 | `prem clear --yes` | Delete cached match and player data (your shortlist stays) |
@@ -85,7 +85,12 @@ uv run prem events status
 
 ### Ages
 
-Understat has no birthdates, so ages are looked up on Wikidata by name and club. Wikidata has many retired namesakes, so the app is deliberately strict: it only trusts a match that is a plausible footballing age on the date in question, prefers a club the player is at *now* (a club someone left years ago does not count), and refuses to guess for single-word names. Where it cannot be sure the age stays blank, and an age matched by name alone is shown with a `?`.
+Understat has no birthdates, so ages come from two places, in this order:
+
+1. **Club squad lists (ESPN's public JSON feed).** Each club's squad for a season lists its players with their exact date of birth, goalkeepers included. A player is matched to Understat by the *words of his name and his club*, never by a looser guess (spelling variants such as "Vitalii" / "Vitaliy" are handled, and "Gabriel" on Understat is matched to "Gabriel dos Santos Magalhães" only when he is the one unmatched candidate at that club). In a check against WhoScored's own ages for the Premier League, all 466 players that could be compared agreed. It is about 20 requests for a league and season, made in the background the first time you open Scout (or by `prem sync`), stored for good for finished seasons, and refreshed daily for the current one. A birthdate belongs to the player, not the season, so every stored list is used in every view: someone who has since moved on is found on the list of the club he went to. If the feed has almost nothing for a season (it has one player per club for Serie A 2023, for example) the Data page marks that season as sparse, asks again after a week, and ages there come from the other lists and from Wikidata.
+2. **Wikidata, for the players a squad list leaves out** (a few per cent: club-name aliases, rarely a first name written differently). Wikidata has many retired namesakes, so the app is deliberately strict: it only trusts a match that is a plausible footballing age on the date in question, prefers a club the player is at *now* (a club someone left years ago does not count), and refuses to guess for single-word names. Where it cannot be sure the age stays blank, and an age matched by name alone is shown with a `?` but never decides anything: the age filter, similar-player searches and the young-talent highlights treat it as unknown.
+
+The Scout age filter hides players with no sure age (the Age menu says how many, and can show them). The Data page shows, per league and season, how many players the squad lists matched, who is still unknown, and any player where Wikidata, sure of the club, disagrees. Both feeds are public but undocumented and used for personal use only; if one is unreachable, ages simply stay as they were.
 
 If an age is wrong or missing, correct it yourself in `<data dir>/birthdates.json` (read at start-up). Use `"Name"` or, to tell two players of the same name apart, `"Name|Club"`:
 
@@ -118,7 +123,7 @@ Understat ──> client (paced, retrying) ──> SQLite payload store ──> 
                                   workbench (page-shaped views) ──> FastAPI ──> no-build web app
 ```
 
-- `src/app/data` – the local-first data layer: Understat client, SQLite store, repository (single-flight fetches, stale fallback, offline mode), typed models, a Wikidata birthdate resolver, and a synthetic demo world simulated shot by shot.
+- `src/app/data` – the local-first data layer: Understat client, SQLite store, repository (single-flight fetches, stale fallback, offline mode), typed models, squad-list and Wikidata birthdate resolvers, and a synthetic demo world simulated shot by shot.
 - `src/app/analytics`, `src/app/forecast`, `src/app/insights` – the analysis. Everything is a plain function over typed models and is unit tested.
 - `src/app/workbench.py`, `src/app/api.py` – one service composes views for the pages; the API is thin and uses one error format.
 - `src/app/web` – the frontend: vanilla ES modules on a vendored Preact + htm, hash-routed (the URL carries page state), custom SVG charts, no build step and no runtime network dependencies.

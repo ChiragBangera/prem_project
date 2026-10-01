@@ -11,6 +11,7 @@ from __future__ import annotations
 import math
 from typing import Sequence
 
+from .ages import sure_age
 from .metrics import METRIC_BY_KEY, PROFILE_METRICS
 
 
@@ -47,9 +48,10 @@ def similar_players(
             continue
         if exclude_team and exclude_team in cand["teams"]:
             continue
-        if max_age is not None and (cand.get("age") is None or cand["age"] > max_age):
+        age = sure_age(cand)
+        if max_age is not None and (age is None or age > max_age):
             continue
-        if min_age is not None and (cand.get("age") is None or cand["age"] < min_age):
+        if min_age is not None and (age is None or age < min_age):
             continue
         shared = [k for k in keys if k in cand.get("pct", {})]
         if len(shared) < max(3, len(keys) - 1):
