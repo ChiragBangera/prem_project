@@ -91,7 +91,7 @@ function metricKeys(groups, catalog) {
 
 // ------------------------------------------------------------------ filter bar
 
-function FilterBar({ f, set, meta, rowsAll, scope }) {
+function FilterBar({ f, set, meta, rowsAll, scope, ageRef }) {
   const teamOptions = useMemo(() => [...new Set(rowsAll.flatMap((r) => r.teams))].sort().map((t) => ({ value: t, label: t })), [rowsAll]);
   const [text, setText] = useState(f.q);
   const push = useMemo(() => debounce((v) => set({ q: v || null }), 220), []);
@@ -113,7 +113,7 @@ function FilterBar({ f, set, meta, rowsAll, scope }) {
       <${Popover} label="Age" summary=${f.ageOn ? `${f.age[0]}–${f.age[1]}` : "Any"} active=${f.ageOn} width=${290} align="right">
         <${RangeSlider} label="Age range" min=${16} max=${40} value=${f.age} format=${(v) => v} onChange=${(v) => set({ age: v[0] === 16 && v[1] === 40 ? null : `${v[0]}-${v[1]}`, preset: null })} />
         <${Switch} checked=${f.unknownAge} onChange=${(v) => set({ unk: v ? null : "0" })}>Include players whose age is unknown</${Switch}>
-        <p class="xsmall muted">Ages come from Wikidata, matched by name and club. Where there is no unambiguous match the age stays blank.</p>
+        <p class="xsmall muted">${ageRef ? `Ages are as of ${new Date(ageRef).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}. ` : ""}Ages come from Wikidata, matched by name and club. A "?" means only the name matched and the club could not be confirmed. Where there is no safe match the age stays blank rather than being guessed. To fix one yourself, add it to <code>birthdates.json</code> in the data folder (see the README).</p>
       </${Popover}>
       <${Popover} label="More" summary=${extra ? `${extra} on` : ""} active=${extra > 0} width=${340} align="right">
         <${Field} label="Leagues">
@@ -253,7 +253,7 @@ function ScoutView({ d, f, set, scope, meta, catalog }) {
     ${agesPct < 0.6 ? html`<${Notice} icon="clock">Ages are known for ${cov.ages_known} of ${cov.players} players${enr.ages.running ? ` (loading ${enr.ages.done} of ${enr.ages.total} from Wikidata now)` : ""}. Age filters only apply to players with a known age; ${d.coverage.inferred_roles ? `${d.coverage.inferred_roles} roles are inferred from minutes and sharpen as position data arrives.` : ""}</${Notice}>` : null}
     ${f.view === "table" && !f.q && !f.preset ? html`<${Insights} items=${d.highlights} scope=${scope} limit=${3} compact expandable />` : null}
 
-    <${FilterBar} f=${f} set=${set} meta=${meta} rowsAll=${rowsAll} scope=${scope} />
+    <${FilterBar} f=${f} set=${set} meta=${meta} rowsAll=${rowsAll} scope=${scope} ageRef=${d.scope.age_reference} />
 
     <div class="card">
       <div class="results-bar">

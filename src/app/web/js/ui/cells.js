@@ -28,10 +28,14 @@ export function ScoreCell({ row }) {
 }
 
 export function PlayerCell({ row, season }) {
-  const sub = [row.team, POS_LABEL[row.group], row.age != null ? `${row.age}` : null].filter(Boolean).join(" · ");
+  const unsure = row.age != null && row.dob_basis === "name";
+  const age = row.age == null ? null : unsure
+    ? html`<span class="age-unsure" title="Birthdate found on Wikidata by name only. The club could not be confirmed, so this could be a namesake.">${row.age}?</span>`
+    : html`<span title=${row.dob_basis === "manual" ? "Your own correction" : "Birthdate from Wikidata, matched to his club"}>${row.age}</span>`;
+  const sub = [row.team, POS_LABEL[row.group]].filter(Boolean).join(" · ");
   return html`<a class="cell-player" href=${playerHref(row.id, { league: row.league, season: row.seasons?.length === 1 ? row.seasons[0] : season })}>
     <span class="name">${row.name}${!row.in_pool ? html` <span class="badge outline" title="Fewer minutes than the role pool uses for rankings">Small sample</span>` : null}</span>
-    <span class="sub">${sub}</span>
+    <span class="sub">${sub}${age ? html` · ${age}` : null}</span>
   </a>`;
 }
 

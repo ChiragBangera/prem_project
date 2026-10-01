@@ -172,7 +172,7 @@ def player_detail(row: dict, page: PlayerPage | None, seasons: Sequence[int], te
     return {
         "player": {k: row[k] for k in (
             "id", "name", "team", "teams", "league", "seasons", "pos", "group", "group_source", "group_conf",
-            "favorite", "dob", "age", "minutes", "games", "sample", "in_pool", "tags", "output", "pool_n",
+            "favorite", "dob", "dob_basis", "age", "minutes", "games", "sample", "in_pool", "tags", "output", "pool_n",
         )},
         "group_label": GROUP_LABELS.get(row["group"], row["group"]),
         "profile": profile(row),

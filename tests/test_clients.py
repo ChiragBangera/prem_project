@@ -13,7 +13,7 @@ from aiohttp.test_utils import TestServer
 from app.config import Settings
 from app.data.store import Store
 from app.data.understat import UnderstatClient, team_slug
-from app.data.wikidata import BirthdateResolver, age_on, pick_birthdate
+from app.data.wikidata import CACHE_VERSION, BirthdateResolver, age_on, pick_birthdate, resolve_birthdate
 from app.errors import UpstreamError, UpstreamTimeout
 
 
@@ -247,6 +247,84 @@ def test_pick_birthdate_disambiguation():
     assert pick_birthdate(namesakes, None) is None
     assert pick_birthdate([{"dob": "1901-01-01", "teams": []}], None) is None  # implausible
     assert pick_birthdate([{"dob": "1999-07-21", "teams": []}, {"dob": "1999-07-21", "teams": ["X"]}], None) == "1999-07-21"
+
+
+NOW = __import__("datetime").date(2026, 10, 1)
+
+
+def cand(dob, *stints):
+    """A Wikidata candidate; each stint is (club, start, end)."""
+    return {"dob": dob, "teams": [t for t, _s, _e in stints], "stints": [{"team": t, "start": st, "end": en} for t, st, en in stints]}
+
+
+def test_retired_namesakes_are_ruled_out_by_age():
+    old = [cand("1974-01-09", ("Avaí Futebol Clube", "2010-01-01", "2010-01-01"))]
+    assert resolve_birthdate(old, ["Manchester City"], name="Sávio", reference=NOW) == (None, None)  # 52 years old
+    veteran = [cand("1982-08-20", ("CA Osasuna", None, None))]
+    assert resolve_birthdate(veteran, ["Osasuna"], name="Rubén García", reference=NOW) == (None, None)  # 44
+    # the same man is a perfectly plausible player when the question is about a season long ago
+    assert resolve_birthdate(veteran, ["Osasuna"], name="Rubén García", reference=__import__("datetime").date(2012, 6, 30))[0] == "1982-08-20"
+
+
+def test_a_club_he_left_long_ago_does_not_confirm_a_namesake():
+    # Wikidata lists every club ever: the 1985 man played for Celta in the 2000s, the 2003 one has no clubs listed
+    namesakes = [cand("1985-06-21", ("RC Celta de Vigo", "2004-01-01", "2006-01-01")), cand("2003-07-02")]
+    assert resolve_birthdate(namesakes, ["Celta Vigo"], name="Hugo Álvarez", reference=NOW) == ("2003-07-02", "name")
+    # both young enough to play: the old Celta stint must not decide it, and nothing else can
+    both = [cand("1996-06-21", ("RC Celta de Vigo", "2014-01-01", "2016-01-01")), cand("2003-07-02")]
+    assert resolve_birthdate(both, ["Celta Vigo"], name="Hugo Álvarez", reference=NOW) == (None, None)
+    # a recent stint (or one with no end) does confirm
+    current = [cand("1996-06-21", ("RC Celta de Vigo", "2014-01-01", "2016-01-01")), cand("2003-07-02", ("RC Celta de Vigo", "2022-01-01", None))]
+    assert resolve_birthdate(current, ["Celta Vigo"], name="Hugo Álvarez", reference=NOW) == ("2003-07-02", "club")
+
+
+def test_clubs_match_on_meaningful_words_not_exact_strings():
+    one = [cand("1987-08-01", ("RC Celta de Vigo", "2008-01-01", None))]
+    assert resolve_birthdate(one, ["Celta Vigo"], name="Iago Aspas", reference=NOW) == ("1987-08-01", "club")
+    assert resolve_birthdate(one, ["Real Madrid", "Celta Vigo"], name="Iago Aspas", reference=NOW)[1] == "club"  # any of his clubs
+    city = [cand("1999-07-21", ("Manchester City F.C.", "2022-01-01", None)), cand("1990-01-01", ("Manchester United F.C.", "2015-01-01", None))]
+    assert resolve_birthdate(city, ["Manchester City"], name="Some Player", reference=NOW) == ("1999-07-21", "club")
+
+
+def test_without_club_evidence_only_full_names_and_not_veterans_are_trusted():
+    lone = [cand("2000-05-24", ("FC Basel", None, None))]
+    assert resolve_birthdate(lone, ["Leeds"], name="Noah Okafor", reference=NOW) == ("2000-05-24", "name")  # Wikidata lags transfers
+    assert resolve_birthdate(lone, ["Leeds"], name="Okafor", reference=NOW) == (None, None)  # one word: far too likely to be someone else
+    assert resolve_birthdate([cand("1987-03-03")], ["Leeds"], name="Some Veteran", reference=NOW) == (None, None)  # 39: a retired namesake is likelier
+    assert resolve_birthdate(lone, None, reference=NOW)[0] == "2000-05-24"  # name not given: no single-word rule
+
+
+def test_parse_keeps_the_dates_of_each_stint():
+    payload = {"results": {"bindings": [
+        {"name": {"value": "A B"}, "dob": {"value": "2000-01-01T00:00:00Z"}, "teamLabel": {"value": "X FC"}, "start": {"value": "2020-01-01T00:00:00Z"}},
+        {"name": {"value": "A B"}, "dob": {"value": "2000-01-01T00:00:00Z"}, "teamLabel": {"value": "Y FC"}, "start": {"value": "2018-01-01T00:00:00Z"}, "end": {"value": "2020-01-01T00:00:00Z"}},
+    ]}}
+    (c,) = BirthdateResolver._parse(payload)["a b"]
+    assert c["teams"] == ["X FC", "Y FC"]
+    assert c["stints"] == [{"team": "X FC", "start": "2020-01-01", "end": None}, {"team": "Y FC", "start": "2018-01-01", "end": "2020-01-01"}]
+
+
+async def test_answers_cached_before_dates_were_stored_are_asked_again(tmp_path):
+    calls = []
+
+    async def endpoint(request):
+        calls.append(1)
+        return web.json_response(sparql(("Erling Haaland", "2000-07-21", "Manchester City F.C.")), content_type="application/sparql-results+json")
+
+    app = web.Application()
+    app.router.add_post("/sparql", endpoint)
+    server = await serve(app)
+    store = Store(tmp_path / "s.sqlite")
+    resolver = BirthdateResolver(store, Settings(data_dir=tmp_path), endpoints=(str(server.make_url("/sparql")),))
+    try:
+        store.put("dob", "erling haaland", {"candidates": [{"dob": "2000-07-21", "teams": ["Manchester City F.C."]}], "name": "Erling Haaland"}, source="wikidata")
+        assert resolver.cached("Erling Haaland", "Manchester City", NOW) == "2000-07-21"  # an old answer is still usable...
+        assert not resolver.known("Erling Haaland")  # ...but is asked for again
+        await resolver.resolve([("Erling Haaland", "Manchester City")])
+        assert len(calls) == 1 and resolver.known("Erling Haaland") and store.get("dob", "erling haaland").body["v"] == CACHE_VERSION
+    finally:
+        await server.close()
+        store.close()
 
 
 async def test_resolver_batches_caches_and_disambiguates(tmp_path):

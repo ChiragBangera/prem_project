@@ -66,6 +66,16 @@ Understat is read at a polite pace (a few requests per second, with retries), so
 | `PREM_OFFLINE=1` | Never touch the network; serve what is cached |
 | `PREM_TODAY=YYYY-MM-DD` | Pretend today is this date (demo and testing) |
 
+### Ages
+
+Understat has no birthdates, so ages are looked up on Wikidata by name and club. Wikidata has many retired namesakes, so the app is deliberately strict: it only trusts a match that is a plausible footballing age on the date in question, prefers a club the player is at *now* (a club someone left years ago does not count), and refuses to guess for single-word names. Where it cannot be sure the age stays blank, and an age matched by name alone is shown with a `?`.
+
+If an age is wrong or missing, correct it yourself in `<data dir>/birthdates.json` (read at start-up). Use `"Name"` or, to tell two players of the same name apart, `"Name|Club"`:
+
+```json
+{ "Sávio": "2004-04-10", "Pablo Ibáñez|Alaves": "1998-08-03" }
+```
+
 ### Managers
 
 Understat has no manager data. To split a team's season by manager, add your own stints to `<data dir>/managers.json` (same shape as [`src/app/data/managers.json`](src/app/data/managers.json)); they are merged in and appear on the Team page.

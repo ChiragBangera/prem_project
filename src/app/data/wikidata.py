@@ -14,6 +14,7 @@ Wikidata about the same unknown name on every page load.
 from __future__ import annotations
 
 import asyncio
+import re
 import time
 from datetime import date
 from typing import Iterable
@@ -30,25 +31,34 @@ WDQS = "https://query.wikidata.org/sparql"
 ENDPOINTS = (QLEVER, WDQS)
 BATCH = 40
 COOLDOWN = 300.0
-PLAUSIBLE_BORN = (1970, 2012)
+AGE_RANGE = (15, 40)  # a plausible age for a first-team footballer on the date being asked about
+NAME_ONLY_MAX_AGE = 38  # with no club evidence the retired namesake is the likelier explanation for an older player
+_CLUB_NOISE = {"fc", "cf", "afc", "cd", "ud", "sd", "rc", "rcd", "sc", "ac", "as", "ssc", "us", "fk", "sv", "vfb", "vfl", "tsv", "de", "del", "la", "el", "the", "of", "and", "club", "futbol", "football", "calcio", "association", "balompie"}
 USER_AGENT = "prem-lab/2.0 (personal football analytics; birth-date lookups, cached)"
 
 QUERY = """
 PREFIX wd: <http://www.wikidata.org/entity/>
 PREFIX wdt: <http://www.wikidata.org/prop/direct/>
+PREFIX p: <http://www.wikidata.org/prop/>
+PREFIX ps: <http://www.wikidata.org/prop/statement/>
+PREFIX pq: <http://www.wikidata.org/prop/qualifier/>
 PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
 PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
-SELECT ?name ?dob ?teamLabel WHERE {{
+SELECT ?name ?dob ?teamLabel ?start ?end WHERE {{
   VALUES ?name {{ {values} }}
   ?person {label_prop} ?name ;
           wdt:P106 wd:Q937857 ;
           wdt:P569 ?dob .
   OPTIONAL {{
-    ?person wdt:P54 ?team .
+    ?person p:P54 ?membership .
+    ?membership ps:P54 ?team .
     ?team rdfs:label ?teamLabel FILTER(LANG(?teamLabel) = "en")
+    OPTIONAL {{ ?membership pq:P580 ?start }}
+    OPTIONAL {{ ?membership pq:P582 ?end }}
   }}
 }}
 """
+CACHE_VERSION = 2  # 2 added the dates of each club stint; older cached answers are asked again
 
 
 def age_on(dob: str | None, today: date | None = None) -> int | None:
@@ -62,25 +72,92 @@ def age_on(dob: str | None, today: date | None = None) -> int | None:
     return today.year - born.year - ((today.month, today.day) < (born.month, born.day))
 
 
-def pick_birthdate(candidates: list[dict], team_hint: str | None) -> str | None:
-    """Choose a date of birth among namesakes, or None when it would be a guess."""
-    plausible = [
-        c for c in candidates if c.get("dob") and PLAUSIBLE_BORN[0] <= int(c["dob"][:4]) <= PLAUSIBLE_BORN[1]
-    ]
-    if not plausible:
+def _tokens(text: str) -> set[str]:
+    return {t for t in re.findall(r"[a-z0-9]+", fold(text)) if t not in _CLUB_NOISE}
+
+
+def _same_club(hint: str, team: str) -> bool:
+    """Understat says "Celta Vigo", Wikidata says "RC Celta de Vigo": compare the meaningful words, not the strings."""
+    folded = fold(team)
+    wanted = _tokens(hint)
+    return bool(hint in folded or (folded and folded in hint) or (wanted and wanted <= _tokens(team)))
+
+
+def _year(value: str | None) -> int | None:
+    try:
+        return int(value[:4]) if value else None
+    except ValueError:
         return None
-    if len({c["dob"] for c in plausible}) == 1:
-        return plausible[0]["dob"]
-    hint = fold(team_hint)
-    if hint:
-        matching = {
-            c["dob"]
-            for c in plausible
-            if any(hint in fold(t) or (fold(t) and fold(t) in hint) for t in c.get("teams", []))
-        }
-        if len(matching) == 1:
-            return matching.pop()
-    return None
+
+
+def _club_evidence(candidate: dict, hints: list[str], reference: date) -> str | None:
+    """How well the candidate's clubs support the player being at one of ``hints`` around ``reference``.
+
+    ``"current"``: a matching stint with no end, or one that ended within two years;
+    ``"undated"``: a match with no dates at all (older cached answers, or Wikidata gaps);
+    ``"past"``: the candidate did play there, but long ago (a retired namesake, most likely);
+    ``None``: no matching club.
+    """
+    stints = candidate.get("stints") or [{"team": t, "start": None, "end": None} for t in candidate.get("teams", [])]
+    best = None
+    for stint in stints:
+        if not any(_same_club(h, stint["team"]) for h in hints):
+            continue
+        start, end = _year(stint.get("start")), _year(stint.get("end"))
+        if end is None and start is None:
+            best = best or "undated"
+        elif end is None or end >= reference.year - 2:
+            return "current"
+        else:
+            best = best or "past"
+    return best
+
+
+def resolve_birthdate(
+    candidates: list[dict], team_hints: str | list[str] | None, *, name: str | None = None, reference: date | None = None
+) -> tuple[str | None, str | None]:
+    """Choose a date of birth among namesakes, or ``(None, None)`` when it would be a guess.
+
+    Returns ``(dob, basis)`` where basis is ``"club"`` (a club the player is at matches a *recent* stint on the
+    Wikidata entry) or ``"name"`` (the only plausible person with that name, nothing for or against). Rules:
+
+    * a candidate must be a plausible age (15 to 40) on ``reference``, which rules out the retired namesakes
+      that Wikidata is full of;
+    * a recent stint at one of the player's clubs settles it, unless that still leaves two people;
+    * a match with no dates counts the same, but only if no recent stint exists elsewhere;
+    * with no club evidence, a lone plausible candidate is accepted only for a full name (a single word such
+      as "Sávio" or "Mariano" is far too likely to be someone else), only up to age 38, and never when the
+      entry shows they played for this club long ago and left (a retired namesake).
+    """
+    reference = reference or date.today()
+    plausible = []
+    for c in candidates:
+        age = age_on(c.get("dob"), reference)
+        if age is not None and AGE_RANGE[0] <= age <= AGE_RANGE[1]:
+            plausible.append(c)
+    if not plausible:
+        return None, None
+    hints = [fold(h) for h in ([team_hints] if isinstance(team_hints, str) else team_hints or []) if h]
+    evidence = {id(c): _club_evidence(c, hints, reference) for c in plausible}
+    for level in ("current", "undated"):
+        found = {c["dob"] for c in plausible if evidence[id(c)] == level}
+        if len(found) == 1:
+            return next(iter(found)), "club"
+        if len(found) > 1:
+            return None, None
+    dobs = {c["dob"] for c in plausible}
+    if len(dobs) != 1:
+        return None, None
+    if name is not None and len(name.split()) < 2:
+        return None, None
+    only = next(iter(dobs))
+    if (age_on(only, reference) or 0) > NAME_ONLY_MAX_AGE or any(evidence[id(c)] == "past" for c in plausible):
+        return None, None
+    return only, "name"
+
+
+def pick_birthdate(candidates: list[dict], team_hint: str | list[str] | None, *, name: str | None = None, reference: date | None = None) -> str | None:
+    return resolve_birthdate(candidates, team_hint, name=name, reference=reference)[0]
 
 
 def _quote(name: str) -> str:
@@ -107,14 +184,19 @@ class BirthdateResolver:
 
     # ------------------------------------------------------------------ reads
 
-    def cached(self, name: str, team_hint: str | None = None) -> str | None:
+    def cached(self, name: str, team_hint: str | list[str] | None = None, reference: date | None = None) -> str | None:
+        return self.cached_info(name, team_hint, reference)[0]
+
+    def cached_info(self, name: str, team_hint: str | list[str] | None = None, reference: date | None = None) -> tuple[str | None, str | None]:
+        """``(dob, basis)`` from what Wikidata returned earlier; nothing is fetched here."""
         record = self.store.get("dob", fold(name))
         if record is None:
-            return None
-        return pick_birthdate(record.body.get("candidates", []), team_hint)
+            return None, None
+        return resolve_birthdate(record.body.get("candidates", []), team_hint, name=name, reference=reference)
 
     def known(self, name: str) -> bool:
-        return self.store.meta("dob", fold(name)) is not None
+        record = self.store.get("dob", fold(name))
+        return record is not None and record.body.get("v") == CACHE_VERSION
 
     # ------------------------------------------------------------------ resolve
 
@@ -130,11 +212,11 @@ class BirthdateResolver:
         now = self._clock()
         for key, (name, hint) in wanted.items():
             record = self.store.get("dob", key)
-            if record is not None:
+            if record is not None and record.body.get("v") == CACHE_VERSION:
                 candidates = record.body.get("candidates", [])
                 ttl = self.settings.ttl_dob_hit if candidates else self.settings.ttl_dob_miss
                 if now - record.fetched_at < ttl:
-                    result[key] = pick_birthdate(candidates, hint)
+                    result[key] = pick_birthdate(candidates, hint, name=name)
                     continue
             missing.append(name)
 
@@ -144,7 +226,7 @@ class BirthdateResolver:
             for name in missing:
                 key = fold(name)
                 record = self.store.get("dob", key)
-                result[key] = pick_birthdate(record.body.get("candidates", []), wanted[key][1]) if record else None
+                result[key] = pick_birthdate(record.body.get("candidates", []), wanted[key][1], name=name) if record else None
         else:
             for name in missing:
                 result.setdefault(fold(name), None)
@@ -169,7 +251,7 @@ class BirthdateResolver:
                 self.store.put(
                     "dob",
                     fold(name),
-                    {"candidates": found.get(fold(name), []), "name": name},
+                    {"candidates": found.get(fold(name), []), "name": name, "v": CACHE_VERSION},
                     source="wikidata",
                     fetched_at=stamp,
                 )
@@ -200,18 +282,26 @@ class BirthdateResolver:
 
     @staticmethod
     def _parse(payload: dict) -> dict[str, list[dict]]:
-        grouped: dict[str, dict[str, set[str]]] = {}
+        grouped: dict[str, dict[str, dict[str, set]]] = {}
         for binding in payload.get("results", {}).get("bindings", []):
             try:
                 name = binding["name"]["value"]
                 dob = binding["dob"]["value"][:10]
             except KeyError:
                 continue
+            entry = grouped.setdefault(fold(name), {}).setdefault(dob, {"teams": set(), "stints": set()})
             team = binding.get("teamLabel", {}).get("value")
-            teams = grouped.setdefault(fold(name), {}).setdefault(dob, set())
             if team:
-                teams.add(team)
+                entry["teams"].add(team)
+                entry["stints"].add((team, binding.get("start", {}).get("value", "")[:10], binding.get("end", {}).get("value", "")[:10]))
         return {
-            key: [{"dob": dob, "teams": sorted(teams)} for dob, teams in sorted(by_dob.items())]
+            key: [
+                {
+                    "dob": dob,
+                    "teams": sorted(e["teams"]),
+                    "stints": [{"team": t, "start": st or None, "end": en or None} for t, st, en in sorted(e["stints"])],
+                }
+                for dob, e in sorted(by_dob.items())
+            ]
             for key, by_dob in grouped.items()
         }

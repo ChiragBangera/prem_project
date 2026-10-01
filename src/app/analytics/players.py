@@ -74,6 +74,7 @@ class ScoutDataset:
     ages_known: int = 0
     inferred: int = 0
     notes: list[str] = field(default_factory=list)
+    age_reference: str | None = None  # the date every age is worked out on
 
 
 # ---------------------------------------------------------------------- merge
@@ -161,6 +162,7 @@ def build_dataset(
     seasons: Sequence[LeagueSeason],
     *,
     dob_of: Callable[[str, str | None], str | None] | None = None,
+    dob_info: Callable[[str, list, date], tuple[str | None, str | None]] | None = None,  # (dob, basis); preferred over dob_of
     favorite_of: Callable[[int], str | None] | None = None,
     today: date | None = None,
     pool_minutes: int | None = None,
@@ -247,7 +249,11 @@ def build_dataset(
         r = rates[m.id]
         luck = _luck(m)
         favorite = favorite_of(m.id) if favorite_of else None
-        dob = dob_of(m.name, m.teams[0] if m.teams else None) if dob_of else None
+        basis = None
+        if dob_info:
+            dob, basis = dob_info(m.name, m.teams, reference)
+        else:
+            dob = dob_of(m.name, m.teams[0] if m.teams else None) if dob_of else None
         age = _age_on(dob, reference)
         ages_known += age is not None
 
@@ -277,6 +283,7 @@ def build_dataset(
             "group_conf": confidence,
             "favorite": favorite,
             "dob": dob,
+            "dob_basis": basis,
             "age": age,
             "minutes": m.minutes,
             "games": m.games,
@@ -308,6 +315,7 @@ def build_dataset(
         role_model_ok=model is not None,
         ages_known=ages_known,
         inferred=sum(1 for r in rows if r["group_source"] == "inferred"),
+        age_reference=reference.isoformat(),
     )
 
 

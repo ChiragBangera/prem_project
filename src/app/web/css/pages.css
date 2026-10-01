@@ -486,3 +486,5 @@ table.data tr.row-muted { opacity: 0.6; cursor: default; }
 .zr-row .badge { margin-left: 4px; }
 .tiles.four { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
 @media (max-width: 720px) { .tiles.four { grid-template-columns: repeat(2, minmax(0, 1fr)); } .zone-pair { gap: 8px; } .zr-head, .zr-row { grid-template-columns: 1.1fr 1fr 1fr; } .zr-head span:last-child, .zr-row span:last-child { display: none; } }
+
+.age-unsure { text-decoration: underline dotted; text-underline-offset: 3px; cursor: help; }

@@ -78,6 +78,7 @@ class Workbench:
         self.enricher = Enricher(self.repo, self.store, self.resolver, self.favorites)
         self.jobs = JobManager(self.repo, on_change=self.repo.invalidate)
         self.managers = self._load_managers()
+        self.birthdates = self._load_birthdates()
         self._memo: dict[tuple, tuple[Any, Any]] = {}
         self._locks: dict[tuple, asyncio.Lock] = {}
         self._search_index: tuple[Any, list[dict], list[dict]] | None = None
@@ -101,15 +102,45 @@ class Workbench:
                 continue
         return stints
 
+    def _load_birthdates(self) -> dict[str, str]:
+        """Your own corrections: ``<data dir>/birthdates.json`` as ``{"Name": "YYYY-MM-DD"}`` or ``{"Name|Club": ...}``.
+
+        They win over Wikidata, which cannot always tell namesakes apart. Read once at start-up.
+        """
+        try:
+            raw = json.loads((self.settings.data_dir / "birthdates.json").read_text())
+        except (OSError, ValueError):
+            return {}
+        out: dict[str, str] = {}
+        for key, value in (raw.items() if isinstance(raw, dict) else []):
+            try:
+                date.fromisoformat(str(value)[:10])
+            except ValueError:
+                continue
+            name, _, club = str(key).partition("|")
+            out[f"{fold(name)}|{fold(club)}" if club else fold(name)] = str(value)[:10]
+        return out
+
     def eras_for(self, league: str, team: str) -> list[dict]:
         if self.settings.demo:
             return []  # the curated stints describe real clubs
         return [s for s in self.managers if s.get("league") == league and s.get("team") == team]
 
-    def dob_of(self, name: str, team: str | None) -> str | None:
+    def dob_info(self, name: str, teams, reference: date | None = None) -> tuple[str | None, str | None]:
+        """``(dob, basis)``: your correction (``"manual"``), or Wikidata matched on a ``"club"`` or on the ``"name"`` alone."""
+        clubs = [t for t in ([teams] if isinstance(teams, str) else list(teams or [])) if t]
+        key = fold(name)
+        for club in clubs:
+            if hit := self.birthdates.get(f"{key}|{fold(club)}"):
+                return hit, "manual"
+        if hit := self.birthdates.get(key):
+            return hit, "manual"
         if self.settings.demo:
-            return getattr(self.provider, "birthdate", lambda n, t=None: None)(name, team)
-        return self.resolver.cached(name, team)
+            return getattr(self.provider, "birthdate", lambda n, t=None: None)(name, clubs[0] if clubs else None), None
+        return self.resolver.cached_info(name, clubs, reference)
+
+    def dob_of(self, name: str, team: str | None, reference: date | None = None) -> str | None:
+        return self.dob_info(name, team, reference)[0]
 
     def favorite_of(self, pid: int) -> str | None:
         return self.favorites.get(pid)
@@ -229,7 +260,7 @@ class Workbench:
         key = ("dataset", tuple(code_seasons))
 
         def compute():
-            return build_dataset([f.data for f in fetched], dob_of=self.dob_of, favorite_of=self.favorite_of, today=self.today)
+            return build_dataset([f.data for f in fetched], dob_of=self.dob_of, dob_info=self.dob_info, favorite_of=self.favorite_of, today=self.today)
 
         return await self._memo_async(key, version, compute), fetched
 
@@ -264,6 +295,7 @@ class Workbench:
                 "leagues": sorted({c for c, _ in targets}), "seasons": sorted({s for _, s in targets}),
                 "labels": [season_label(s) for s in sorted({s for _, s in targets})], "notes": notes,
                 "pool_minutes": ds.pool_minutes, "group_sizes": ds.group_sizes, "n": len(rows),
+                "age_reference": ds.age_reference,
             },
             "meta": {"stale": any(f.meta.stale for f in fetched), "source": fetched[0].meta.source,
                      "fetched_at": fetched[0].meta.to_dict()["fetched_at"], "errors": [f.meta.error for f in fetched if f.meta.error]},
