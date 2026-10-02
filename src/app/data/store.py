@@ -183,6 +183,11 @@ class Store:
             )
             self._db.commit()
 
+    def kv_delete(self, key: str) -> None:
+        with self._lock:
+            self._db.execute("DELETE FROM kv WHERE k=?", (key,))
+            self._db.commit()
+
     def kv_prefix(self, prefix: str) -> dict[str, Any]:
         """Every key/value pair whose key starts with ``prefix``."""
         with self._lock:

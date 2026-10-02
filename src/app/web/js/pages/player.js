@@ -3,17 +3,19 @@ import { html, useEffect, useMemo, useState } from "../lib/html.js";
 import { useApi } from "../lib/api.js";
 import { useScope, useMeta } from "../lib/scope.js";
 import { navigate, setQuery, useLocation } from "../lib/router.js";
-import { cls, dateLong, hueOf, initials, int, nf, ordinal, pct, plural, seasonLabel, signed } from "../lib/format.js";
-import { Tip } from "../lib/tooltip.js";
+import { dateLong, dateShort, fold, hueOf, initials, int, nf, ordinal, pct, plural, seasonLabel, signed } from "../lib/format.js";
+import { fmtMetric } from "../lib/metricfmt.js";
+import { Tip, tooltip } from "../lib/tooltip.js";
 import { poissonBinomial, tails } from "../lib/stats.js";
 import { Icon } from "../lib/icons.js";
-import { Async, Badge, Button, Card, DataNotices, EmptyState, Field, Info, Insights, Notice, PageHead, Segmented, Select, Stat, Star, Switch, Tabs, TeamName, Delta, useDocumentTitle, teamHref, playerHref, metricValue, POS_LABEL } from "../ui/common.js";
+import { Async, Badge, Button, Card, DataNotices, EmptyState, Field, Info, Insights, Notice, PageHead, SearchBox, Segmented, Select, Stat, Star, Switch, Tabs, Delta, useDocumentTitle, teamHref, playerHref, metricValue } from "../ui/common.js";
 import { DataTable } from "../ui/table.js";
 import { PercentileBars } from "../charts/bars.js";
 import { ShotMap, ShotLegend } from "../charts/pitch.js";
 import { GoalsDistribution } from "../charts/dist.js";
 import { MiniBars } from "../charts/mini.js";
 import { rememberVisit } from "../ui/palette.js";
+import { MapLab } from "../ui/maplab.js";
 
 function Avatar({ name, size = 52 }) {
   return html`<span class="avatar" style=${{ "--h": hueOf(name), width: size + "px", height: size + "px", fontSize: size * 0.36 + "px" }} aria-hidden="true">${initials(name)}</span>`;
@@ -26,61 +28,101 @@ function findMetric(blocks, key) {
 
 // ------------------------------------------------------------------ profile
 
-function AllMetrics({ blocks, group, title = "Every metric", sub, extra }) {
-  return html`<${Card} flush title=${title} sub=${sub || `Each row is ranked among ${group}s with enough minutes. The bar is the percentile; hover a metric for what it means.`}>
+/** Every metric the app computes for him, grouped by kind, each ranked among role peers. Searchable, and blank metrics can be hidden. */
+function AllMetrics({ blocks, group, catalog }) {
+  const [q, setQ] = useState("");
+  const [onlyData, setOnlyData] = useState(true);
+  const needle = fold(q);
+  const shown = blocks.map((b) => ({ ...b, items: b.items.filter((it) => (!onlyData || it.value != null) && (!needle || fold(`${it.label} ${it.short} ${it.what}`).includes(needle))) })).filter((b) => b.items.length);
+  const count = shown.reduce((n, b) => n + b.items.length, 0);
+  const total = blocks.reduce((n, b) => n + b.items.length, 0);
+  return html`<${Card} flush title="Every metric" sub=${`Each row is ranked among ${group}s with enough minutes. The bar is the percentile; hover a metric for what it means and how it is made.`}
+    actions=${html`<div class="row wrap" style=${{ gap: "10px" }}><${SearchBox} value=${q} onInput=${setQ} placeholder="Find a metric" width="200px" /><${Switch} checked=${onlyData} onChange=${setOnlyData}>Only those with a value</${Switch}></div>`}>
     <div class="table-wrap"><table class="data dense metric-table">
-      <thead><tr><th>Metric</th><th class="num">Per 90 / total</th><th>Percentile</th><th class="num">Rank</th></tr></thead>
+      <thead><tr><th>Metric</th><th class="num">Value</th><th>Percentile among ${group}s</th><th class="num">Rank</th></tr></thead>
       <tbody>
-        ${blocks.map((b) => html`<${BlockRows} key=${b.category} block=${b} />`)}
+        ${shown.map((b) => html`<${BlockRows} key=${b.category} block=${b} catalog=${catalog} />`)}
+        ${!shown.length ? html`<tr><td colspan="4" class="muted" style=${{ textAlign: "center", height: "72px" }}>No metric matches “${q}”.</td></tr>` : null}
       </tbody>
     </table></div>
-    ${extra || null}
+    <div class="card-foot xsmall">${count} of ${total} metrics shown. A metric with no value needs data that is not stored for him (for example event data), so it is blank, never zero.</div>
   </${Card}>`;
 }
 
-/** Defending and passing, from the optional WhoScored event data. Same table as "Every metric", ranked among role peers who have event data. */
-function EventCard({ ev, group }) {
-  if (!ev || (!ev.available && !ev.stored)) return null;
-  if (!ev.available) {
-    return html`<${Card} title="Defending and passing"><p class="muted small">No event data for this player in this view. Event data (duels, tackles, passing) only covers the league seasons you have fetched with <code>prem events sync</code>, and only players it could match to Understat.</p></${Card}>`;
-  }
-  const order = [...new Set(ev.items.map((i) => i.category))];
-  const blocks = order.map((category) => ({ category, items: ev.items.filter((i) => i.category === category).map((i) => ({ ...i, pool_n: ev.pool_n })) }));
-  const note = html`<div class="card-foot row wrap" style=${{ gap: "12px" }}>
-    <span>Based on ${plural(ev.matches, "match", "matches")} and ${int(ev.minutes)} minutes of event data (WhoScored).</span>
-    ${ev.in_pool ? null : html`<${Badge} tone="warn" title=${`Below ${ev.pool_minutes} minutes, so the ranking is pulled toward the role average`}>Few minutes: read with care</${Badge}>`}
-  </div>`;
-  return html`<${AllMetrics} blocks=${blocks} group=${group} title="Defending and passing"
-    sub=${ev.pool_n > 1
-      ? `Ranked among ${ev.pool_n} ${group}s who have event data (${ev.pool_minutes}+ minutes). Duels are tackles, challenges and aerial duels as the defending side; hover a metric for its exact definition.`
-      : `Too little event data to rank ${group}s yet: percentiles appear as more matches are fetched. Duels are tackles, challenges and aerial duels as the defending side.`} extra=${note} />`;
+function BlockRows({ block, catalog }) {
+  return html`<tr class="group-row"><th colspan="4" title=${block.blurb}>${block.category}</th></tr>
+    ${block.items.map((it) => {
+      const def = catalog?.player?.metrics?.[it.key] || it;
+      const neutral = it.hib === null;
+      return html`<tr key=${it.key}>
+        <td><span class="row" style=${{ gap: "6px" }}>${it.label}${it.needs === "events" ? html` <span class="badge outline" title="Needs event data">events</span>` : null}<${Info} text=${html`<div><b>${it.label}</b><br />${it.what}<br /><span class="muted">${it.read}</span><br /><span class="muted xsmall">${it.formula}</span></div>`} /></span></td>
+        <td class="num">${fmtMetric(def, it.value)}</td>
+        <td style=${{ width: "34%" }}>${it.pct == null ? html`<span class="muted">${it.value == null ? "no data" : "not ranked"}</span>` : html`<span class="row" style=${{ gap: "10px" }}><span class="bar-inline" style=${{ flex: 1 }}><i style=${{ width: it.pct + "%", background: neutral ? "var(--ink-3)" : undefined }}></i></span><b class="num" style=${{ minWidth: "26px", textAlign: "right" }}>${Math.round(it.pct)}</b></span>`}</td>
+        <td class="num muted">${it.rank && !neutral ? `${it.rank} of ${it.pool_n}` : "–"}</td>
+      </tr>`;
+    })}`;
 }
 
-function BlockRows({ block }) {
-  return html`<tr class="group-row"><th colspan="4">${block.category}</th></tr>
-    ${block.items.map((it) => html`<tr key=${it.key}>
-      <td><span class="row" style=${{ gap: "6px" }}>${it.label}<${Info} text=${html`<div><b>${it.label}</b><br />${it.what}<br /><span class="muted">${it.read}</span></div>`} /></span></td>
-      <td class="num">${metricValue(it, it.value)}</td>
-      <td style=${{ width: "34%" }}>${it.pct == null ? html`<span class="muted">not ranked</span>` : html`<span class="row" style=${{ gap: "10px" }}><span class="bar-inline" style=${{ flex: 1 }}><i style=${{ width: it.pct + "%" }}></i></span><b class="num" style=${{ minWidth: "26px", textAlign: "right" }}>${Math.round(it.pct)}</b></span>`}</td>
-      <td class="num muted">${it.rank ? `${it.rank} of ${it.pool_n}` : "–"}</td>
-    </tr>`)}`;
+/** How much event data stands behind the event metrics: they are ranked only among role peers who also have it. */
+function EventNote({ ev }) {
+  if (!ev) return null;
+  if (!ev.available) return html`<${Notice} icon="info">No event data is stored for him in this view, so the metrics that need it (passing, duels, carries, pressing, goalkeeping detail) are blank, never zero. They appear by themselves as event data is fetched: see the Data page.</${Notice}>`;
+  return html`<p class="xsmall muted">Event metrics rest on ${plural(ev.matches, "match", "matches")} and ${int(ev.minutes)} minutes of event data, ranked among the ${ev.pool_n} players of his role who have it${ev.in_pool ? "" : ". He has fewer than " + ev.pool_minutes + " minutes of it, so those rankings are pulled toward the average"}.</p>`;
 }
 
-function RoleFacts({ d }) {
+function RoleFacts({ d, ctx }) {
   const p = d.player;
-  const seasons = Object.entries(d.positions_minutes || {}).sort((a, b) => b[0] - a[0]);
+  const how = { minutes: "The position he lined up in most (from match line-ups)", listed: "Understat's listed position", favorite: "Understat's favourite position", inferred: "His minutes profile (position unknown)" }[p.group_source] || p.group_source;
+  const mins = Object.entries(p.pos_min || {}).sort((a, b) => b[1] - a[1]);
   return html`<${Card} title="Role" sub="How the app decides who he is compared with">
     <dl class="kv">
       <dt>Compared as</dt><dd>${d.group_label}</dd>
-      <dt>Decided by</dt><dd>${{ listed: "Understat's listed position", favorite: "Understat favourite position", inferred: "His minutes profile" }[p.group_source] || p.group_source}</dd>
+      ${p.pos2 ? html`<dt>Detailed position</dt><dd>${ctx?.positions?.labels?.[p.pos2] || p.pos2}</dd>` : null}
+      <dt>Decided by</dt><dd>${how}</dd>
       ${p.favorite ? html`<dt>Favourite position</dt><dd>${p.favorite}</dd>` : null}
       <dt>Peer group</dt><dd>${p.pool_n} ${d.group_label.toLowerCase()}s</dd>
       <dt>Small-sample rule</dt><dd>${p.in_pool ? "Passed" : "Below the minimum"}</dd>
     </dl>
-    ${p.group_source === "inferred" ? html`<div class="notice" style=${{ marginTop: "12px" }}><${Icon} name="info" size="sm" /><div>His position is uncertain, so the app assigns the role whose typical profile his minutes resemble. It sharpens once Understat position data is fetched.</div></div>` : null}
-    ${seasons.length ? html`<div class="divider" style=${{ margin: "14px 0" }}></div><div class="label" style=${{ marginBottom: "8px" }}>Positions played</div>
-      <div class="stack" style=${{ "--gap": "6px" }}>${seasons.map(([s, list]) => html`<div class="row between small" key=${s}><span class="muted">${seasonLabel(s)}</span><span>${list.map((x) => `${x.position} ${int(x.minutes)} min`).join(" · ")}</span></div>`)}</div>` : null}
+    ${p.group_source === "inferred" ? html`<div class="notice" style=${{ marginTop: "12px" }}><${Icon} name="info" size="sm" /><div>His position is uncertain, so the app assigns the role whose typical profile his minutes resemble. It sharpens once position data arrives from the match pages.</div></div>` : null}
+    ${mins.length ? html`<div class="divider" style=${{ margin: "14px 0" }}></div><div class="label" style=${{ marginBottom: "8px" }}>Minutes by position</div>
+      <div class="stack" style=${{ "--gap": "6px" }}>${mins.map(([pos, m]) => html`<div class="row between small" key=${pos}><span class="muted">${pos}</span><span class="num">${int(m)} min</span></div>`)}</div>` : null}
   </${Card}>`;
+}
+
+// ------------------------------------------------------------------ match log
+
+function MinutesStrip({ matches }) {
+  return html`<div class="minutes-strip" role="img" aria-label="Minutes played in each match">
+    ${matches.map((m) => html`<i key=${m.i} class=${m.started ? "start" : "sub"} style=${{ height: Math.max(4, Math.min(100, (m.minutes / 90) * 100)) + "%" }}
+      onMouseMove=${(e) => tooltip.move(e, html`<div><div class="tt-title">${m.home ? "vs" : "at"} ${m.opp}</div><div class="tt-sub">${dateShort(m.date)} · ${m.started ? "started" : "substitute"}</div><div class="tt-row"><span class="k">Minutes</span><span class="v">${m.minutes}</span></div></div>`)} onMouseLeave=${tooltip.hide}></i>`)}
+  </div>`;
+}
+
+function PlayerMatches({ id, league, season }) {
+  const q = useApi(`/api/maps/player/${id}`, { league, season });
+  return html`<${Async} q=${q}>${(d) => {
+    const ms = d.matches || [];
+    if (!ms.length) return html`<${Card} title="Match log"><${EmptyState} compact icon="calendar" title="No match log yet" text="The match log comes from the stored event data and match pages. It appears once matches he played have been fetched: see the Data page." /></${Card}>`;
+    const starts = ms.filter((m) => m.started).length;
+    const total = ms.reduce((a, m) => a + m.minutes, 0);
+    const cols = [
+      { key: "date", label: "Date", firstDir: "desc", render: (m) => dateShort(m.date) },
+      { key: "opp", label: "Opponent", firstDir: "asc", render: (m) => html`<span><span class="muted xsmall">${m.home ? "vs" : "at"}</span> ${m.opp}</span>` },
+      { key: "minutes", label: "Minutes", num: true, render: (m) => m.minutes },
+      { key: "started", label: "Role", value: (m) => (m.started ? 1 : 0), render: (m) => (m.started ? "Started" : "Substitute") },
+      { key: "report", label: "", sortable: false, render: (m) => (m.match_id ? html`<a class="link xsmall" href=${`#/match/${m.match_id}`} onClick=${(e) => e.stopPropagation()}>Match report</a>` : null) },
+    ];
+    return html`<div class="stack" style=${{ "--gap": "16px" }}>
+      <div class="tiles">
+        <${Stat} label="Matches" value=${ms.length} sub="with event data" />
+        <${Stat} label="Starts" value=${starts} sub=${`${ms.length - starts} from the bench`} />
+        <${Stat} label="Minutes per match" value=${nf(total / ms.length, 0)} sub=${`${int(total)} in total`} />
+        <${Stat} label="Full matches" value=${ms.filter((m) => m.minutes >= 88).length} sub="88 minutes or more" />
+      </div>
+      <${Card} title="Minutes in each match" sub="One bar per match, oldest on the left. Darker bars are starts, lighter ones are appearances from the bench."><${MinutesStrip} matches=${ms} /></${Card}>
+      <${Card} flush title="Match log"><${DataTable} columns=${cols} rows=${ms} rowKey=${(m) => m.i} initialSort=${{ key: "date", dir: "desc" }} dense caption="Matches played" onRowClick=${(m) => m.match_id && navigate(`/match/${m.match_id}`)} /></${Card}>
+    </div>`;
+  }}</${Async}>`;
 }
 
 // ------------------------------------------------------------------ finishing
@@ -225,6 +267,15 @@ function Similar({ d, scope, meta, id }) {
   </div>`;
 }
 
+// ------------------------------------------------------------------ maps
+
+function PlayerMaps({ id, league, season }) {
+  const q = useApi(`/api/maps/player/${id}`, { league, season });
+  return html`<${Card} title="Maps" sub="Where he touches the ball, passes, defends and carries it, across every match he played. Drawn from the stored event data, so it needs no further download.">
+    <${Async} q=${q}>${(m) => html`<${MapLab} data=${m} kind="player" />`}</${Async}>
+  </${Card}>`;
+}
+
 // ------------------------------------------------------------------ page
 
 function PlayerView({ d, id, tab, span, setSpan }) {
@@ -240,7 +291,8 @@ function PlayerView({ d, id, tab, span, setSpan }) {
   const dScope = d.scope;
   useEffect(() => { rememberVisit({ kind: "player", href: playerHref(id, { league: dScope.league, season: dScope.seasons?.length === 1 ? dScope.seasons[0] : scope.season }), label: p.name, sub: `${p.team} · ${detail.group_label}` }); }, [id]);
 
-  const tabs = [{ value: "profile", label: "Profile" }, { value: "finishing", label: "Finishing and shots", count: (detail.shots || []).length }, { value: "seasons", label: "Seasons", count: detail.career.length }, { value: "similar", label: "Similar players" }];
+  const tabs = [{ value: "profile", label: "Profile" }, { value: "maps", label: "Maps" }, { value: "matches", label: "Match log" }, { value: "finishing", label: "Finishing and shots", count: (detail.shots || []).length }, { value: "seasons", label: "Seasons", count: detail.career.length }, { value: "similar", label: "Similar players" }];
+  const mapSeason = dScope.seasons?.length === 1 ? dScope.seasons[0] : scope.season;
   const teamLinks = (p.teams || [p.team]).map((tm, i) => html`${i ? " / " : ""}<a class="link" href=${teamHref(tm)} key=${tm}>${tm}</a>`);
   return html`
     <${PageHead} lead=${html`<${Avatar} name=${p.name} />`} eyebrow=${`${detail.group_label} · ${dScope.league_name}`} title=${p.name}
@@ -253,7 +305,7 @@ function PlayerView({ d, id, tab, span, setSpan }) {
     <${DataNotices} scope=${dScope} meta=${d.meta} extra=${(d.meta?.warnings || []).slice(0, 2)} />
     ${p.tags?.length ? html`<div class="row wrap" style=${{ gap: "8px" }}>${p.tags.map((tg) => html`<span class="tag strong-tag" key=${tg.key} title=${tg.why}>${tg.label}<span class="muted"> · ${tg.why}</span></span>`)}${!p.in_pool ? html`<${Badge} tone="warn" title="Fewer minutes than the ranking pool requires">Small sample</${Badge}>` : null}</div>` : (!p.in_pool ? html`<${Badge} tone="warn">Small sample</${Badge}>` : null)}
     <div class="tiles">
-      <${Stat} label="Role score" value=${p.output != null ? Math.round(p.output) : "–"} sub=${`vs ${p.pool_n} ${detail.group_label.toLowerCase()}s`} title="Average percentile across the metrics that define his role" />
+      <${Stat} label="Role score" value=${p.output != null ? Math.round(p.output) : "–"} sub=${p.score_full != null ? `All-data score ${Math.round(p.score_full)}` : `vs ${p.pool_n} ${detail.group_label.toLowerCase()}s`} title="Average percentile across the metrics that define his role (Understat). The all-data score also uses the event metrics." />
       <${Stat} label="Goals" value=${t.goals} sub=${`${nf(t.xg, 1)} xG · ${signed(t.g_xg, 1)}`} tone=${t.g_xg > 1 ? "up" : t.g_xg < -1 ? "down" : ""} />
       <${Stat} label="Assists" value=${t.assists} sub=${`${nf(t.xa, 1)} xA`} />
       <${Stat} label="npxG + xA per 90" value=${contrib ? nf(contrib.value, 2) : "–"} sub=${contrib?.pct != null ? `${ordinal(Math.round(contrib.pct))} percentile` : ""} />
@@ -268,11 +320,13 @@ function PlayerView({ d, id, tab, span, setSpan }) {
           ${profile.length ? html`<${PercentileBars} items=${profile.map((x) => ({ key: x.key, label: x.short, pct: x.pct, raw: metricValue(x, x.value),
             tip: html`<${Tip} title=${x.label} sub=${`${detail.group_label}s with enough minutes`} rows=${[{ label: "Value", value: metricValue(x, x.value) }, { label: "Percentile", value: x.pct == null ? "–" : Math.round(x.pct) }, { label: "Rank", value: x.rank ? `${x.rank} of ${p.pool_n}` : "–" }]} />` }))} />` : html`<${EmptyState} compact title="Not ranked" text="Goalkeepers and players under the minute threshold are not ranked." />`}
         </${Card}>
-        <${RoleFacts} d=${detail} />
+        <${RoleFacts} d=${detail} ctx=${metaState.catalog} />
       </div>
-      ${detail.blocks.length ? html`<${AllMetrics} blocks=${detail.blocks} group=${detail.group_label.toLowerCase()} />` : null}
-      <${EventCard} ev=${detail.events} group=${detail.group_label.toLowerCase()} />
+      <${EventNote} ev=${detail.events} />
+      ${detail.blocks.length ? html`<${AllMetrics} blocks=${detail.blocks} group=${detail.group_label.toLowerCase()} catalog=${metaState.catalog} />` : null}
     </div>` : null}
+    ${tab === "maps" ? html`<${PlayerMaps} id=${id} league=${dScope.league} season=${mapSeason} />` : null}
+    ${tab === "matches" ? html`<${PlayerMatches} id=${id} league=${dScope.league} season=${mapSeason} />` : null}
     ${tab === "finishing" ? html`<${Finishing} d=${detail} />` : null}
     ${tab === "seasons" ? html`<${Seasons} career=${detail.career} />` : null}
     ${tab === "similar" ? html`<${Similar} d=${{ ...d, scope: dScope, similar: d.similar }} scope=${scope} meta=${meta} id=${id} />` : null}
@@ -290,7 +344,7 @@ export default function Player({ params }) {
   const seasons = span > 1 && resolved ? Array.from({ length: span }, (_, i) => resolved - i) : undefined;
   const q = useApi(`/api/player/${id}`, { league, season: seasons ? undefined : season, seasons });
   useEffect(() => { const s = q.data?.scope?.seasons; if (s?.length === 1) setResolved(s[0]); }, [q.data?.scope?.seasons?.join()]);
-  const tab = ["finishing", "seasons", "similar"].includes(query.tab) ? query.tab : "profile";
+  const tab = ["maps", "matches", "finishing", "seasons", "similar"].includes(query.tab) ? query.tab : "profile";
   useDocumentTitle(q.data?.detail?.player?.name || "Player");
   return html`<${Async} q=${q}>${(d) => html`<${PlayerView} d=${d} id=${id} tab=${tab} span=${span} setSpan=${(v) => setQuery({ span: v === "1" ? null : v })} />`}</${Async}>`;
 }

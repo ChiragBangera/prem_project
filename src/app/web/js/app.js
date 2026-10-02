@@ -2,7 +2,7 @@
 import { html, useEffect, useRef, useState } from "./lib/html.js";
 import { Icon } from "./lib/icons.js";
 import { ui, metaStore, pending, shortlistStore, useStore } from "./lib/store.js";
-import { api, useApi } from "./lib/api.js";
+import { useApi } from "./lib/api.js";
 import { compile, match, useLocation, href, navigate } from "./lib/router.js";
 import { TooltipHost } from "./lib/tooltip.js";
 import { relTime } from "./lib/format.js";
@@ -15,52 +15,58 @@ import Briefing from "./pages/briefing.js";
 import League from "./pages/league.js";
 import Team from "./pages/team.js";
 import Scout from "./pages/scout.js";
+import Teams from "./pages/teams.js";
 import Player from "./pages/player.js";
 import Compare from "./pages/compare.js";
 import Matches from "./pages/matches.js";
 import MatchPage from "./pages/match.js";
-import Forecast from "./pages/forecast.js";
 import Shortlist from "./pages/shortlist.js";
 import DataPage from "./pages/data.js";
-import Method from "./pages/method.js";
+import Dictionary from "./pages/dictionary.js";
 import Guide from "./pages/guide.js";
+
+/** A page that only forwards to another address: kept so old links and bookmarks keep working. */
+const redirect = (to) => function Redirect() {
+  useEffect(() => { navigate(to, undefined, { replace: true }); }, []);
+  return null;
+};
 
 const routes = compile([
   { path: "/", page: Briefing, nav: "/" },
   { path: "/league", page: League, nav: "/league" },
-  { path: "/team/:team", page: Team, nav: "/league" },
+  { path: "/team/:team", page: Team, nav: "/teams" },
   { path: "/scout", page: Scout, nav: "/scout" },
+  { path: "/teams", page: Teams, nav: "/teams" },
   { path: "/player/:id", page: Player, nav: "/scout" },
   { path: "/compare", page: Compare, nav: "/compare" },
   { path: "/matches", page: Matches, nav: "/matches" },
   { path: "/match/:id", page: MatchPage, nav: "/matches" },
-  { path: "/forecast", page: Forecast, nav: "/forecast" },
   { path: "/shortlist", page: Shortlist, nav: "/shortlist" },
   { path: "/data", page: DataPage, nav: "/data" },
-  { path: "/method", page: Method, nav: "/method" },
+  { path: "/dictionary", page: Dictionary, nav: "/dictionary" },
   { path: "/guide", page: Guide, nav: "/guide" },
+  { path: "/method", page: redirect("/dictionary"), nav: "/dictionary" },
+  { path: "/forecast", page: redirect("/"), nav: "/" },
 ]);
 
 const NAV = [
   { label: "Read", items: [
     { path: "/", name: "Briefing", icon: "briefing" },
     { path: "/league", name: "League", icon: "table" },
-    { path: "/matches", name: "Matches", icon: "calendar", mobile: false },
+    { path: "/matches", name: "Matches", icon: "calendar" },
   ] },
-  { label: "Scout", items: [
+  { label: "Explore", items: [
     { path: "/scout", name: "Scout", icon: "scout" },
+    { path: "/teams", name: "Teams", icon: "shield" },
     { path: "/compare", name: "Compare", icon: "compare", mobile: false },
-    { path: "/shortlist", name: "Shortlist", icon: "star", count: true },
+    { path: "/shortlist", name: "Shortlist", icon: "star", count: true, mobile: false },
   ] },
-  { label: "Predict", items: [
-    { path: "/forecast", name: "Forecast", icon: "forecast" },
-  ] },
-  { label: "Help", items: [
-    { path: "/guide", name: "Guide", icon: "info" },
+  { label: "Reference", items: [
+    { path: "/dictionary", name: "Dictionary", icon: "dictionary", mobile: false },
+    { path: "/guide", name: "Guide", icon: "info", mobile: false },
   ] },
   { label: "System", items: [
-    { path: "/data", name: "Data", icon: "database", mobile: false },
-    { path: "/method", name: "Method", icon: "book", mobile: false },
+    { path: "/data", name: "Data", icon: "database" },
   ] },
 ];
 
@@ -95,10 +101,13 @@ function DataPill({ meta }) {
   if (!meta) return null;
   if (meta.mode.demo) return html`<a class="pill warn" href=${href("/data")} title="Everything shown is synthetic demo data"><i></i><span class="pill-text">Demo data</span></a>`;
   const newest = Math.max(0, ...(meta.cache?.leagues || []).map((l) => l.fetched_at || 0));
-  const jobRunning = (meta.jobs || []).some((j) => j.state === "running");
+  const auto = meta.auto || {};
+  const busy = (meta.jobs || []).some((j) => j.state === "running") || auto.running || Boolean(auto.events_running);
   const age = newest ? Date.now() / 1000 - newest : null;
-  const label = jobRunning ? "Syncing…" : meta.mode.offline ? "Offline cache" : age == null ? "No data yet" : `Updated ${relTime(age)}`;
-  return html`<a class=${"pill" + (age == null && !jobRunning ? " warn" : "")} href=${href("/data")} title="Open data status"><i class=${jobRunning ? "live" : ""}></i><span class="pill-text">${label}</span></a>`;
+  const problem = auto.enabled && auto.errors > 0;
+  const label = busy ? (auto.events_running ? `Fetching ${auto.events_running}…` : "Updating…") : meta.mode.offline ? "Offline cache" : age == null ? "No data yet" : `Updated ${relTime(age)}`;
+  const title = meta.mode.offline ? "Offline: serving what is stored" : auto.enabled ? `Updates itself in the background${problem ? " (the last cycle had problems: open Data)" : ""}` : "Automatic updates are off: open Data";
+  return html`<a class=${"pill" + ((age == null && !busy) || problem ? " warn" : "")} href=${href("/data")} title=${title}><i class=${busy ? "live" : ""}></i><span class="pill-text">${label}</span></a>`;
 }
 
 function ThemeToggle() {
@@ -184,7 +193,7 @@ export function App() {
   return html`<div class="app">
     <${Rail} current=${found?.route.nav} meta=${meta} />
     <div class="main">
-      ${meta?.mode?.demo ? html`<div class="demo-strip"><b>Demo data</b><span>Every player, score and forecast here is synthetic, so you can explore safely. Real Understat data replaces it once this machine can reach the site.</span><a class="link" href=${href("/data")}>Data status</a></div>` : null}
+      ${meta?.mode?.demo ? html`<div class="demo-strip"><b>Demo data</b><span>Every player, score and statistic here is synthetic, so you can explore safely. Real Understat data replaces it once this machine can reach the site.</span><a class="link" href=${href("/data")}>Data status</a></div>` : null}
       <${TopBar} meta=${meta} onSearch=${() => setPaletteOpen(true)} />
       <main id="main" class="page" tabindex="-1" ref=${mainRef}>
         ${bootError
@@ -194,7 +203,7 @@ export function App() {
             : html`<${ErrorBoundary} resetKey=${loc.path + JSON.stringify(loc.query)}>
                 ${Page
                   ? html`<${Page} key=${loc.path} params=${found.params} query=${loc.query} />`
-                  : html`<div class="card"><div class="state"><h3>No such page</h3><p>The address ${loc.path} does not exist.</p><a class="btn" href=${href("/")}>Back to the briefing</a></div></div>`}
+                  : html`<div class="card"><div class="state"><h2>No such page</h2><p>The address ${loc.path} does not exist.</p><a class="btn" href=${href("/")}>Back to the briefing</a></div></div>`}
               </${ErrorBoundary}>`}
       </main>
     </div>

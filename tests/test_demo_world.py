@@ -29,7 +29,6 @@ def test_full_season_shape(league_2019):
     assert len(ls.teams) == 20 and len(ls.fixtures) == 380 and ls.n_played == 380
     assert all(len(t.history) == 38 for t in ls.teams.values())
     assert all(m.opponent and m.match_id for t in ls.teams.values() for m in t.history)
-    assert sum(1 for f in ls.fixtures if f.forecast) == 380
 
 
 def test_partial_current_season(provider):

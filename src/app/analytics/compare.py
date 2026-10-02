@@ -121,8 +121,7 @@ def compare_teams(ls: LeagueSeason, name_a: str, name_b: str) -> dict:
     for f in sorted(ls.fixtures, key=lambda f: f.dt):
         if {f.home, f.away} == {a.name, b.name}:
             meetings.append({"id": f.id, "date": f.date, "home": f.home, "away": f.away, "played": f.played, "hg": f.hg, "ag": f.ag,
-                             "hxg": f.hxg, "axg": f.axg,
-                             "forecast": None if f.forecast is None else dict(zip(("home", "draw", "away"), f.forecast))})
+                             "hxg": f.hxg, "axg": f.axg})
 
     def series(team):
         return [round(m.xgd, 3) for m in team.history]

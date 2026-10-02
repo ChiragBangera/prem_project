@@ -14,7 +14,6 @@ import random
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 
-import numpy as np
 
 from app.stats import outcome_probs, poisson_binomial
 
@@ -144,6 +143,13 @@ class Appearance:
 
 
 @dataclass(slots=True)
+class OwnGoalSim:
+    minute: int
+    venue: str      # the side of the player who put it into his own net; the other side is credited with the goal
+    player: Player
+
+
+@dataclass(slots=True)
 class MatchSim:
     id: int
     dt: str
@@ -156,10 +162,10 @@ class MatchSim:
     shots: dict[str, list[ShotSim]]
     lineups: dict[str, list[Appearance]]
     formations: dict[str, str]
-    forecast: tuple[float, float, float]
     xpts: tuple[float, float]
     ppda: dict[str, tuple[float, float]]  # venue -> (att, def)
     deep: dict[str, int]
+    own: list[OwnGoalSim] = field(default_factory=list)
 
 
 @dataclass(slots=True)
@@ -168,7 +174,6 @@ class FixtureSim:
     dt: str
     home: str
     away: str
-    forecast: tuple[float, float, float]
     match: MatchSim | None = None
 
 
@@ -238,13 +243,6 @@ def _form_paths(rng: random.Random, teams: list[str], rounds: int) -> dict[str, 
     return paths
 
 
-def _outcome_forecast(mu_h: float, mu_a: float) -> tuple[float, float, float]:
-    def pmf(mu):
-        return np.array([math.exp(-mu) * mu**k / math.factorial(k) for k in range(9)])
-
-    return outcome_probs(pmf(mu_h), pmf(mu_a))
-
-
 def simulate_season(league: League, season: int, today: date) -> SeasonData:
     clubs = club_seasons(league, season)
     teams = list(clubs)
@@ -269,8 +267,7 @@ def simulate_season(league: League, season: int, today: date) -> SeasonData:
             ch, ca = clubs[home], clubs[away]
             mu_h = BASE_XG * math.exp(ch.attack - ca.defence + HOME_ADV + forms[home][r])
             mu_a = BASE_XG * math.exp(ca.attack - ch.defence + forms[away][r])
-            forecast = _outcome_forecast(mu_h, mu_a)
-            fixture = FixtureSim(mid, when.strftime("%Y-%m-%d %H:%M:%S"), home, away, forecast)
+            fixture = FixtureSim(mid, when.strftime("%Y-%m-%d %H:%M:%S"), home, away)
             if when.date() < today:
                 shot_id, match = _simulate_match(rng, data, fixture, mu_h, mu_a, shot_id)
                 fixture.match = match
@@ -371,6 +368,7 @@ def _simulate_match(rng, data: SeasonData, fixture: FixtureSim, mu_h: float, mu_
 
     _credit_players(rng, shots, appearances)
     _cards(rng, appearances)
+    own = _own_goals(fixture.id, own_goals, appearances)
 
     ph, pd, pa = outcome_probs(poisson_binomial(s.xg for s in shots["h"]), poisson_binomial(s.xg for s in shots["a"]))
     ppda = {}
@@ -394,13 +392,29 @@ def _simulate_match(rng, data: SeasonData, fixture: FixtureSim, mu_h: float, mu_
         shots=shots,
         lineups=lineups,
         formations=formations,
-        forecast=fixture.forecast,
         xpts=(3 * ph + pd, 3 * pa + pd),
         ppda=ppda,
         deep=deep,
+        own=own,
     )
     _aggregate_players(data, match)
     return shot_id, match
+
+
+def _own_goals(match_id: int, credited: dict[str, int], apps: dict[str, list[Appearance]]) -> list[OwnGoalSim]:
+    """Who put each own goal into his own net, and when. Drawn from a generator of its own so the rest of the world is the same with or without them."""
+    out: list[OwnGoalSim] = []
+    for side, n in credited.items():
+        venue = "a" if side == "h" else "h"
+        for k in range(n):
+            rng = random.Random(match_id * 6007 + 11 + k)
+            minute = rng.randint(4, 88)
+            field_players = [a for a in apps[venue] if a.player.role != "GK"]
+            on = [a for a in field_players if a.start <= minute < a.end] or field_players
+            pick = rng.choices(on, [3.0 if a.player.role in ("CB", "FB") else 1.0 for a in on])[0]
+            pick.own_goals += 1
+            out.append(OwnGoalSim(minute, venue, pick.player))
+    return out
 
 
 def _state_label(diff: int) -> str:

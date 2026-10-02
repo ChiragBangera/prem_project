@@ -4,11 +4,14 @@ from __future__ import annotations
 
 from datetime import date
 
-import pytest
 
-from app.analytics.players import build_dataset
-from app.events.aggregate import COUNTS
-from app.events.rates import EVENT_KEYS
+from app.analytics.players import SeasonInput, build_dataset
+from app.metrics.player import PLAYER_METRICS
+
+# the events metrics the first version of the app shipped (their definitions, and so their values, must not move)
+EVENT_KEYS = ("fwd_pass_ratio", "pass_acc", "def_duel_win", "aerial_win", "passes90", "prog_passes90", "def_duels90", "tackles90", "interceptions90", "recoveries90")
+COUNTS = ("passes", "pass_ok", "fwd", "prog", "crosses", "tackles", "challenges", "aer", "aer_won", "aer_def", "aer_def_won", "int", "rec", "takeons", "takeons_won", "disp", "touches")
+ALL_EVENT_METRICS = [m.key for m in PLAYER_METRICS if m.needs == "events"]
 
 TODAY = date(2020, 6, 1)
 
@@ -34,10 +37,11 @@ def test_event_data_is_additive_and_players_without_it_stay_blank(demo_league):
     none = [r for r in with_events.rows if r["ev_minutes"] == 0]
     assert have and none
     assert all(all(r[k] is None for k in EVENT_KEYS) and r["evpct"] == {} and not r["ev_in_pool"] for r in none)
-    assert all(r["passes90"] is not None and r["def_duels90"] is not None for r in have)
+    assert all(r["passes90"] is not None for r in have)
+    assert all((r["def_duels90"] is None) == (r["group"] == "GK") for r in have)   # defensive duels mean nothing for a goalkeeper: blank, not zero
     assert all(all(0 <= v <= 100 for v in r["evpct"].values()) for r in have)
-    # goalkeepers are not ranked on these, like the Understat metrics
-    assert all(r["evpct"] == {} for r in have if r["group"] == "GK")
+    # goalkeepers are not ranked on outfield measures
+    assert all("tackles90" not in r["evpct"] for r in have if r["group"] == "GK")
     assert base.rows[0]["ev_minutes"] == 0 and all(r[k] is None for r in base.rows for k in EVENT_KEYS)
 
 
@@ -68,18 +72,21 @@ def test_few_attempts_are_pulled_toward_the_average_not_ranked_on_a_lucky_streak
     assert all(r["evpct"]["def_duel_win"] < best_steady for r in lucky)       # ...but the ranking does not trust 2 duels
 
 
-def test_player_detail_carries_an_event_card_only_when_events_exist(demo_league):
+def test_player_detail_carries_event_metrics_only_when_events_exist(demo_league):
     from app.analytics.player_detail import player_detail
 
     ds = build_dataset([demo_league], events_of=lambda pid: totals_for(pid) if pid % 2 == 0 else None, today=TODAY)
     with_ev = next(r for r in ds.rows if r["id"] % 2 == 0 and r["group"] == "DEF" and r["ev_in_pool"])
     without = next(r for r in ds.rows if r["id"] % 2 == 1)
-    card = player_detail(with_ev, None, [2019])["events"]
+    detail = player_detail(with_ev, None, [2019], pools=ds.pools)
+    card = detail["events"]
     assert card["available"] and card["pool_n"] > 0 and card["pool_minutes"] == 450 and card["matches"] == 20
-    keys = [i["key"] for i in card["items"]]
-    assert keys[:3] == ["def_duels90", "def_duel_win", "tackles90"]          # a defender's own measures come first
-    assert all(i["focus"] for i in card["items"][:8]) and all(0 <= i["pct"] <= 100 for i in card["items"] if i["pct"] is not None)
-    assert player_detail(without, None, [2019])["events"] == {"available": False}
+    event_items = [i for b in detail["blocks"] for i in b["items"] if i["needs"] == "events"]
+    assert {"tackles90", "def_duel_win", "pass_acc"} <= {i["key"] for i in event_items}
+    assert all(0 <= i["pct"] <= 100 and i["pool_n"] for i in event_items if i["pct"] is not None)
+    assert {b["group"] for b in detail["blocks"]} >= {"passing", "defending", "duels"}
+    blank = player_detail(without, None, [2019], pools=ds.pools)
+    assert blank["events"] == {"available": False} and not [i for b in blank["blocks"] for i in b["items"] if i["needs"] == "events"]
 
 
 def test_a_barely_fetched_season_still_has_a_ranking_pool(demo_league):
@@ -139,3 +146,45 @@ def test_scouting_highlights_add_event_cards_only_with_solid_event_data(demo_lea
     assert not [i for i in scouting_highlights(base.rows) if i.id.startswith(("scout.winner", "scout.progressor"))]
     cameo = build_dataset([demo_league], events_of=lambda pid: totals_for(pid, minutes=90.0), today=TODAY)   # one match each: too little to headline anyone
     assert not [i for i in scouting_highlights(cameo.rows) if i.id.startswith(("scout.winner", "scout.progressor"))]
+
+
+def counters_for(pid: int, minutes: float = 1800.0) -> dict:
+    """The same synthetic season in the richer pipeline's counter names."""
+    t = totals_for(pid, minutes)
+    rename = {"aer": "aerials", "aer_won": "aerial_won", "aer_def": "aerial_def", "aer_def_won": "aerial_def_won", "int": "interceptions", "rec": "recoveries"}
+    c = {rename.get(k, k): v for k, v in t.items() if k in COUNTS}
+    c["min"] = minutes
+    return c
+
+
+def test_the_richer_interface_gives_the_same_numbers_as_the_flat_one_and_ranks_goalkeepers_only_where_it_means_something(demo_league):
+    flat = build_dataset([demo_league], events_of=totals_for, today=TODAY)
+    inp = SeasonInput(demo_league, events={p.id: {"c": counters_for(p.id), "matches": 20, "starts": 20, "pos": {}} for p in demo_league.players})
+    rich = build_dataset([inp], today=TODAY)
+    by = {r["id"]: r for r in rich.rows}
+    assert all(abs(r[k] - by[r["id"]][k]) < 1e-9 for r in flat.rows for k in EVENT_KEYS if r[k] is not None)
+    assert [r["evpct"] for r in flat.rows if r["group"] == "DEF"] == [r["evpct"] for r in rich.rows if r["group"] == "DEF"]
+    keepers = [r for r in rich.rows if r["group"] == "GK" and r["ev_in_pool"]]
+    assert keepers and all("tackles90" not in r["evpct"] and "interceptions90" not in r["evpct"] and "pass_acc" in r["evpct"] for r in keepers)
+    assert all(by[r["id"]]["tackles90"] is None for r in keepers)     # an outfield measure is blank for a goalkeeper, not zero
+
+
+def test_a_goalkeeper_is_ranked_on_goalkeeping_among_goalkeepers(demo_league):
+    def counters(pid):
+        c = counters_for(pid)
+        c.update(gk_saves=60 + pid % 20, sot_faced=90 + pid % 20, ga_on=30, gk_claims=5 + pid % 6, gk_sweeper=3, clean_sheet=4, apps=20)
+        return c
+
+    inp = SeasonInput(demo_league, events={p.id: {"c": counters(p.id), "matches": 20, "starts": 20, "pos": {}} for p in demo_league.players})
+    ds = build_dataset([inp], today=TODAY)
+    keepers = [r for r in ds.rows if r["group"] == "GK" and r["ev_in_pool"]]
+    assert len(keepers) >= 8 and all(0 <= r["evpct"]["save_pct"] <= 100 for r in keepers)
+    best, worst = max(keepers, key=lambda r: r["save_pct"]), min(keepers, key=lambda r: r["save_pct"])
+    assert best["evpct"]["save_pct"] > worst["evpct"]["save_pct"] and best["score_full"] is not None
+    assert all(r["save_pct"] is None for r in ds.rows if r["group"] != "GK")   # no save percentage for an outfield player
+
+
+def test_the_all_data_score_exists_only_for_players_with_event_data(demo_league):
+    inp = SeasonInput(demo_league, events={p.id: {"c": counters_for(p.id), "matches": 20, "starts": 20, "pos": {}} for p in demo_league.players if p.id % 2 == 0})
+    ds = build_dataset([inp], today=TODAY)
+    assert all(r["score_full"] is None for r in ds.rows if r["id"] % 2 == 1) and any(r["score_full"] is not None for r in ds.rows if r["id"] % 2 == 0)

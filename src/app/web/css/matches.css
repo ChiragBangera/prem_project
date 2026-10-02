@@ -1,0 +1,39 @@
+/* Matches: day groups, and the compact match card (also used on the briefing and the team page). */
+
+.round-nav { display: flex; align-items: center; gap: 8px; }
+.round-head { display: flex; align-items: baseline; gap: 6px 16px; flex-wrap: wrap; }
+.round-head h2 { font-size: var(--fs-xl); font-weight: 700; font-stretch: var(--stretch-display); }
+.round-summary { display: flex; flex-wrap: wrap; gap: 4px 18px; font-size: var(--fs-sm); color: var(--ink-2); margin-left: auto; }
+.round-summary b { color: var(--ink); font-weight: 700; }
+.day { display: flex; flex-direction: column; gap: 10px; }
+.day-title { display: flex; align-items: baseline; gap: 10px; font-size: var(--fs-md); font-weight: 650; color: var(--ink); letter-spacing: 0.01em; }
+.day-title .muted { font-weight: 500; font-size: var(--fs-sm); }
+.mgrid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 330px), 1fr)); }
+
+.mc { display: flex; flex-direction: column; gap: 12px; padding: 14px 16px 14px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); transition: border-color var(--dur), background var(--dur), box-shadow var(--dur); min-width: 0; }
+a.mc:hover { border-color: var(--line-2); background: var(--surface-2); }
+.mc.flagged { border-color: color-mix(in oklab, var(--warn) 50%, var(--line)); }
+.mc-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 20px; font-size: var(--fs-xs); color: var(--ink-3); }
+.mc-when { font-weight: 550; }
+.mc-status { display: inline-flex; align-items: center; gap: 8px; font-size: var(--fs-2xs); font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase; }
+.mc-board { display: flex; flex-direction: column; gap: 12px; }
+.mc-side { display: grid; grid-template-columns: 30px minmax(0, 1fr) auto; gap: 12px; align-items: start; }
+.mc-who { display: flex; flex-direction: column; gap: 4px; min-width: 0; padding-top: 2px; }
+.mc-name { font-size: 17px; font-weight: 600; line-height: 1.2; letter-spacing: -0.005em; color: var(--ink-2); text-wrap: balance; }
+.mc-side.won .mc-name { font-weight: 750; color: var(--ink); }
+.mc-goals { font-size: 34px; line-height: 1; font-weight: 500; color: var(--ink-2); min-width: 22px; text-align: right; }
+.mc-side.won .mc-goals { font-weight: 800; color: var(--ink); }
+.mc-scorers { display: flex; flex-wrap: wrap; gap: 2px 12px; font-size: 12.5px; line-height: 1.35; color: var(--ink-3); }
+.mc-scorer b { font-weight: 600; color: var(--ink-2); }
+.mc-red { display: inline-flex; align-items: center; gap: 5px; color: var(--ink-2); font-weight: 600; }
+.mc-red i { width: 8px; height: 11px; border-radius: 1.5px; background: var(--crit); display: inline-block; }
+.mc-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; padding-top: 11px; border-top: 1px solid var(--line); }
+.mc-stat { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.mc-stat-label { font-size: var(--fs-2xs); letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-3); font-weight: 600; }
+.mc-stat-val { font-size: var(--fs-md); color: var(--ink-2); white-space: nowrap; }
+.mc-stat-val b { font-weight: 500; }
+.mc-stat-val b.lead { color: var(--ink); font-weight: 750; }
+.mc-stat-val i { font-style: normal; color: var(--ink-3); margin: 0 5px; }
+.mc-upnext { padding-top: 10px; border-top: 1px solid var(--line); }
+.mc.upcoming .mc-name { color: var(--ink); font-weight: 650; }
+@media (max-width: 420px) { .mc-goals { font-size: 30px; } .mc-name { font-size: 16px; } }

@@ -114,9 +114,6 @@ export function divColor(v) {
     : `color-mix(in oklab, var(--mid), var(--neg) ${Math.round(-a * 100)}%)`;
 }
 
-/** Ink colour that stays legible on a ramp cell at t in [0,1] (dark ramp end = light text). */
-export const heatInk = (t) => (t > 0.5 ? "#fff" : "var(--ink)");
-
 // ------------------------------------------------------------------ frame
 
 export function useWidth(ref, initial = 640) {
@@ -181,11 +178,6 @@ export function nearest(values, target) {
     values[mid] < target ? (lo = mid) : (hi = mid);
   }
   return Math.abs(values[lo] - target) <= Math.abs(values[hi] - target) ? lo : hi;
-}
-
-export function svgPoint(event, el) {
-  const rect = el.getBoundingClientRect();
-  return { x: event.clientX - rect.left, y: event.clientY - rect.top };
 }
 
 /** Legend that doubles as a series toggle when `onToggle` is given. */

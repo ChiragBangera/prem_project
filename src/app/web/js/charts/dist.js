@@ -2,7 +2,7 @@
 import { html } from "../lib/html.js";
 import { tooltip } from "../lib/tooltip.js";
 import { pct } from "../lib/format.js";
-import { Frame, AxisX, AxisY, niceTicks, scaleBand, scaleLinear } from "./core.js";
+import { Frame, AxisY, niceTicks, scaleBand, scaleLinear } from "./core.js";
 
 export function GoalsDistribution({ pmf, actual, expected, height = 230, unit = "goals" }) {
   const mean = pmf.reduce((s, p, k) => s + p * k, 0);

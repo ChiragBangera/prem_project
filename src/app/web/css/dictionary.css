@@ -1,0 +1,15 @@
+/* Data dictionary. */
+
+.dict-list { display: grid; gap: 14px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 460px), 1fr)); }
+.dict-entry { display: flex; flex-direction: column; gap: 9px; padding: 16px 18px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); min-width: 0; scroll-margin-top: 80px; }
+.dict-entry.focus { border-color: var(--accent-line); box-shadow: 0 0 0 3px var(--accent-wash); }
+.dict-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.dict-head h2 { font-size: var(--fs-lg); font-weight: 650; font-stretch: var(--stretch-tight); line-height: 1.2; }
+.dict-entry p { text-wrap: pretty; }
+.dict-formula { display: flex; flex-direction: column; gap: 4px; padding: 9px 11px; background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--r-md); }
+.dict-formula code { background: none; padding: 0; font-size: var(--fs-sm); white-space: normal; }
+.dict-caveat { color: var(--warn-ink); }
+.dict-typical { display: flex; flex-direction: column; gap: 3px; }
+.dict-typical .eyebrow { margin-bottom: 1px; }
+dl.gloss.one { grid-template-columns: minmax(0, 1fr); }
+@media (max-width: 720px) { .dict-list { grid-template-columns: minmax(0, 1fr); } }

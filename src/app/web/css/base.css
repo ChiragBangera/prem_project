@@ -77,12 +77,10 @@ img { max-width: 100%; }
 .secondary { color: var(--ink-2); }
 .small { font-size: var(--fs-sm); }
 .xsmall { font-size: var(--fs-xs); }
-.nowrap { white-space: nowrap; }
+
 .truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .right { text-align: right; }
 .center { text-align: center; }
-.balance { text-wrap: balance; }
-.pretty { text-wrap: pretty; }
 
 /* ---- layout primitives ---- */
 .stack { display: flex; flex-direction: column; gap: var(--gap, 16px); min-width: 0; }
@@ -94,13 +92,11 @@ img { max-width: 100%; }
 .grid { display: grid; gap: var(--gap, 16px); min-width: 0; }
 .grid > * { min-width: 0; }
 .cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-.cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+
 .cols-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .cols-main-side { grid-template-columns: minmax(0, 1fr) 340px; }
-.cols-side-main { grid-template-columns: 300px minmax(0, 1fr); }
+
 .cols-wide-narrow { grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); }
-.span-2 { grid-column: span 2; }
-.span-all { grid-column: 1 / -1; }
 
 /* ---- app shell ---- */
 .app { display: grid; grid-template-columns: var(--rail) minmax(0, 1fr); min-height: 100vh; }
@@ -187,13 +183,13 @@ img { max-width: 100%; }
   .brand { padding: 4px 0 14px; }
   .brand > div, .nav-label, .rail-foot, .nav-item span, .nav-item .count { display: none; }
   .nav-item { width: 44px; height: 40px; justify-content: center; padding: 0; }
-  .cols-main-side, .cols-side-main { grid-template-columns: minmax(0, 1fr); }
+  .cols-main-side { grid-template-columns: minmax(0, 1fr); }
   .cols-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 860px) {
   :root { --gutter: 16px; }
-  .cols-2, .cols-3, .cols-wide-narrow { grid-template-columns: minmax(0, 1fr); }
-  .span-2 { grid-column: auto; }
+  .cols-2, .cols-wide-narrow { grid-template-columns: minmax(0, 1fr); }
+
   .page { padding-bottom: 96px; gap: 20px; }
   .page-title { font-size: 24px; }
 }
@@ -208,7 +204,7 @@ img { max-width: 100%; }
   }
   .brand { display: none; }
   .nav { flex-direction: row; gap: 2px; width: 100%; justify-content: space-around; }
-  .nav-sep { display: none; }
+
   .nav-item { flex-direction: column; gap: 2px; height: 46px; width: 56px; font-size: 10px; }
   .nav-item span { display: block; }
   .nav-item .count, .nav-label, .rail-foot { display: none; }

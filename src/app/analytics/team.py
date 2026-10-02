@@ -140,17 +140,12 @@ def team_profile(ls: LeagueSeason, name: str, *, eras: Sequence[dict] = ()) -> d
             continue
         home = f.home == team.name
         opponent = f.away if home else f.home
-        forecast = None
-        if f.forecast:
-            w, d, l = f.forecast
-            forecast = {"win": w if home else l, "draw": d, "loss": l if home else w}
         remaining.append(
             {
                 "date": f.date, "dt": f.dt, "opponent": opponent,
                 "opponent_short": (f.away_short if home else f.home_short),
                 "venue": "h" if home else "a",
                 "opp_strength": round(strength.get(opponent, 0.0), 3),
-                "forecast": forecast,
                 "match_id": f.id,
             }
         )

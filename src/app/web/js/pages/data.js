@@ -1,206 +1,239 @@
-// Data: what is on this computer, how fresh it is, and how to refresh it.
-import { html, useEffect, useState } from "../lib/html.js";
+// Data: what is stored on this computer, how it keeps itself up to date, what failed and when it will try again.
+import { html, useState } from "../lib/html.js";
 import { api, invalidate, useApi } from "../lib/api.js";
 import { useMeta, leagueName } from "../lib/scope.js";
-import { bytes, plural, relTime, seasonLabel, nf } from "../lib/format.js";
+import { bytes, cls, plural, relTime } from "../lib/format.js";
 import { Icon } from "../lib/icons.js";
-import { Async, Badge, Button, Card, Field, Notice, PageHead, Switch, useDocumentTitle, ErrorState } from "../ui/common.js";
+import { Async, Badge, Button, Card, Notice, PageHead, Select, Switch, useDocumentTitle } from "../ui/common.js";
 import { DataTable } from "../ui/table.js";
+import { Birthdates, CheckCard, Enrichment, EventData, Progress, SyncCard } from "./data-tools.js";
 
-function Progress({ done, total, failed }) {
-  const p = total ? (done + failed) / total : 0;
-  return html`<div class="progress" role="progressbar" aria-valuenow=${Math.round(p * 100)} aria-valuemin="0" aria-valuemax="100"><i style=${{ width: p * 100 + "%" }}></i></div>`;
+const nowSec = () => Date.now() / 1000;
+
+/** "in 12 min", "in 3 h", "now": for something that will happen. */
+function until(ts) {
+  const s = ts - nowSec();
+  if (s <= 5) return "any moment now";
+  if (s < 90) return "in under a minute";
+  const m = s / 60;
+  if (m < 90) return `in ${Math.round(m)} min`;
+  return `in ${Math.round(m / 60)} h`;
 }
 
-function SyncCard({ status, meta, onStarted }) {
-  const leagues = meta.meta.leagues, seasons = meta.meta.seasons;
-  const [picked, setPicked] = useState(["EPL"]);
-  const [years, setYears] = useState([meta.meta.current_season]);
-  const [force, setForce] = useState(false);
-  const [job, setJob] = useState(null);
+const STATE_TONE = { ok: "good", stale: "warn", failed: "crit", waiting: "warn", "not available": "outline" };
+
+// ------------------------------------------------------------------ automatic updates
+
+function AutoCard({ auto, mode, reload }) {
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
-  const blocked = status.mode.demo || status.mode.offline;
-  const toggle = (list, set, v) => set(list.includes(v) ? list.filter((x) => x !== v) : [...list, v]);
-
-  useEffect(() => {
-    if (!job || job.state !== "running") return undefined;
-    const t = setInterval(async () => {
-      try {
-        const next = await api.get(`/api/data/jobs/${job.id}`);
-        setJob(next);
-        if (next.state !== "running") { invalidate(); onStarted(); }
-      } catch (e) { setError(e); }
-    }, 900);
-    return () => clearInterval(t);
-  }, [job?.id, job?.state]);
-
-  const start = async () => {
-    setError(null);
-    try { setJob(await api.post("/api/data/sync", { leagues: picked, seasons: years, force })); } catch (e) { setError(e); }
+  const prefs = auto.prefs, ev = auto.events, last = auto.last;
+  const offline = mode.demo || mode.offline;
+  const save = async (patch) => {
+    setBusy(true); setError(null);
+    try { await api.put("/api/data/auto", patch); invalidate("/api/data"); reload(); } catch (e) { setError(e); } finally { setBusy(false); }
   };
-  return html`<${Card} title="Fetch from Understat" sub="Understat is slow to read on purpose (a few requests per second), so a large sync takes a while. It keeps running if you leave this page. Each league season also gets its club squad lists, which give exact birthdates.">
-    ${blocked ? html`<${Notice} tone="warn" icon="alert">${status.mode.demo ? "Demo mode: everything is synthetic and there is nothing to fetch. Start the app without --demo to load real data." : "Offline mode is on: fetching is disabled."}</${Notice}>` : null}
-    <div class="stack" style=${{ "--gap": "16px", marginTop: blocked ? "14px" : 0 }}>
-      <${Field} label="Leagues"><div class="chipgroup">${leagues.map((l) => html`<button type="button" class="chip" key=${l.code} aria-pressed=${String(picked.includes(l.code))} onClick=${() => toggle(picked, setPicked, l.code)}>${l.name}</button>`)}</div></${Field}>
-      <${Field} label="Seasons" hint="Finished seasons never change, so they are fetched once and kept."><div class="chipgroup">${seasons.map((s) => html`<button type="button" class="chip" key=${s.season} aria-pressed=${String(years.includes(s.season))} onClick=${() => toggle(years, setYears, s.season)}>${s.label}</button>`)}</div></${Field}>
-      <${Switch} checked=${force} onChange=${setForce}>Fetch finished seasons again</${Switch}>
-      <div class="row" style=${{ gap: "12px" }}>
-        <${Button} kind="primary" icon="download" disabled=${blocked || !picked.length || !years.length || job?.state === "running"} onClick=${start}>${job?.state === "running" ? "Fetching…" : `Fetch ${plural(picked.length * years.length, "league season")}`}</${Button}>
-        ${error ? html`<span class="small" style=${{ color: "var(--crit-ink)" }}>${error.message}</span>` : null}
-      </div>
-      ${job ? html`<div class="jobbox">
-        <div class="row between"><b>${job.label}</b><${Badge} tone=${job.state === "running" ? "accent" : job.failed ? "warn" : "good"}>${job.state}</${Badge}></div>
-        <${Progress} done=${job.done} total=${job.total} failed=${job.failed} />
-        <div class="xsmall muted">${job.done} of ${job.total} done${job.failed ? `, ${job.failed} failed` : ""} · ${job.elapsed}s</div>
-        <pre class="joblog">${job.log.join("\n") || "Waiting for the first response…"}</pre>
-      </div>` : null}
-    </div>
-  </${Card}>`;
-}
-
-function CheckCard({ status }) {
-  const [running, setRunning] = useState(false);
-  const [result, setResult] = useState(null);
-  const [error, setError] = useState(null);
-  const run = async () => {
-    setRunning(true); setError(null);
-    try { setResult(await api.post("/api/data/check")); } catch (e) { setError(e); } finally { setRunning(false); }
+  const runNow = async () => {
+    setBusy(true); setError(null);
+    try { await api.post("/api/data/auto/run"); invalidate("/api/data"); setTimeout(reload, 800); } catch (e) { setError(e); } finally { setBusy(false); }
   };
-  return html`<${Card} title="Connection check" sub=${status.mode.demo ? "Runs the same steps against the demo world." : "Reads a league, a match and a player from Understat, a squad list from ESPN and a birthdate from Wikidata, without saving anything. Run it when a page shows an error."}
-    actions=${html`<${Button} size="sm" icon="refresh" disabled=${running || status.mode.offline} onClick=${run}>${running ? "Checking…" : result ? "Run again" : "Run check"}</${Button}>`}>
-    ${error ? html`<${Notice} tone="crit" icon="alert">${error.message}</${Notice}>` : null}
-    ${result ? html`<div class="stack" style=${{ "--gap": "10px" }}>
-      ${result.steps.map((st) => html`<div class="checkstep" key=${st.name}>
-        <span class=${"tone " + (st.ok ? "positive" : "negative")}><${Icon} name=${st.ok ? "check" : "alert"} size="sm" /></span>
-        <div class="stack" style=${{ "--gap": "2px", minWidth: 0 }}><b>${st.name}</b><span class=${st.ok ? "secondary small" : "small"} style=${st.ok ? null : { color: "var(--crit-ink)" }}>${st.detail}</span>${st.hint && !st.ok ? html`<span class="xsmall muted">${st.hint}</span>` : null}</div>
-        <span class="xsmall muted num">${st.ms} ms</span>
-      </div>`)}
-      <p class="small" style=${{ marginTop: "4px" }}><b>${result.ok ? "Everything can be read." : "Something is wrong: fix the first failing step."}</b></p>
-    </div>` : html`<p class="muted small">${status.mode.offline ? "Offline mode is on, so there is nothing to check." : "Not run yet."}</p>`}
-  </${Card}>`;
-}
-
-function Enrichment({ status }) {
-  const idle = { kind: "rosters", total: 0, done: 0, failed: 0, running: false, last_error: null };
-  const rows = [
-    { key: "rosters", label: "Squad lists", source: "ESPN", p: status.enrichment.rosters || idle, note: "Exact birthdates, goalkeepers included. One league season is about 20 requests; finished seasons are fetched once and kept." },
-    { key: "ages", label: "Other player ages", source: "Wikidata", p: status.enrichment.ages, note: "Only for players a squad list leaves out. Matched by name and club, and left blank when not sure." },
-    { key: "roles", label: "Favourite positions", source: "Understat player pages", p: status.enrichment.roles, note: "Sharpens the role of players who play in several positions." },
-  ];
-  return html`<${Card} title="Background enrichment" sub="Optional details that fill in quietly after a page has loaded.">
+  const fetched = last ? Object.values(last.leagues || {}).reduce((n, v) => n + (v.fetched || 0), 0) : 0;
+  const status = !auto.auto
+    ? (offline ? "Automatic updates are off in demo and offline mode." : "Automatic updates are switched off for this run (PREM_AUTO=0).")
+    : !prefs.enabled ? "Paused: nothing is fetched until you switch it back on."
+      : auto.running ? "Updating right now…"
+        : `${auto.next_at ? `Next check ${until(auto.next_at)}.` : last?.finished ? "The next check happens shortly after the app starts." : "The first check happens shortly after the app starts."}${last?.finished ? ` Last cycle finished ${relTime(nowSec() - last.finished)}: ${plural(fetched, "match page")} fetched${last.errors?.length ? `, ${plural(last.errors.length, "problem")}` : ", no problems"}${last.backlog ? `, ${last.backlog} still to fetch (carried on next cycle)` : ""}.` : ""}`;
+  const eventsOn = Boolean(ev.enabled);
+  const evLeagues = prefs.events.leagues;
+  return html`<${Card} title="Automatic updates" sub="While the app is open it looks for newly finished matches and fetches only those. A match page is fetched once and kept for good; finished seasons are never fetched again."
+    actions=${html`<${Button} icon="refresh" disabled=${busy || !auto.auto || !prefs.enabled || auto.running} onClick=${runNow} title="Run a cycle now instead of waiting for the next one">Update now</${Button}>`}>
     <div class="stack" style=${{ "--gap": "16px" }}>
-      ${rows.map((r) => html`<div key=${r.key} class="stack" style=${{ "--gap": "6px" }}>
-        <div class="row between"><b>${r.label}</b><span class="muted small">${r.source}</span></div>
-        <${Progress} done=${r.p.done} total=${r.p.total || 1} failed=${r.p.failed} />
-        <div class="row between xsmall muted"><span>${r.p.running ? `Running: ${r.p.done} of ${r.p.total}` : r.p.total ? `Last run: ${r.p.done} of ${r.p.total}${r.p.failed ? `, ${r.p.failed} failed` : ""}` : "Nothing waiting"}</span>${r.p.last_error ? html`<span style=${{ color: "var(--warn-ink)" }}>${r.p.last_error}</span>` : null}</div>
-        <div class="xsmall muted">${r.note}</div>
-      </div>`)}
-      <div class="small"><b class="num">${status.enrichment.favorites_known}</b> players have a known favourite position.</div>
+      <div class="row between wrap" style=${{ gap: "12px" }}>
+        <${Switch} checked=${Boolean(auto.auto && prefs.enabled)} onChange=${(v) => save({ enabled: v })}>Keep league data and match pages up to date by itself</${Switch}>
+        <span class=${cls("badge", auto.running ? "accent" : auto.auto && prefs.enabled ? "good" : "outline")}>${auto.running ? "Running" : auto.auto && prefs.enabled ? "On" : "Off"}</span>
+      </div>
+      <p class="small secondary">${status}</p>
+      ${error ? html`<${Notice} tone="crit" icon="alert">${error.message}</${Notice}>` : null}
+      <div class="auto-prefs">
+        <div class="stack" style=${{ "--gap": "6px" }}>
+          <span class="label">Seasons kept complete</span>
+          <${Select} compact label="Seasons kept complete" value=${String(prefs.seasons_back)} options=${[0, 1, 2, 3, 4].map((n) => ({ value: String(n), label: n === 0 ? "This season only" : n === 1 ? "This and the previous season" : `This and the previous ${n} seasons` }))} onChange=${(v) => save({ seasons_back: Number(v) })} />
+          <span class="xsmall muted">League tables, team and player totals and each match page (scorers, shots, positions). Older seasons are fetched only when you ask for them below.</span>
+        </div>
+        <div class="stack" style=${{ "--gap": "8px" }}>
+          <span class="label">Event data (passes, duels, carries, maps)</span>
+          <${Switch} checked=${eventsOn} onChange=${(v) => save({ events: { enabled: v } })}>Fetch event data for finished matches</${Switch}>
+          <span class="xsmall muted">${prefs.events.enabled === null ? "On because event data is already stored here. " : ""}Slow by design (about 15 seconds a match), so it runs in a separate process, a few dozen matches at a time, and carries on from where it stopped.</span>
+          ${ev.process ? html`<span class="small"><b>Fetching now:</b> ${ev.process}</span>` : null}
+        </div>
+      </div>
+      ${eventsOn || prefs.events.enabled === null ? html`<div class="auto-prefs">
+        <div class="stack" style=${{ "--gap": "6px" }}><span class="label">Event leagues</span>
+          <div class="chipgroup">${["EPL", "La_liga", "Bundesliga", "Serie_A", "Ligue_1"].map((l) => html`<button type="button" key=${l} class="chip" aria-pressed=${String(evLeagues.includes(l))} onClick=${() => { const next = evLeagues.includes(l) ? evLeagues.filter((x) => x !== l) : [...evLeagues, l]; if (next.length) save({ events: { leagues: next } }); }}>${leagueNames[l]}</button>`)}</div></div>
+        <div class="stack" style=${{ "--gap": "6px" }}><span class="label">Event seasons</span>
+          <${Select} compact label="Event seasons" value=${String(prefs.events.seasons_back)} options=${[0, 1, 2, 3].map((n) => ({ value: String(n), label: n === 0 ? "This season only" : `This and the previous ${n === 1 ? "season" : `${n} seasons`}` }))} onChange=${(v) => save({ events: { seasons_back: Number(v) } })} /></div>
+      </div>` : null}
+      ${!ev.capability.available ? html`<${Notice} tone="warn" icon="alert"><b>Event data cannot be fetched on this computer.</b> ${ev.capability.reason} ${ev.capability.hint || ""}</${Notice}>` : html`<p class="xsmall muted">Event fetching uses the browser found at <code>${ev.capability.browser}</code>. It reads WhoScored's public pages for personal use only, which that site's terms may not allow, so it only runs while the switch above is on.</p>`}
     </div>
   </${Card}>`;
 }
 
-/** Exact birthdates from club squad lists: what is stored, how well it matched Understat's players, and who is still unknown. */
-function Birthdates({ status, meta }) {
-  const items = status.birthdates || [];
-  const now = Date.now() / 1000;
-  return html`<${Card} title="Player ages" sub="Understat has no birthdates. Each club's squad list (ESPN) does, so ages are exact. Fetched in the background when you open Scout, then kept on this computer.">
-    ${items.length ? html`<div class="stack" style=${{ "--gap": "18px" }}>
-      ${items.map((e) => {
-        const share = e.regulars ? e.regulars_linked / e.regulars : null;
-        return html`<div key=${e.league + e.season} class="stack" style=${{ "--gap": "6px" }}>
-          <div class="row between"><b>${leagueName(meta.meta, e.league)} ${seasonLabel(e.season)}</b><${Badge} tone=${e.pending.length || e.sparse ? "warn" : "good"}>${e.sparse ? "Sparse" : e.pending.length ? "Partial" : e.final ? "Final" : "Live"}</${Badge}></div>
-          ${share != null ? html`<${Progress} done=${e.regulars_linked} total=${e.regulars} failed=${0} />` : null}
-          <div class="row between xsmall muted">
-            <span>${plural(e.clubs, "club")} · ${plural(e.players, "player")} listed${e.linked != null ? ` · ${e.linked} matched to Understat` : ""}</span>
-            <span>${relTime(now - e.fetched)}</span>
-          </div>
-          ${share != null ? html`<div class="xsmall muted"><b class="num">${e.regulars_linked}</b> of ${e.regulars} players with 450+ minutes have an exact birthdate (${Math.round(share * 100)}%). The rest stay blank unless Wikidata is sure of them.</div>` : null}
-          ${e.sparse ? html`<div class="xsmall muted">ESPN lists only about ${e.median_squad} ${e.median_squad === 1 ? "player" : "players"} a club for this season, so most ages here come from Wikidata. It is asked again after a week.</div>` : null}
-          ${e.pending.length ? html`<div class="xsmall muted">Not read yet, retried automatically: ${e.pending.join(", ")}.</div>` : null}
-          ${e.compared ? html`<div class="xsmall muted">Cross-check: Wikidata, sure of the club, was also found for <b class="num">${e.compared}</b> of them and gives another date for <b class="num">${e.disagree}</b>${e.blank ? ` (${e.blank} by more than a year, so ${e.blank === 1 ? "that age is" : "those ages are"} left blank)` : ""}.</div>` : null}
-          ${e.disagree ? html`<details class="xsmall"><summary class="muted">Where the two sources differ</summary>
-            <ul class="plain">${e.disagree_examples.map((x) => html`<li key=${x.name}>${x.name} <span class="muted">· ${x.team} · squad list ${x.squad_list}, Wikidata ${x.wikidata}${x.blank ? " · age left blank" : " · squad list used"}</span></li>`)}</ul>
-            <p class="muted">To settle one yourself, add the right date to <code>birthdates.json</code> (see the README).</p></details>` : null}
-          ${e.missing?.length ? html`<details class="xsmall"><summary class="muted">Regulars without an exact birthdate</summary>
-            <ul class="plain">${e.missing.map((m) => html`<li key=${m.id}>${m.name} <span class="muted">· ${m.team} · ${m.minutes} min</span></li>`)}</ul></details>` : null}
-        </div>`;
-      })}
-    </div>` : html`<p class="small muted">${status.mode.demo ? "Demo mode: ages come from the demo world." : status.mode.offline ? "Offline mode: squad lists are not fetched." : "None fetched yet. Open Scout and they are fetched in the background (about 20 requests for a league and season)."}</p>`}
+const leagueNames = { EPL: "Premier League", La_liga: "La Liga", Bundesliga: "Bundesliga", Serie_A: "Serie A", Ligue_1: "Ligue 1" };
+
+/** The demo world has no Understat or WhoScored to ask and no updater: it makes its own data, and says so instead of showing controls that do nothing. */
+function DemoUpdates({ status }) {
+  const working = (status.events || []).some((e) => e.status?.running);
+  return html`<${Card} title="Automatic updates" sub="In the real app a background updater keeps everything current without anyone pressing a button.">
+    <p class="small secondary">Demo mode: the demo world makes its own league data, match pages and event data${status.mode.demo_events ? ` in the background${working ? " (it is working on that right now: see the progress below)" : ""}` : "; event data is switched off for this run (PREM_DEMO_EVENTS=0)"}, so there is nothing to fetch and no updater to run. Start the app without <code>--demo</code> to keep real data up to date by itself.</p>
   </${Card}>`;
 }
 
-/** Optional event data (WhoScored). Fetching is a slow command-line job, so this card shows progress and coverage rather than a button. */
-function EventData({ status, meta }) {
-  const items = status.events || [];
-  const command = (league, season) => `uv run --extra events prem events sync --league ${league} --seasons ${season}`;
-  const now = Date.now() / 1000;
-  return html`<${Card} title="Event data (WhoScored)" sub="Passes, duels, tackles and interceptions, which Understat does not have. Optional, fetched on request, kept on this computer.">
-    ${items.length ? html`<div class="stack" style=${{ "--gap": "18px" }}>
-      ${items.map((e) => {
-        const run = e.status || {};
-        const total = e.total ?? run.finished_matches ?? null;
-        const state = run.running ? "Fetching now" : run.stalled ? "Stopped" : total && e.matches >= total ? "Complete" : "Partial";
-        return html`<div key=${e.league + e.season} class="stack" style=${{ "--gap": "6px" }}>
-          <div class="row between"><b>${leagueName(meta.meta, e.league)} ${seasonLabel(e.season)}</b><${Badge} tone=${state === "Complete" ? "good" : state === "Fetching now" ? "accent" : "warn"}>${state}</${Badge}></div>
-          <${Progress} done=${e.matches} total=${total || e.matches || 1} failed=${0} />
-          <div class="row between xsmall muted">
-            <span>${e.matches}${total ? ` of ${total}` : ""} matches stored${run.running && run.total ? ` · this run: ${run.done || 0} of ${run.total}` : ""}${run.failed ? ` · ${run.failed} failed` : ""}</span>
-            <span>${run.running ? "" : run.updated ? `Last run ${relTime(now - run.updated)}` : ""}</span>
-          </div>
-          ${e.linked != null ? html`<div class="xsmall muted"><b class="num">${e.linked}</b> players matched to Understat${e.unlinked_n ? `, ${e.unlinked_n} with 90+ minutes could not be matched safely and are left out` : ""}.</div>` : null}
-          ${run.last_error ? html`<div class="xsmall muted">Last error: ${run.last_error}</div>` : null}
-          ${e.unlinked?.length ? html`<details class="xsmall"><summary class="muted">Players left out</summary>
-            <ul class="plain">${e.unlinked.map((u) => html`<li key=${u.id}>${u.name} <span class="muted">· ${u.teams.join(" / ")} · ${Math.round(u.minutes)} min${u.candidates?.length > 1 ? " · ambiguous name" : ""}</span></li>`)}</ul></details>` : null}
-          ${run.running ? html`<div class="xsmall muted">Running in a separate terminal process. This page updates by itself, and it is safe to stop and run it again later.</div>`
-            : state === "Complete" ? null : html`<div class="xsmall"><span class="muted">To fetch the rest: </span><code>${command(e.league, e.season)}</code></div>`}
-        </div>`;
-      })}
-    </div>` : html`<div class="stack" style=${{ "--gap": "10px" }}>
-      <p class="small">None fetched yet. Run this in a terminal to fetch a season (about 15 seconds a match, so a full league season takes around two hours; stop and run it again at any time to carry on):</p>
-      <pre class="code">${command("EPL", meta.meta.current_season)}</pre>
-      <p class="xsmall muted">It needs Chrome, Chromium, Brave or Edge installed. It reads WhoScored's public pages for personal use only, which that site's terms may not allow, so it runs only when you start it. Once a match is stored it is never fetched again, and everything works offline afterwards.</p>
-    </div>`}
+function CycleCard({ auto }) {
+  const last = auto.last;
+  if (!last) return html`<${Card} title="Last cycle"><p class="muted small">No cycle has finished yet. The first one starts shortly after the app does, and its result is kept here across restarts.</p></${Card}>`;
+  const rows = Object.entries(last.leagues || {}).map(([key, v]) => ({ key, ...v }));
+  const cols = [
+    { key: "key", label: "League season", sortable: false, className: "strong", render: (r) => { const [l, s] = r.key.split(":"); return `${leagueNames[l] || l} ${s}/${String(Number(s) + 1).slice(-2)}`; } },
+    { key: "state", label: "State", sortable: false, render: (r) => html`<${Badge} tone=${STATE_TONE[r.state] || ""}>${r.state}</${Badge}>` },
+    { key: "fetched", label: "Pages fetched", num: true, sortable: false, render: (r) => r.fetched ?? "–" },
+    { key: "remaining", label: "Still to fetch", num: true, sortable: false, render: (r) => r.remaining ?? "–" },
+  ];
+  return html`<${Card} flush title="Last cycle" sub=${`Finished ${relTime(nowSec() - last.finished)}${last.adopted ? ` · adopted ${last.adopted} event pages from the download cache` : ""}${last.rebuilt ? ` · rebuilt derived data for ${last.rebuilt} matches` : ""}`}>
+    <${DataTable} columns=${cols} rows=${rows} rowKey=${(r) => r.key} dense caption="Last update cycle" />
+    ${last.errors?.length ? html`<div class="card-foot"><ul class="plain">${last.errors.map((e, i) => html`<li key=${i}>${e}</li>`)}</ul></div>` : null}
+  </${Card}>`;
+}
+
+/** "events:La_liga:2026" -> "Event data: La Liga 2026/27"; "EPL:2025" -> "Premier League 2025/26". */
+function failureName(key) {
+  const [first, ...rest] = key.split(":");
+  const events = first === "events";
+  const [league, season] = events ? rest : [first, rest[0]];
+  const name = `${leagueNames[league] || league} ${season}/${String(Number(season) + 1).slice(-2)}`;
+  return Number.isFinite(Number(season)) ? (events ? `Event data: ${name}` : name) : key;
+}
+
+function Failures({ auto }) {
+  const rows = Object.entries(auto.failures || {});
+  if (!rows.length) return html`<${Card} title="Needs attention"><p class="small muted"><${Icon} name="check" size="sm" /> Nothing is failing. When a request fails it is kept (never lost), tried again after a growing delay (5 minutes, then 10, 20 … up to 6 hours), and shown here.</p></${Card}>`;
+  return html`<${Card} title="Needs attention" sub="These are retried by themselves, with a growing delay, and never stop anything else.">
+    <div class="stack" style=${{ "--gap": "12px" }}>${rows.map(([key, f]) => html`<div key=${key} class="stack" style=${{ "--gap": "2px" }}>
+      <div class="row between"><b>${failureName(key)}</b><span class="xsmall muted">${plural(f.n, "failure")} · next try ${until(f.next_try)}</span></div>
+      <span class="small" style=${{ color: "var(--crit-ink)" }}>${f.error}</span></div>`)}</div>
+  </${Card}>`;
+}
+
+function Activity({ auto }) {
+  const log = [...(auto.log || [])].reverse().slice(0, 14);
+  return html`<${Card} title="Recent activity" sub="What the updater did and when.">
+    ${log.length ? html`<div class="stack" style=${{ "--gap": "8px" }}>${log.map((e, i) => html`<div key=${i} class="row top" style=${{ gap: "10px" }}>
+      <span class=${"tone " + (e.level === "warn" ? "warning" : e.level === "error" ? "negative" : "neutral")} style=${{ width: "22px", height: "22px", borderRadius: "7px", flex: "none" }}><${Icon} name=${e.level === "warn" || e.level === "error" ? "alert" : "check"} size="sm" /></span>
+      <div class="stack" style=${{ "--gap": 0, minWidth: 0 }}><span class="small">${e.msg}</span><span class="xsmall muted">${relTime(nowSec() - e.t)}</span></div></div>`)}</div>`
+      : html`<p class="small muted">Nothing yet this session.</p>`}
+  </${Card}>`;
+}
+
+// ------------------------------------------------------------------ what is stored
+
+function Coverage({ status, meta }) {
+  const order = meta.meta.leagues.map((l) => l.code);
+  const rows = [...status.matrix].sort((a, b) => order.indexOf(a.league) - order.indexOf(b.league) || b.season - a.season);
+  const now = nowSec();
+  const cols = [
+    { key: "league", label: "League", sortable: false, className: "strong", render: (r) => leagueName(meta.meta, r.league) },
+    { key: "season", label: "Season", sortable: false, render: (r) => r.label },
+    { key: "state", label: "", sortable: false, render: (r) => (r.league_state ? html`<${Badge} tone=${r.league_state === "final" ? "good" : ""}>${r.league_state === "final" ? "Final" : "Live"}</${Badge}>` : html`<${Badge} tone="warn">Not fetched</${Badge}>`) },
+    { key: "played", label: "Played", num: true, sortable: false, title: "Matches played so far, of the fixtures in the season.", render: (r) => (r.played == null ? html`<span class="muted">–</span>` : html`<span class="num">${r.played}<span class="muted"> / ${r.fixtures}</span></span>`) },
+    { key: "pages", label: "Match pages (scorers, shots, positions)", sortable: false, width: "230px", render: (r) => (r.pages ? html`<div class="cov"><${Progress} done=${r.pages[0]} total=${r.pages[1] || 1} tone=${r.pages[0] >= r.pages[1] && r.pages[1] ? "done" : ""} /><span class="xsmall muted num">${r.pages[0]} of ${r.pages[1]}</span></div>` : html`<span class="muted">–</span>`) },
+    { key: "events", label: "Event data (maps, passing, duels)", sortable: false, width: "230px", render: (r) => (r.played == null ? (r.events ? html`<span class="xsmall muted num">${r.events} stored</span>` : html`<span class="muted">–</span>`) : html`<div class="cov"><${Progress} done=${r.events} total=${r.played || 1} tone=${r.events >= r.played && r.played ? "done" : ""} /><span class="xsmall muted num">${r.events} of ${r.played}</span></div>`) },
+    { key: "squads", label: "Squad lists", sortable: false, render: (r) => (r.squads ? html`<span class="small num">${r.squads.clubs} clubs, ${r.squads.players} players${r.squads.sparse ? " (sparse)" : ""}</span>` : html`<span class="muted">–</span>`) },
+    { key: "fetched", label: "Updated", sortable: false, render: (r) => (r.fetched_at == null ? html`<span class="muted">–</span>` : relTime(now - r.fetched_at)) },
+  ];
+  return html`<${Card} flush title="What is on this computer" sub="Every league season stored, and how complete each layer is. Match pages and event data fill in by themselves; a finished season only ever needs fetching once.">
+    ${rows.length ? html`<${DataTable} columns=${cols} rows=${rows} rowKey=${(r) => r.league + r.season} dense caption="Coverage of stored data" maxHeight="520px" />` : html`<div class="card-body muted">Nothing stored yet.</div>`}
+  </${Card}>`;
+}
+
+const KIND = {
+  league: "League seasons (Understat)", match: "Match pages: shots, scorers (Understat)", team: "Team pages (Understat)", player: "Player pages (Understat)", fav: "Favourite positions", dob: "Birthdates (Wikidata)",
+  roster: "Squad lists (ESPN)", ws_raw: "Event data, raw (WhoScored)", ws_silver: "Event data, parsed", ws_gold: "Event counters", events: "Event data (older format)", kv: "Your data and settings",
+};
+const LAYERS = [
+  { title: "Raw", keys: ["league", "match", "team", "player", "roster", "dob", "fav", "ws_raw"], text: "Every response exactly as the source served it. Never edited, never fetched twice. This is what makes the rest rebuildable." },
+  { title: "Parsed", keys: ["ws_silver"], text: "Event matches turned into compact tables of every action (type, player, pitch position, qualifiers). Maps and new measures read these." },
+  { title: "Counters", keys: ["ws_gold"], text: "Per-match totals for every player and team. Season numbers are sums of these, and every metric is a formula over them." },
+];
+
+function Storage({ status, reload }) {
+  const kinds = status.store.kinds;
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState(null);
+  const reclaim = async () => {
+    setBusy(true);
+    try { setResult(await api.post("/api/data/reclaim")); invalidate("/api/data"); reload(); } catch (_) { setResult({ error: true }); } finally { setBusy(false); }
+  };
+  const layerOf = (keys) => keys.reduce((a, k) => ({ count: a.count + (kinds[k]?.count || 0), bytes: a.bytes + (kinds[k]?.bytes || 0) }), { count: 0, bytes: 0 });
+  return html`<${Card} title="How it is stored" sub=${status.store.path}>
+    <div class="stack" style=${{ "--gap": "14px" }}>
+      <div class="layers">${LAYERS.map((l, i) => {
+        const t = layerOf(l.keys);
+        return html`<div class="layer" key=${l.title}><span class="eyebrow">${i + 1}. ${l.title}</span><b class="figure">${bytes(t.bytes)}</b><span class="xsmall muted">${t.count.toLocaleString("en-GB")} items</span><p class="xsmall">${l.text}</p></div>`;
+      })}</div>
+      <p class="xsmall muted">A new definition, metric or chart only ever re-reads what is already here: when the code that parses or counts changes, the layers above rebuild from the one below, offline.</p>
+      <dl class="kv">${Object.entries(kinds).map(([k, v]) => html`<dt key=${k + "d"}>${KIND[k] || k}</dt><dd key=${k}>${v.count.toLocaleString("en-GB")} · ${bytes(v.bytes)}</dd>`)}</dl>
+      ${status.reclaimable_bytes > 0 ? html`<div class="well stack" style=${{ "--gap": "8px" }}>
+        <span class="small"><b>${bytes(status.reclaimable_bytes)}</b> of event pages are held twice: in the event fetcher's download cache and in the store.</span>
+        <div class="row" style=${{ gap: "10px" }}><${Button} size="sm" icon="trash" disabled=${busy} onClick=${reclaim}>Free that space</${Button}>
+          ${result && !result.error ? html`<span class="xsmall muted">Removed ${result.deleted} files (${bytes(result.bytes ?? 0)}).</span>` : result ? html`<span class="xsmall" style=${{ color: "var(--crit-ink)" }}>That did not work.</span>` : null}</div>
+        <span class="xsmall muted">Only copies the store already holds are removed, so nothing is lost and nothing needs fetching again.</span></div>` : null}
+      <p class="xsmall muted">Your shortlist and notes live in the same file and survive cache clears. <code>prem clear --yes</code> clears the fetched league data; raw event pages are kept unless you add <code>--events</code>.</p>
+    </div>
+  </${Card}>`;
+}
+
+function HowItWorks() {
+  const items = [
+    ["Start", "The first time a page needs a league season, it is fetched from Understat and stored. After that it loads from this computer."],
+    ["Stay current", "The updater checks every 15 minutes while the app is open. A finished season is never asked for again; a live one refreshes around match days; each finished match adds one match page (and, if switched on, one event file)."],
+    ["Never lose a response", "Responses are stored exactly as received, before any interpretation. Parsed tables and counters are derived from them, so a bug fix or a new metric rebuilds from disk and never costs a request."],
+    ["Fail safely", "A failed request keeps what is stored, backs off (5 min, 10, 20 … 6 h) and tries again by itself. One failing league never stops another. A season that does not exist yet is not treated as an error."],
+    ["Say what is missing", "A number with no data behind it is blank, never zero. Pages say how many matches or players a figure rests on, and this page shows what has arrived."],
+    ["Work offline", "With PREM_OFFLINE=1 nothing touches the network and everything stored is served."],
+  ];
+  return html`<${Card} title="How the data layer works">
+    <dl class="gloss">${items.map(([t, d]) => html`<div key=${t}><dt>${t}</dt><dd>${d}</dd></div>`)}</dl>
   </${Card}>`;
 }
 
 function DataView({ status, meta, reload }) {
+  const auto = status.auto;
   const cache = status.leagues;
-  const rows = [...cache].sort((a, b) => a.league.localeCompare(b.league) || b.season - a.season);
-  const now = Date.now() / 1000;
-  const cols = [
-    { key: "league", label: "League", sortable: false, className: "strong", render: (r) => leagueName(meta.meta, r.league) },
-    { key: "season", label: "Season", sortable: false, render: (r) => seasonLabel(r.season) },
-    { key: "state", label: "State", sortable: false, render: (r) => html`<${Badge} tone=${r.complete ? "good" : ""}>${r.complete ? "Final" : "Live"}</${Badge}>` },
-    { key: "fetched_at", label: "Fetched", sortable: false, render: (r) => relTime(now - r.fetched_at) },
-  ];
-  const kinds = Object.entries(status.store.kinds);
-  const KIND = { league: "League seasons", player: "Player pages", match: "Match shot maps", team: "Team pages", fav: "Favourite positions", ages: "Birthdates", dob: "Birthdates (Wikidata)", roster: "Squad lists (birthdates)", events: "Event data (WhoScored)", kv: "Your data" };
+  const stored = Object.values(status.store.kinds).reduce((n, k) => n + k.count, 0);
+  const eventMatches = (status.events || []).reduce((n, e) => n + e.matches, 0);
   return html`
-    <${PageHead} eyebrow="System" title="Data" sub=${status.mode.demo ? "You are looking at a synthetic demo world." : "Everything you see is served from a local cache. Understat is only contacted when you ask for fresh data."}
+    <${PageHead} eyebrow="System" title="Data" sub=${status.mode.demo ? "You are looking at a synthetic demo world." : "Everything you see is served from this computer. The app keeps it up to date by itself and shows here what it holds, what it did and what failed."}
       actions=${html`<${Button} icon="refresh" onClick=${reload}>Refresh</${Button}>`} />
     <div class="tiles">
-      <div class="tile"><span class="label">Source</span><span class="value figure" style=${{ fontSize: "24px" }}>${status.mode.demo ? "Demo world" : status.mode.offline ? "Offline cache" : "Understat"}</span><span class="delta">${status.mode.demo ? "synthetic players and results" : "read at a polite pace, cached locally"}</span></div>
-      <div class="tile"><span class="label">Cached items</span><span class="value figure">${status.store.total_items}</span><span class="delta">${bytes(status.store.total_bytes)} on disk</span></div>
+      <div class="tile"><span class="label">Source</span><span class="value figure" style=${{ fontSize: "24px" }}>${status.mode.demo ? "Demo world" : status.mode.offline ? "Offline cache" : "Understat"}</span><span class="delta">${status.mode.demo ? "synthetic players and results" : "read at a polite pace, stored locally"}</span></div>
+      <div class="tile"><span class="label">On disk</span><span class="value figure">${bytes(status.store.total_bytes)}</span><span class="delta">${stored.toLocaleString("en-GB")} stored items</span></div>
       <div class="tile"><span class="label">League seasons</span><span class="value figure">${cache.length}</span><span class="delta">${cache.filter((c) => c.complete).length} final, ${cache.filter((c) => !c.complete).length} live</span></div>
+      <div class="tile"><span class="label">Event matches</span><span class="value figure">${eventMatches.toLocaleString("en-GB")}</span><span class="delta">${eventMatches ? "maps and event metrics available" : "none stored yet"}</span></div>
     </div>
+    ${status.mode.demo ? html`<${DemoUpdates} status=${status} />` : html`<${AutoCard} auto=${auto} mode=${status.mode} reload=${reload} />
     <div class="grid cols-2 top">
-      <div class="stack">
-        <${SyncCard} status=${status} meta=${meta} onStarted=${reload} />
-        <${CheckCard} status=${status} />
-        <${Enrichment} status=${status} />
-        <${Birthdates} status=${status} meta=${meta} />
-        <${EventData} status=${status} meta=${meta} />
-      </div>
-      <div class="stack">
-        <${Card} flush title="League seasons on this computer" sub="Live seasons refresh when they get old; final seasons are kept for good.">
-          ${rows.length ? html`<${DataTable} columns=${cols} rows=${rows} rowKey=${(r) => r.league + r.season} dense caption="Cached league seasons" />` : html`<div class="card-body muted">Nothing cached yet. Fetch a league on the left.</div>`}
-        </${Card}>
-        <${Card} title="Storage" sub=${status.store.path}>
-          <dl class="kv">${kinds.map(([k, v]) => html`<dt key=${k + "d"}>${KIND[k] || k}</dt><dd key=${k}>${v.count} · ${bytes(v.bytes)}</dd>`)}</dl>
-          <p class="xsmall muted" style=${{ marginTop: "12px" }}>Your shortlist and notes live in the same file and survive cache clears. Clear the cache with <code>prem clear --yes</code> (event data, which is slow to fetch, is kept unless you add <code>--events</code>).</p>
-        </${Card}>
-      </div>
+      <div class="stack"><${CycleCard} auto=${auto} /><${Failures} auto=${auto} /></div>
+      <${Activity} auto=${auto} />
+    </div>`}
+    <${Coverage} status=${status} meta=${meta} />
+    <div class="grid cols-2 top">
+      <${EventData} status=${status} meta=${meta} />
+      <${Storage} status=${status} reload=${reload} />
+    </div>
+    <${HowItWorks} />
+    <h2 class="section-h">Tools</h2>
+    <div class="grid cols-2 top">
+      <div class="stack"><${SyncCard} status=${status} meta=${meta} onStarted=${reload} /><${CheckCard} status=${status} /></div>
+      <div class="stack"><${Enrichment} status=${status} /><${Birthdates} status=${status} meta=${meta} /></div>
     </div>`;
 }
 

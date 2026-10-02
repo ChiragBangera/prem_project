@@ -1,0 +1,114 @@
+/* The explorer shared by Scout and Teams: filter bar, lenses, results bar, ranking read, banded table and map. */
+
+/* ---- filter bar ---- */
+.filterbar { padding: 16px 18px 14px; display: flex; flex-direction: column; gap: 12px; }
+.fb-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }
+.fb-top { gap: 12px; }
+.fb-label { flex: none; width: 74px; font-size: var(--fs-2xs); font-weight: 650; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); cursor: default; }
+.fb-count { font-size: var(--fs-sm); color: var(--ink-2); white-space: nowrap; }
+.fb-count b { color: var(--ink); font-weight: 750; }
+.chip .muted { font-weight: 500; font-size: var(--fs-xs); font-variant-numeric: tabular-nums; }
+.chip[aria-pressed="true"] .muted, .chip.on .muted { color: var(--ink-2); }
+.chip.dim { opacity: 0.55; }
+.chip.dim:hover { opacity: 0.9; }
+.chip.lens { gap: 7px; }
+.linklike { color: var(--accent-strong); font-weight: 600; font-size: inherit; padding: 0; text-decoration: underline; text-underline-offset: 2px; }
+:root[data-theme="dark"] .linklike { color: var(--accent-hover); }
+.checklist { max-height: 260px; overflow: auto; margin: 0 -6px; }
+.menu-item[disabled] { opacity: 0.45; pointer-events: none; }
+.menu-item.dim { opacity: 0.6; }
+
+/* ---- lenses ---- */
+.lensbar { display: flex; flex-direction: column; gap: 10px; padding-top: 12px; border-top: 1px solid var(--line); }
+.lens-row .lens-hint { display: inline-flex; align-items: center; gap: 5px; margin-left: 6px; }
+.lens-panel { display: flex; flex-direction: column; gap: 10px; padding: 14px 16px; background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--r-md); }
+.lens-title { font-size: var(--fs-lg); font-weight: 700; font-stretch: var(--stretch-tight); }
+.lens-explain { color: var(--ink-2); max-width: 78ch; text-wrap: pretty; }
+.lens-cols { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 8px 28px; }
+.lens-rules { margin: 0; }
+.lens-rules li { font-size: var(--fs-sm); }
+.x-btn { display: inline-grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; color: var(--ink-3); }
+.x-btn:hover { background: var(--surface-3); color: var(--ink); }
+@media (max-width: 720px) { .lens-cols { grid-template-columns: minmax(0, 1fr); } .fb-label { width: auto; } }
+
+/* ---- the strip of what is active ---- */
+.active-strip { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; min-height: 28px; padding-top: 12px; border-top: 1px solid var(--line); }
+.fchip { display: inline-flex; align-items: center; gap: 2px; height: 26px; padding: 0 3px 0 10px; border-radius: var(--r-pill); background: var(--accent-wash); border: 1px solid var(--accent-line); font-size: var(--fs-xs); font-weight: 600; color: var(--ink); max-width: 100%; }
+.fchip > span, .fchip .edit { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fchip .edit { font-weight: 600; padding: 0; }
+.fchip .edit:hover { text-decoration: underline; text-underline-offset: 2px; }
+.fchip .x { display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; color: var(--ink-3); flex: none; }
+.fchip .x:hover { background: var(--accent-line); color: var(--ink); }
+.fchip .x .icon { width: 12px; height: 12px; }
+.fchip.lens { background: var(--surface-3); border-color: var(--line-2); }
+.rule-editor .metric-list { max-height: 260px; overflow: auto; border: 1px solid var(--line); border-radius: var(--r-md); padding: 4px; }
+.metric-group .eyebrow { padding: 8px 8px 2px; }
+
+/* ---- results ---- */
+.results-card { overflow: visible; }
+.results-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px 20px; flex-wrap: wrap; padding: 14px 18px; border-bottom: 1px solid var(--line); }
+.rb-title { font-size: var(--fs-lg); font-weight: 700; font-stretch: var(--stretch-tight); }
+.rb-of { font-weight: 500; font-size: var(--fs-sm); }
+.rb-controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.rb-field { display: inline-flex; align-items: center; gap: 6px; }
+.rb-label { font-size: var(--fs-xs); color: var(--ink-3); font-weight: 600; white-space: nowrap; }
+.rb-field .select.compact { max-width: 210px; }
+.results-notes:empty { display: none; }
+.results-notes { padding: 12px 18px 0; }
+.insight-strip { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 18px 28px; align-items: center; padding: 14px 18px; border-bottom: 1px solid var(--line); }
+.is-tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.is-tile { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.is-tile .label { color: var(--ink-3); font-weight: 600; }
+.is-tile .figure { font-size: 26px; }
+@media (max-width: 960px) { .insight-strip { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 560px) { .is-tiles { gap: 8px; } .is-tile .figure { font-size: 20px; } .is-tile .xsmall { font-size: 11px; line-height: 1.3; white-space: normal; } .insight-strip { padding: 12px 14px; } }
+
+/* ---- the banded table ---- */
+table.data.banded thead th { top: 24px; }
+table.data.banded thead tr.band-row th { top: 0; height: 24px; z-index: 3; padding: 0 10px; font-size: var(--fs-2xs); font-weight: 650; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); background: var(--surface); border-bottom: 1px solid var(--line); text-align: left; cursor: default; }
+table.data.banded thead tr.band-row th.named { color: var(--ink-2); border-left: 1px solid var(--line); box-shadow: inset 0 -2px 0 var(--accent-line); }
+table.data.banded thead tr.band-row th.sticky-col { z-index: 5; }
+table.data .band-start { border-left: 1px solid var(--line); }
+table.data thead th.sorted { color: var(--ink); background: var(--surface-3); }
+table.data tbody td.sorted { background: color-mix(in oklab, var(--accent-wash) 55%, transparent); }
+table.data tbody tr:hover td.sorted { background: color-mix(in oklab, var(--accent-wash) 75%, var(--surface-2)); }
+table.data thead th { vertical-align: bottom; }
+.mcell { display: inline-flex; flex-direction: column; align-items: flex-end; gap: 4px; min-width: 52px; }
+.mcell .v { font-weight: 600; line-height: 1; }
+.mcell .v.pos { color: var(--pos-ink); }
+.mcell .v.neg { color: var(--neg-ink); }
+.mcell .b { width: 52px; height: 3px; border-radius: 2px; background: var(--surface-3); overflow: hidden; }
+.mcell .b i { display: block; height: 100%; border-radius: 2px; }
+.mcell.dim { opacity: 0.55; }
+.pcell { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.pcell .pick { width: 15px; height: 15px; flex: none; accent-color: var(--accent-strong); cursor: pointer; }
+.pcell .star { flex: none; }
+.pcell .rank { min-width: 18px; }
+.pcell .cell-player { min-width: 0; }
+.pcell .cell-player .name { white-space: nowrap; text-overflow: ellipsis; overflow: hidden; }
+.pcell .cell-player:hover .name { text-decoration: underline; text-underline-offset: 2px; }
+.tagrow { display: inline-flex; align-items: center; gap: 5px; max-width: 250px; }
+.tagrow .tag { overflow: hidden; text-overflow: ellipsis; max-width: 150px; }
+.tag-btn { cursor: pointer; background: var(--surface); transition: background var(--dur), border-color var(--dur); }
+.tag-btn:hover { border-color: var(--ink-3); color: var(--ink); }
+.tag-btn.on { background: var(--accent-wash); border-color: var(--accent-line); color: var(--ink); }
+table.data td.sticky-col { box-shadow: 1px 0 0 var(--line); }
+
+/* ---- the column picker ---- */
+.column-picker .cp-list { max-height: 330px; overflow: auto; border: 1px solid var(--line); border-radius: var(--r-md); }
+.cp-group + .cp-group { border-top: 1px solid var(--line); }
+.cp-head { display: flex; align-items: center; gap: 6px; width: 100%; padding: 9px 10px; text-align: left; font-weight: 600; font-size: var(--fs-sm); }
+.cp-head:hover { background: var(--surface-2); }
+.cp-title { flex: 1; }
+.cp-body { padding: 0 6px 8px; }
+.cp-blurb { padding: 0 6px 6px; }
+
+/* ---- the map ---- */
+.map-controls { gap: 10px 14px; align-items: flex-end; }
+.map-controls .rb-field { flex-direction: column; align-items: flex-start; gap: 4px; }
+.metric-map .select.compact { max-width: 260px; }
+
+/* on a phone the first screen of the table should show who, and the value being ranked: the labels and the form strip wait until you scroll sideways */
+@media (max-width: 720px) {
+  table.data .col-profile, table.data .col-form { display: none; }
+}

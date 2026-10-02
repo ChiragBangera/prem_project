@@ -15,8 +15,20 @@ export default function Guide() {
         <p><b>Small sample</b> means few minutes or games. Treat those numbers as a hint, not a verdict.</p>
       </div>
     </${Card}>
-    <${Card} title="Pitch drawings in this version">
-      <p>There are two: the <b>player shot map</b> and the <b>match shot map</b>. There are no team shot maps, heat maps or pass maps yet.</p>
+    <${Card} title="Pitch drawings">
+      <div class="stack" style=${{ "--gap": "8px" }}>
+        <p><b>Team maps</b> (a team's page, Style & maps): touch heat map, passes by type, pass network, defending, carries, take-ons and goalkeeper actions, for the whole season, home or away, or the last 5, 10 or 20 matches. <b>Player maps</b> (a player's page, Maps) show the same for one player.</p>
+        <p><b>Shot maps</b>: every shot a team took and faced (a team's page, Chances), one player's shots (Finishing and shots), and both teams' shots in a match report.</p>
+        <p>On every pitch the team attacks left to right and its left wing is at the top, so any two maps read the same way. Maps need event data; where it is not stored yet the page says so instead of drawing an empty pitch.</p>
+      </div>
+    </${Card}>
+    <${Card} title="Scout and Teams in one minute">
+      <div class="stack" style=${{ "--gap": "8px" }}>
+        <p><b>Nothing is pre-selected.</b> Every player (or team) is listed until you narrow it down, and the count above the table always matches the table.</p>
+        <p><b>Filters add up.</b> Role, position, profile, club, minutes, age, playing time and any metric limit each narrow the list on their own. The strip under the filters shows exactly what is active, with a cross to remove each.</p>
+        <p><b>Lenses are quick filters.</b> Point at one to read the rules it adds. It never changes your columns or sorting; two buttons offer its metrics as columns or as the sort, if you want them.</p>
+        <p><b>Columns are yours.</b> Pick a set (Attacking, Defending ...) or tick any metric. Columns sit under headings by kind, and the column you sorted by is always shown. <b>Show Top N</b> limits both the table and the map.</p>
+      </div>
     </${Card}>
     <${Card} title="Find a chart or feature" flush>
       <div class="guide-list" style=${{ padding: "4px 20px 12px" }}>

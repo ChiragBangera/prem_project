@@ -171,7 +171,6 @@ class DemoProvider:
                     "goals": {"h": _s(m.hg) if m else None, "a": _s(m.ag) if m else None},
                     "xG": {"h": _s(m.hxg) if m else None, "a": _s(m.axg) if m else None},
                     "datetime": f.dt,
-                    "forecast": {"w": _s(round(f.forecast[0], 4)), "d": _s(round(f.forecast[1], 4)), "l": _s(round(f.forecast[2], 4))},
                 }
             )
 
@@ -379,7 +378,7 @@ class DemoProvider:
                 _s(i): {
                     "id": _s(i),
                     "goals": _s(a.goals),
-                    "own_goals": "0",
+                    "own_goals": _s(a.own_goals),
                     "shots": _s(a.shots),
                     "xG": _s(a.xg),
                     "time": _s(a.minutes),
@@ -402,10 +401,11 @@ class DemoProvider:
                 for i, a in enumerate(apps, start=1)
                 if a.minutes > 0
             }
-        return {
-            "shots": {v: [self._shot_row(s, m, season) for s in m.shots[v]] for v in ("h", "a")},
-            "rosters": rosters,
-        }
+        shots = {v: [self._shot_row(s, m, season) for s in m.shots[v]] for v in ("h", "a")}
+        for k, og in enumerate(m.own):  # Understat lists an own goal among the scorer's side's shots; the other side is credited with it
+            own = ShotSim(900_000_000 + 100_000_000 * k + m.id, og.minute, 0.04, 0.5, 0.0, "OwnGoal", "OpenPlay", "OtherBodyPart", "None", og.venue, og.player, None, "Normal")
+            shots[og.venue].append(self._shot_row(own, m, season))
+        return {"shots": shots, "rosters": rosters}
 
     # ------------------------------------------------------------------ search
 

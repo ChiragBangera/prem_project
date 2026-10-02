@@ -1,5 +1,5 @@
 // Shared building blocks: identity, cards, controls, states and insight cards.
-import { html, useEffect, useRef, useState, Component } from "../lib/html.js";
+import { html, useEffect, useLayoutEffect, useRef, useState, Component } from "../lib/html.js";
 import { Icon } from "../lib/icons.js";
 import { href } from "../lib/router.js";
 import { cls, hueOf, initials, nf, signed } from "../lib/format.js";
@@ -181,10 +181,24 @@ export function RangeSlider({ min, max, step = 1, value, onChange, format = (v) 
   </div>`;
 }
 
-/** A chip that opens a small panel (used by the scouting filter bar). Closes on outside click and Escape. */
-export function Popover({ label, summary, active, children, width = 300, align = "left" }) {
-  const [open, setOpen] = useState(false);
+/**
+ * A chip that opens a small panel (used by the filter bars). Closes on outside click and Escape.
+ * Uncontrolled by default; pass `open` and `onOpenChange` to control it from outside (for example to reopen it on a filter chip).
+ */
+export function Popover({ label, summary, active, children, width = 300, align = "left", icon, open: controlled, onOpenChange, title, class: klass }) {
+  const [inner, setInner] = useState(false);
+  const open = controlled !== undefined ? controlled : inner;
+  const setOpen = (v) => { if (controlled === undefined) setInner(v); onOpenChange && onOpenChange(v); };
   const ref = useRef(null);
+  const panel = useRef(null);
+  const [shift, setShift] = useState(0);
+  useLayoutEffect(() => {   // a panel that would run off the screen slides back in, by as little as it needs
+    if (!open || !panel.current) { setShift(0); return; }
+    const r = panel.current.getBoundingClientRect(), edge = document.documentElement.clientWidth;
+    let dx = r.right > edge - 8 ? edge - 8 - r.right : 0;
+    if (r.left + dx < 8) dx = 8 - r.left;
+    setShift(Math.round(dx));
+  }, [open, align, width]);
   useEffect(() => {
     if (!open) return undefined;
     const off = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
@@ -194,60 +208,10 @@ export function Popover({ label, summary, active, children, width = 300, align =
     return () => { document.removeEventListener("mousedown", off); document.removeEventListener("keydown", esc); };
   }, [open]);
   return html`<div class="popover-anchor" ref=${ref}>
-    <button type="button" class=${cls("chip", active && "on")} aria-haspopup="dialog" aria-expanded=${String(open)} onClick=${() => setOpen(!open)}>
-      ${label}${summary ? html`<b>${summary}</b>` : null}<${Icon} name="chevronDown" />
+    <button type="button" class=${cls("chip", active && "on", klass)} aria-haspopup="dialog" aria-expanded=${String(open)} title=${title} onClick=${() => setOpen(!open)}>
+      ${icon ? html`<${Icon} name=${icon} />` : null}${label}${summary ? html`<b>${summary}</b>` : null}<${Icon} name="chevronDown" />
     </button>
-    ${open ? html`<div class=${cls("popover pad", align === "right" && "right")} style=${{ width: width + "px", maxWidth: "calc(100vw - 32px)" }} role="dialog" aria-label=${label}>${children}</div>` : null}
-  </div>`;
-}
-
-/** Checklist inside a popover chip. Empty selection means "all". */
-export function ChecklistChip({ label, options, value, onChange, allLabel = "All", width = 260 }) {
-  const selected = new Set(value);
-  const summary = selected.size === 0 ? allLabel : selected.size <= 2 ? options.filter((o) => selected.has(o.value)).map((o) => o.label).join(", ") : `${selected.size} selected`;
-  const toggle = (v) => { const next = new Set(selected); next.has(v) ? next.delete(v) : next.add(v); onChange([...next]); };
-  return html`<${Popover} label=${label} summary=${summary} active=${selected.size > 0} width=${width}>
-    <div class="stack" style=${{ "--gap": "2px", margin: "-8px" }}>
-      ${options.map((o) => html`<button type="button" class="menu-item" role="checkbox" key=${o.value} aria-checked=${String(selected.has(o.value))} onClick=${() => toggle(o.value)}>
-        <span class="check">${selected.has(o.value) ? html`<${Icon} name="check" size="sm" />` : null}</span><span class="truncate">${o.label}</span>${o.hint ? html`<span class="muted xsmall" style=${{ marginLeft: "auto" }}>${o.hint}</span>` : null}
-      </button>`)}
-      ${selected.size ? html`<div class="menu-sep"></div><button type="button" class="menu-item" onClick=${() => onChange([])}>Clear selection</button>` : null}
-    </div>
-  </${Popover}>`;
-}
-
-/** A button that opens a checklist popover. */
-export function MultiSelect({ label, options, value, onChange, allLabel = "All", width }) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef(null);
-  useEffect(() => {
-    if (!open) return undefined;
-    const off = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
-    const esc = (e) => { if (e.key === "Escape") setOpen(false); };
-    document.addEventListener("mousedown", off);
-    document.addEventListener("keydown", esc);
-    return () => { document.removeEventListener("mousedown", off); document.removeEventListener("keydown", esc); };
-  }, [open]);
-  const selected = new Set(value);
-  const summary = selected.size === 0 || selected.size === options.length ? allLabel
-    : selected.size <= 2 ? options.filter((o) => selected.has(o.value)).map((o) => o.label).join(", ")
-    : `${selected.size} selected`;
-  const toggle = (v) => {
-    const next = new Set(selected);
-    next.has(v) ? next.delete(v) : next.add(v);
-    onChange([...next]);
-  };
-  return html`<div class="field" style=${width ? { width } : null}>
-    ${label ? html`<label>${label}</label>` : null}
-    <div class="popover-anchor" ref=${ref} style=${{ display: "flex" }}>
-      <button type="button" class="select multi" aria-haspopup="listbox" aria-expanded=${String(open)} onClick=${() => setOpen(!open)}><span class="truncate">${summary}</span></button>
-      ${open ? html`<div class="popover" role="listbox" aria-multiselectable="true">
-        ${options.map((o) => html`<button type="button" class="menu-item" role="option" key=${o.value} aria-checked=${String(selected.has(o.value))} onClick=${() => toggle(o.value)}>
-          <span class="check">${selected.has(o.value) ? html`<${Icon} name="check" size="sm" />` : null}</span><span>${o.label}</span>${o.hint ? html`<span class="muted xsmall" style=${{ marginLeft: "auto" }}>${o.hint}</span>` : null}
-        </button>`)}
-        ${selected.size ? html`<div class="menu-sep"></div><button type="button" class="menu-item" onClick=${() => onChange([])}>Clear selection</button>` : null}
-      </div>` : null}
-    </div>
+    ${open ? html`<div ref=${panel} class=${cls("popover pad", align === "right" && "popover-right")} style=${{ width: width + "px", maxWidth: "calc(100vw - 32px)", transform: shift ? `translateX(${shift}px)` : undefined }} role="dialog" aria-label=${label}>${children}</div>` : null}
   </div>`;
 }
 
@@ -268,7 +232,7 @@ export function PageSkeleton({ rows = 3 }) {
 export function EmptyState({ title, text, action, icon = "search", compact }) {
   return html`<div class=${cls("state", "center", compact && "compact")}>
     <${Icon} name=${icon} size="lg" class="muted" />
-    <h3>${title}</h3>
+    <h2>${title}</h2>
     ${text ? html`<p>${text}</p>` : null}
     ${action || null}
   </div>`;
@@ -278,7 +242,7 @@ export function ErrorState({ error, onRetry }) {
   const e = error || {};
   return html`<div class="card"><div class="state">
     <${Icon} name="alert" size="lg" class="muted" />
-    <h3>${e.status === 404 ? "Nothing found" : "This view could not load"}</h3>
+    <h2>${e.status === 404 ? "Nothing found" : "This view could not load"}</h2>
     <p>${e.message || "Something went wrong."}</p>
     ${e.hint ? html`<p class="muted">${e.hint}</p>` : null}
     <div class="row" style=${{ marginTop: "8px" }}>
@@ -320,7 +284,7 @@ export class ErrorBoundary extends Component {
     if (!this.state.error) return this.props.children;
     return html`<div class="card"><div class="state">
       <${Icon} name="alert" size="lg" class="muted" />
-      <h3>This page hit a bug</h3>
+      <h2>This page hit a bug</h2>
       <p>${String(this.state.error.message || this.state.error)}</p>
       <${Button} onClick=${() => this.setState({ error: null })}>Try again</${Button}>
     </div></div>`;

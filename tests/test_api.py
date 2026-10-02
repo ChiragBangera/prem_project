@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import math
 import time
 from datetime import date
 
@@ -27,6 +26,15 @@ def get(client, path, **params):
     return client.get(path, params=params)
 
 
+def val(body, row, key):
+    """A metric's value in a scouting row (rows carry two arrays aligned with the dataset's ``keys``)."""
+    return row["v"][body["keys"].index(key)]
+
+
+def pct(body, row, key):
+    return row["p"][body["keys"].index(key)]
+
+
 # ------------------------------------------------------------------ meta
 
 
@@ -37,8 +45,21 @@ def test_health_meta_and_catalog(client):
     assert [l["code"] for l in meta["leagues"]] == ["EPL", "La_liga", "Bundesliga", "Serie_A", "Ligue_1"]
     assert meta["seasons"][0] == {"season": 2020, "label": "2020/21"} and meta["defaults"]["season"] == "auto"
     catalog = get(client, "/api/catalog").json()
-    assert catalog["metrics"]["npxg90"]["higher_is_better"] and catalog["profiles"]["ATT"][0] == "npxg90"
-    assert any(g["group"] == "Chances" for g in catalog["glossary"]["groups"])
+    metric = catalog["player"]["metrics"]["npxg90"]
+    assert metric["hib"] is True and metric["formula"] and metric["what"] and metric["needs"] == "base" and catalog["player"]["profile"]["role"]["ATT"][0] == "npxg90"
+    assert len(catalog["player"]["metrics"]) > 100 and len(catalog["team"]["metrics"]) > 90
+    assert {"enabled", "running", "next_at", "finished", "errors", "backlog", "events_running"} == set(meta["auto"]) and meta["auto"]["enabled"] is False   # the top-bar pill reads this; demo never updates itself
+    tags = catalog["player"]["tags"]                                           # the Profile filter and the dictionary are built from this list
+    assert {t["group"] for t in tags} == {"ATT", "MID", "DEF", "GK"} and all(t["explain"] and t["rules"] for t in tags)
+    assert all(r["metrics"][0] in catalog["player"]["metrics"] for t in tags for r in t["rules"])
+    assert {g["key"] for g in catalog["player"]["groups"]} >= {"shooting", "passing", "defending", "goalkeeping"}
+    assert [v["key"] for v in catalog["player"]["views"]][:2] == ["overview", "attacking"] and catalog["team"]["views"] and catalog["roles"]["order"] == ["ATT", "MID", "DEF", "GK"]
+    # every lens, view and score recipe names metrics that exist: nothing in the catalogue points at a missing number
+    for level in ("player", "team"):
+        known = set(catalog[level]["metrics"])
+        assert all(m in known for v in catalog[level]["views"] for m in v["metrics"])
+        assert all(r["metric"] in known for l in catalog[level]["lenses"] for r in l["rules"])
+        assert all(l["explain"] and l["rules"] for l in catalog[level]["lenses"])
 
 
 def test_unknown_routes_and_bad_params_use_the_error_format(client):
@@ -63,11 +84,21 @@ def test_briefing(client):
     body = get(client, "/api/briefing", league="EPL", season="auto").json()
     assert body["scope"]["season"] == 2020 and body["scope"]["label"] == "2020/21" and not body["scope"]["complete"]
     assert len(body["table"]) == 20 and body["table"][0]["rank"] == 1 and body["insights"]
-    assert body["recent"] and body["upcoming"] and body["race"] and len(body["race"]) == 20
-    assert sum(t["p_title"] for t in body["race"]) == pytest.approx(1.0, abs=0.02)
+    assert body["recent"] and body["upcoming"] and "race" not in body and body["gaps"]["title"] >= 0
+    assert all("p_home" not in f and f["home_rank"] and f["utc"].endswith("Z") for f in body["upcoming"])
     assert body["meta"]["source"] == "demo" and not body["meta"]["stale"]
     for insight in body["insights"]:
         assert insight["headline"] and 0 <= insight["score"] <= 100
+
+
+def test_briefing_cards_carry_scorers_and_shots_once_their_match_pages_are_stored(client):
+    recent = get(client, "/api/briefing", league="EPL", season="2020").json()["recent"]
+    first = recent[0]
+    assert get(client, f"/api/match/{first['id']}", league="EPL", season="2020").status_code == 200
+    card = get(client, "/api/briefing", league="EPL", season="2020").json()["recent"][0]
+    assert card["id"] == first["id"] and set(card["scorers"]) == {"h", "a"}
+    assert len(card["scorers"]["h"]) + len(card["scorers"]["a"]) == card["hg"] + card["ag"]
+    assert card["shots"]["h"] >= card["sot"]["h"] and card["shots"]["a"] >= card["sot"]["a"]
 
 
 def test_league_table_and_filters(client):
@@ -158,11 +189,19 @@ def test_scouting_dataset(client):
     body = get(client, "/api/players", leagues="EPL", seasons="2019").json()
     rows = body["rows"]
     assert 400 < len(rows) < 700 and body["scope"]["pool_minutes"] == 840 and body["scope"]["labels"] == ["2019/20"]
-    assert {"id", "name", "team", "group", "age", "pct", "tags", "minutes", "npxg90", "output", "in_pool"} <= set(rows[0])
+    assert {"id", "name", "team", "group", "age", "tags", "v", "p", "in_pool", "pos2", "sample"} <= set(rows[0])
+    assert len(body["keys"]) > 100 and all(len(r["v"]) == len(r["p"]) == len(body["keys"]) for r in rows)
+    assert {"npxg90", "tklint90", "save_pct", "output", "score_full", "age", "minutes"} <= set(body["keys"])
     assert body["coverage"]["ages_known"] > 400 and body["highlights"]
     assert body["enrichment"]["ages"]["kind"] == "ages"
-    few = get(client, "/api/players", leagues="EPL", seasons="2019", min_minutes=1800).json()["rows"]
-    assert 0 < len(few) < len(rows) and all(r["minutes"] >= 1800 for r in few)
+    # nothing is filtered on the server except a one-minute floor: every role, goalkeepers included, is in the payload
+    assert {r["group"] for r in rows} == {"ATT", "MID", "DEF", "GK"}
+    few = get(client, "/api/players", leagues="EPL", seasons="2019", min_minutes=1800).json()
+    assert 0 < len(few["rows"]) < len(rows) and all(val(few, r, "minutes") >= 1800 for r in few["rows"])
+    # unknown is blank, not zero: the demo world has no event data, so no event metric has a value for anyone
+    assert all(val(body, r, "tackles90") is None and val(body, r, "pass_acc") is None for r in rows)
+    star = max((r for r in rows if r["in_pool"] and r["group"] == "ATT"), key=lambda r: val(body, r, "output"))
+    assert pct(body, star, "npxg90") is not None and val(body, star, "score_full") is None
 
 
 def test_multi_season_and_multi_league_dataset(client):
@@ -173,12 +212,15 @@ def test_multi_season_and_multi_league_dataset(client):
 
 
 def test_player_detail_similar_and_shortlist_flag(client):
-    rows = get(client, "/api/players", leagues="EPL", seasons="2019").json()["rows"]
-    star = max((r for r in rows if r["in_pool"] and r["group"] == "ATT"), key=lambda r: r["output"])
+    ds = get(client, "/api/players", leagues="EPL", seasons="2019").json()
+    star = max((r for r in ds["rows"] if r["in_pool"] and r["group"] == "ATT"), key=lambda r: val(ds, r, "output"))
     body = get(client, f"/api/player/{star['id']}", league="EPL", season="2019").json()
-    assert body["detail"]["player"]["name"] == star["name"] and body["detail"]["finishing"]["shots"] == star["shots"]
-    assert len(body["detail"]["shots"]) == star["shots"] and body["detail"]["career"] and body["insights"] and len(body["similar"]) == 8
-    assert body["detail"]["blocks"][0]["category"] == "Shooting" and body["shortlisted"] is False
+    shots = val(ds, star, "shots")
+    assert body["detail"]["player"]["name"] == star["name"] and body["detail"]["finishing"]["shots"] == shots
+    assert len(body["detail"]["shots"]) == shots and body["detail"]["career"] and body["insights"] and len(body["similar"]) == 8
+    assert [b["group"] for b in body["detail"]["blocks"]][:2] == ["availability", "shooting"] and body["shortlisted"] is False
+    shooting = next(b for b in body["detail"]["blocks"] if b["group"] == "shooting")
+    assert all(i["formula"] and i["what"] and i["pool_n"] for i in shooting["items"] if i["pct"] is not None)
     assert body["detail"]["player"]["favorite"]  # position confirmed from his player page on first open
 
     young = get(client, f"/api/player/{star['id']}/similar", league="EPL", seasons="2019", max_age=23, limit=5).json()
@@ -197,8 +239,9 @@ def test_player_falls_back_to_a_season_he_played(client):
 
 
 def test_compare(client):
-    rows = get(client, "/api/players", leagues="EPL", seasons="2019").json()["rows"]
-    atts = sorted((r for r in rows if r["in_pool"] and r["group"] == "ATT"), key=lambda r: -r["output"])[:3]
+    ds = get(client, "/api/players", leagues="EPL", seasons="2019").json()
+    rows = ds["rows"]
+    atts = sorted((r for r in rows if r["in_pool"] and r["group"] == "ATT"), key=lambda r: -val(ds, r, "output"))[:3]
     body = get(client, "/api/compare/players", ids=",".join(str(r["id"]) for r in atts), league="EPL", season="2019").json()
     assert [p["name"] for p in body["players"]] == [r["name"] for r in atts]
     assert body["metrics"][0]["key"] == "npxg90" and all(len(m["values"]) == 3 for m in body["metrics"]) and not body["mixed_groups"]
@@ -225,18 +268,73 @@ def test_matches_and_match_report(client):
     assert get(client, "/api/match/1", league="EPL", season="2020").status_code == 404
 
 
-def test_forecasts(client):
-    fixtures = get(client, "/api/forecast/fixtures", league="EPL", season="2020").json()
-    assert fixtures["fixtures"] and fixtures["model"]["weights"] == {"ratings": 0.7, "elo": 0.3}
-    first = fixtures["fixtures"][0]
-    assert first["p_home"] + first["p_draw"] + first["p_away"] == pytest.approx(1.0, abs=2e-3)
-    single = get(client, "/api/forecast/match", home="Arsenal", away="Chelsea", league="EPL", season="2020").json()
-    assert len(single["forecast"]["matrix"]) == 9 and len(single["teams"]) == 20
-    assert get(client, "/api/forecast/match", home="Arsenal", away="Arsenal", league="EPL", season="2020").status_code == 422
-    season = get(client, "/api/forecast/season", league="EPL", season="2020", sims=1000).json()["simulation"]
-    assert season["n_sims"] == 1000 and sum(t["p_title"] for t in season["teams"]) == pytest.approx(1.0, abs=0.03)
-    cal = get(client, "/api/forecast/calibration", league="EPL", season="2019").json()["calibration"]
-    assert cal["skill_vs_baseline"] > 0 and cal["models"]["ensemble"]["brier"] < cal["models"]["baseline"]["brier"]
+def test_forecasting_has_been_retired(client):
+    for path in ("/api/forecast/fixtures", "/api/forecast/match", "/api/forecast/season", "/api/forecast/calibration"):
+        assert get(client, path).status_code == 404
+
+
+def test_matches_carry_scorers_and_kickoffs_in_utc_once_match_pages_are_stored(client):
+    league = get(client, "/api/matches", league="EPL", season="2019").json()
+    assert league["coverage"]["played"] == 380
+    ids = [m["id"] for r in league["rounds"][:2] for m in r["matches"]]
+    for mid in ids:  # opening a match report stores its page; the list then carries scorers for it
+        assert get(client, f"/api/match/{mid}", league="EPL", season="2019").status_code == 200
+    again = get(client, "/api/matches", league="EPL", season="2019").json()
+    card = next(m for r in again["rounds"] for m in r["matches"] if m["id"] == ids[0])
+    assert card["utc"].endswith("Z") and "scorers" in card and set(card["scorers"]) == {"h", "a"}
+    assert len(card["scorers"]["h"]) + len(card["scorers"]["a"]) == card["hg"] + card["ag"]
+    assert all(g["kind"] in ("goal", "pen", "og") and g["player"] for side in card["scorers"].values() for g in side)
+    assert card["shots"]["h"] >= card["sot"]["h"]
+
+
+# ------------------------------------------------------------------ teams, the dictionary, caching
+
+
+def test_teams_dataset_ranks_each_team_within_its_own_league_and_season(client):
+    body = get(client, "/api/teams", leagues="EPL,La_liga", seasons="2019").json()
+    assert body["scope"]["n"] == 40 and set(body["scope"]["pools"]) == {"EPL:2019", "La_liga:2019"} and all(n == 20 for n in body["scope"]["pools"].values())
+    keys = body["keys"]
+    assert {"xg_pg", "xga_pg", "ppda", "poss", "pts_xpts"} <= set(keys)
+    row = next(r for r in body["rows"] if r["team"] == "Arsenal")
+    assert len(row["v"]) == len(row["p"]) == len(keys) and row["rank"] and row["league"] == "EPL"
+    # percentiles compare a team with its own league: the best xG in each league is near the top of its own
+    best = max((r for r in body["rows"] if r["league"] == "La_liga"), key=lambda r: r["v"][keys.index("xg_pg")])
+    assert best["p"][keys.index("xg_pg")] >= 90
+    # event metrics are blank, not zero, where no event data exists
+    assert row["v"][keys.index("poss")] is None and row["v"][keys.index("tackles_pg")] is None
+
+
+def test_dictionary_explains_every_metric_and_the_raw_data_behind_it(client):
+    d = get(client, "/api/dictionary").json()
+    keys = {(m["level"], m["key"]) for m in d["metrics"]}
+    assert ("player", "npxg90") in keys and ("team", "ppda") in keys and len(d["metrics"]) > 200
+    for m in d["metrics"]:
+        assert m["formula"] and m["what"] and m["kind"] in ("raw", "derived") and m["source"] and m["group_label"], m["key"]
+    assert {s["key"] for s in d["sources"]} >= {"understat", "whoscored", "espn"} and all(s["parts"] or s["key"] == "wikidata" for s in d["sources"])
+    assert len(d["counters"]) > 100 and len(d["events"]) > 30 and d["concepts"]
+    stats = get(client, "/api/dictionary/stats", league="EPL", season="2019").json()
+    q = stats["players"]["npxg90"]["ATT"]
+    assert q[0] > 8 and q[1:] == sorted(q[1:]) and stats["teams"]["xg_pg"][0] == 20
+
+
+def test_maps_say_so_when_there_is_no_event_data_instead_of_drawing_nothing(client):
+    team = get(client, "/api/maps/team", team="Arsenal", league="EPL", season="2019").json()
+    assert team["available"] is False and team["reason"]
+    ds = get(client, "/api/players", leagues="EPL", seasons="2019").json()
+    player = get(client, f"/api/maps/player/{ds['rows'][0]['id']}", league="EPL", season="2019").json()
+    assert player["available"] is False
+    shots = get(client, "/api/team/shots", team="Arsenal", league="EPL", season="2019").json()
+    assert shots["coverage"][1] == 380 and shots["for"] == [] or shots["matches"] >= 0
+
+
+def test_unchanged_answers_are_revalidated_with_a_304(client):
+    first = client.get("/api/teams", params={"leagues": "EPL", "seasons": "2019"})
+    etag = first.headers["etag"]
+    assert etag and first.headers["cache-control"] == "no-cache"
+    again = client.get("/api/teams", params={"leagues": "EPL", "seasons": "2019"}, headers={"If-None-Match": etag})
+    assert again.status_code == 304 and again.content == b""
+    assert client.get("/api/teams", params={"leagues": "EPL", "seasons": "2019"}, headers={"If-None-Match": 'W/"stale"'}).status_code == 200
+    assert "etag" not in client.get("/api/data/status").headers  # live status is never cached
 
 
 # ------------------------------------------------------------------ search, shortlist, data
@@ -272,6 +370,7 @@ def test_shortlist_roundtrip_and_flag(client):
 def test_data_status_and_sync_job(client):
     status = get(client, "/api/data/status").json()
     assert status["mode"]["demo"] and status["store"]["total_items"] > 0 and any(l["league"] == "EPL" for l in status["leagues"])
+    assert status["matrix"] and {"league", "season", "pages", "events", "played"} <= set(status["matrix"][0]) and status["auto"]["prefs"]["enabled"] is True
     job = client.post("/api/data/sync", json={"leagues": ["EPL", "Ligue_1"], "seasons": [2019, 2020]}).json()
     assert job["total"] == 4 and job["state"] in ("running", "finished")
     for _ in range(60):
@@ -285,8 +384,6 @@ def test_data_status_and_sync_job(client):
 
 
 def test_offline_mode_refuses_to_sync_and_serves_the_cache(tmp_path):
-    from app.data.repository import Repository
-
     settings = Settings(data_dir=tmp_path, demo=True, min_interval=0)
     with TestClient(create_app(settings, today=date(2021, 1, 15))) as warm:
         assert warm.get("/api/league", params={"season": "2019"}).status_code == 200

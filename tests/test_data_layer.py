@@ -48,14 +48,11 @@ def test_players_parse_strings_and_multi_team_rows():
     assert ann.league == "EPL" and ann.season == 2025
 
 
-def test_fixture_rounds_and_forecast_scaling():
+def test_fixture_rounds():
     payload = raw_league(played=4)
-    payload["dates"][0]["forecast"] = {"w": "60", "d": "25", "l": "15"}  # percentage scale
     ls = normalize_league(payload, "EPL", 2025)
     assert ls.n_played == 4 and len(ls.upcoming) == 8
     assert [f.round for f in ls.fixtures][:2] == [1, 1]
-    assert sum(ls.fixtures[0].forecast) == pytest.approx(1.0)
-    assert ls.fixtures[0].forecast[0] == pytest.approx(0.6)
     assert ls.upcoming[0].hg is None and ls.upcoming[0].hxg is None
 
 

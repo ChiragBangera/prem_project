@@ -1,5 +1,5 @@
 // Scatter plot with hover, click-through, reference lines, corner captions and collision-aware labels.
-import { html, useMemo, useRef, useState } from "../lib/html.js";
+import { html, useRef, useState } from "../lib/html.js";
 import { tooltip } from "../lib/tooltip.js";
 import { Frame, AxisX, AxisY, extent, niceExtent, niceTicks, scaleLinear, tickFormat } from "./core.js";
 
@@ -131,7 +131,7 @@ export function Scatter({
             </g>`;
           }
           return html`<g key=${p.id} transform=${`translate(${p.px},${p.py})`} style=${{ cursor: onSelect ? "pointer" : "default" }}>
-            <circle r=${p.pr + (on ? 2 : 0)} class=${"dot-mark" + (p.highlight ? " hi" : "") + (sel ? " sel" : "")} style=${{ fill: p.color || "var(--c1)", opacity: p.dim ? 0.28 : on || sel || p.highlight ? 1 : 0.68 }} />
+            <circle r=${p.pr + (on ? 2 : 0)} class=${"dot-mark" + (p.highlight ? " hi" : "") + (sel ? " sel" : "") + (p.clamped ? " clamped" : "")} style=${{ fill: p.color || "var(--c1)", opacity: p.dim ? 0.28 : on || sel || p.highlight ? 1 : 0.68 }} />
             ${p.ring ? html`<circle r=${p.pr + 3.5} class="ring-mark" />` : null}
           </g>`;
         })}
