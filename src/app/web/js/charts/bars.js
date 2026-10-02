@@ -1,6 +1,6 @@
 // Bar-style visuals built from HTML/CSS so text stays crisp and layouts reflow.
 import { html } from "../lib/html.js";
-import { cls, nf, pct as pctText, signed } from "../lib/format.js";
+import { nf, signed } from "../lib/format.js";
 import { tooltip } from "../lib/tooltip.js";
 import { seqColor } from "./core.js";
 import { SERIES_COLORS } from "./lines.js";
@@ -34,16 +34,6 @@ export function PercentileBars({ items, onHover }) {
       <span class="pctn" title="Percentile among role peers">${it.pct == null ? "–" : Math.round(it.pct)}</span>
       <span class="raw">${it.raw}</span>
     </div>`)}
-  </div>`;
-}
-
-export function ProbBar({ home, draw, away, homeLabel, awayLabel, compact, hideLabels }) {
-  const seg = (v) => Math.max(0, v || 0) * 100;
-  return html`<div class=${cls("probwrap", compact && "compact")}>
-    <div class="prob-bar" role="img" aria-label=${`${homeLabel || "Home"} ${pctText(home)}, draw ${pctText(draw)}, ${awayLabel || "Away"} ${pctText(away)}`}>
-      <i class="h" style=${{ flex: seg(home) + " 1 0" }}></i><i class="d" style=${{ flex: seg(draw) + " 1 0" }}></i><i class="a" style=${{ flex: seg(away) + " 1 0" }}></i>
-    </div>
-    ${hideLabels ? null : html`<div class="prob-labels num"><span>${homeLabel ? homeLabel + " " : ""}<b>${pctText(home)}</b></span><span class="muted">Draw <b>${pctText(draw)}</b></span><span>${awayLabel ? awayLabel + " " : ""}<b>${pctText(away)}</b></span></div>`}
   </div>`;
 }
 

@@ -144,6 +144,69 @@ def cmd_events_sync(args: argparse.Namespace) -> int:
     return 0
 
 
+EVENT_KINDS = ("events", "ws_raw", "ws_silver", "ws_gold")  # "events" is the first version's summed rows; the rest are the layers that replaced it
+
+
+def cmd_events_import(args: argparse.Namespace) -> int:
+    """Store every event page the download cache holds that the app's own store lacks, then derive from it. Offline."""
+    _apply_env(args)
+    from app.data.store import Store
+    from app.events import raw as R
+    from app.events.store import EventStore
+
+    settings = Settings.from_env()
+    store = Store(settings.db_path)
+    try:
+        result = R.import_soccerdata_cache(store, settings.data_dir, log=print)
+        print(f"{result['imported']} matches imported, {result['already']} already stored, {result['rejected']} unusable, from {result['files']} cached pages.")
+        rebuilt = EventStore(store).ensure_current(progress=lambda a, b: print(f"  derived {a} of {b}"))
+        print(f"Derived layers: {rebuilt['rebuilt']} rebuilt, {rebuilt['skipped']} already current.")
+        print(f"The download cache's copies can now be deleted to reclaim {R.reclaimable_bytes(store, settings.data_dir) / 1e6:.0f} MB (prem events reclaim --yes).")
+    finally:
+        store.close()
+    return 0
+
+
+def cmd_events_reclaim(args: argparse.Namespace) -> int:
+    """Delete the download cache's copy of every event page that is safely in the app's own store."""
+    _apply_env(args)
+    from app.data.store import Store
+    from app.events import raw as R
+
+    settings = Settings.from_env()
+    store = Store(settings.db_path)
+    try:
+        size = R.reclaimable_bytes(store, settings.data_dir)
+        if not args.yes:
+            print(f"This deletes {size / 1e6:.0f} MB of duplicate event pages from {settings.data_dir / 'soccerdata'} (the app's own store keeps every match). Re-run with --yes to confirm.")
+            return 1
+        freed = R.reclaim(store, settings.data_dir)
+        print(f"Deleted {freed['deleted']} pages, freed {freed['bytes'] / 1e6:.0f} MB.")
+    finally:
+        store.close()
+    return 0
+
+
+def cmd_rebuild(args: argparse.Namespace) -> int:
+    """Bring every derived event layer up to date with the current definitions, from the stored raw pages, with no network."""
+    _apply_env(args)
+    from app.data.store import Store
+    from app.events.store import EventStore
+
+    settings = Settings.from_env()
+    store = Store(settings.db_path)
+    try:
+        events = EventStore(store)
+        pending = events.pending_rebuild()
+        print(f"{pending} matches need rebuilding." if pending else "Everything is up to date.")
+        if pending:
+            result = events.ensure_current(progress=lambda a, b: print(f"  {a} of {b}"))
+            print(f"Rebuilt {result['rebuilt']}, {result['failed']} failed.")
+    finally:
+        store.close()
+    return 0
+
+
 def cmd_events_status(args: argparse.Namespace) -> int:
     _apply_env(args)
     from app.data.store import Store
@@ -157,7 +220,7 @@ def cmd_events_status(args: argparse.Namespace) -> int:
     events = EventStore(store)
     found = events.seasons()
     if not found:
-        print("No event data yet. Fetch some with: uv run --extra events prem events sync --league EPL --season 2025")
+        print("No event data yet. Fetch some with: uv run --extra events prem events sync --league EPL --seasons 2025")
     for league, season, n in found:
         status = events.status(league, season) or {}
         state = "running" if status.get("running") else "stalled" if status.get("stalled") else "idle"
@@ -168,9 +231,9 @@ def cmd_events_status(args: argparse.Namespace) -> int:
 
 
 def cmd_events(args: argparse.Namespace) -> int:
-    handler = {"sync": cmd_events_sync, "status": cmd_events_status}.get(getattr(args, "events_command", None))
+    handler = {"sync": cmd_events_sync, "status": cmd_events_status, "import": cmd_events_import, "reclaim": cmd_events_reclaim}.get(getattr(args, "events_command", None))
     if handler is None:
-        print("Use `prem events sync` to fetch event data or `prem events status` to see what is stored.")
+        print("Use `prem events sync` to fetch event data, `prem events status` to see what is stored, or `prem events import` to adopt pages already downloaded.")
         return 1
     return handler(args)
 
@@ -183,7 +246,7 @@ def cmd_clear(args: argparse.Namespace) -> int:
     if not settings.db_path.exists():
         print("Nothing to clear.")
         return 0
-    keep = () if getattr(args, "events", False) else ("events",)  # hours of fetching: only deleted when asked for
+    keep = () if getattr(args, "events", False) else EVENT_KINDS  # hours of fetching: only deleted when asked for
     if not args.yes:
         kept = "" if not keep else " Event data is kept (add --events to delete it too)."
         print(f"This deletes cached match and player data at {settings.db_path} (your shortlist is kept).{kept} Re-run with --yes to confirm.")
@@ -248,6 +311,15 @@ def build_parser() -> argparse.ArgumentParser:
     esync.add_argument("--visible", action="store_true", help="show the browser window; can help if the site blocks the hidden one")
     estatus = esub.add_parser("status", help="show what event data is stored")
     estatus.add_argument("--data-dir", help="where the cache lives (default: <repo>/.prem-data)")
+    eimport = esub.add_parser("import", help="store event pages the download cache already holds (offline) and derive from them")
+    eimport.add_argument("--data-dir", help="where the cache lives (default: <repo>/.prem-data)")
+    ereclaim = esub.add_parser("reclaim", help="delete the download cache's duplicate event pages (the store keeps every match)")
+    ereclaim.add_argument("--data-dir", help="where the cache lives (default: <repo>/.prem-data)")
+    ereclaim.add_argument("--yes", action="store_true")
+
+    rebuild = sub.add_parser("rebuild", help="rebuild derived event data from the stored raw pages (offline)")
+    common(rebuild)
+    rebuild.set_defaults(func=cmd_rebuild)
     return parser
 
 

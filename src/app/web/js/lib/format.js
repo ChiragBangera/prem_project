@@ -55,6 +55,9 @@ export function plural(n, one, many) {
 /** A player's age unless it came from a name match alone (shown with a "?", it may belong to a namesake), so it never decides a filter. */
 export const sureAge = (row) => (row.dob_basis === "name" ? null : row.age ?? null);
 
+/** "4231" -> "4-2-3-1" (a formation as people write it). */
+export const formation = (f) => (f ? String(f).split("").join("-") : null);
+
 export function seasonLabel(s) {
   const n = Number(s);
   return Number.isFinite(n) ? `${n}/${String(n + 1).slice(-2)}` : String(s);
@@ -115,8 +118,6 @@ export function hueOf(text) {
 export function cls(...parts) {
   return parts.filter(Boolean).join(" ");
 }
-
-export const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 
 export function debounce(fn, ms = 200) {
   let t;

@@ -1,6 +1,5 @@
-// Sortable data table with sticky header, sticky first column, heat cells and "show more" paging.
-import { html, useMemo, useState } from "../lib/html.js";
-import { Icon } from "../lib/icons.js";
+// Sortable data table with sticky header, sticky first column, heat cells, column bands and "show more" paging.
+import { html, useEffect, useMemo, useState } from "../lib/html.js";
 import { cls } from "../lib/format.js";
 import { tooltip } from "../lib/tooltip.js";
 import { toCsv, download } from "../lib/csv.js";
@@ -32,21 +31,27 @@ function heatStyle(col, value) {
   return { background: seqColor(t) };
 }
 
+/**
+ * columns: [{ key, label, num, sortable, sticky, width, render(row, i), value(row), title, heat, band }]
+ *   `band` names the group a column belongs to; consecutive columns with the same band share one heading cell above the headers.
+ * sort / onSort: controlled sorting. presorted: the rows are already in the order wanted (the table only shows the arrow).
+ */
 export function DataTable({
   columns, rows, rowKey = (r, i) => i, initialSort, sort: controlled, onSort, onRowClick, dense, maxHeight,
-  rowClass, zone, pageSize, caption, empty = "No rows match.", footer, id, tight,
+  rowClass, zone, pageSize, caption, empty = "No rows match.", footer, id, tight, presorted, bandLabels,
 }) {
   const [inner, setInner] = useState(initialSort || null);
   const [shown, setShown] = useState(pageSize || Infinity);
   const sort = controlled !== undefined ? controlled : inner;
+  useEffect(() => { setShown(pageSize || Infinity); }, [rows, pageSize]);
 
   const sorted = useMemo(() => {
-    if (!sort) return rows;
+    if (!sort || presorted) return rows;
     const col = columns.find((c) => c.key === sort.key);
     if (!col) return rows;
     const get = col.value || ((r) => r[col.key]);
     return [...rows].sort((a, b) => compare(get(a), get(b), sort.dir));
-  }, [rows, sort, columns]);
+  }, [rows, sort, columns, presorted]);
 
   const clickHeader = (col) => {
     if (col.sortable === false) return;
@@ -59,21 +64,42 @@ export function DataTable({
   const showHint = (col) => (e) => {
     if (!col.title) return;
     const r = e.currentTarget.getBoundingClientRect();
-    tooltip.at(r.left + r.width / 2, r.bottom + 2, html`<div style=${{ maxWidth: "260px" }}><div class="tt-title">${col.label}</div>${col.title}</div>`);
+    tooltip.at(r.left + r.width / 2, r.bottom + 2, html`<div style=${{ maxWidth: "280px" }}><div class="tt-title">${col.fullLabel || col.label}</div>${col.title}</div>`);
   };
 
+  // band heading cells: run-length of consecutive columns with the same band name
+  const bands = useMemo(() => {
+    if (!columns.some((c) => c.band !== undefined)) return null;
+    const out = [];
+    for (const c of columns) {
+      const name = c.band ?? "";
+      const last = out[out.length - 1];
+      if (last && last.name === name) last.span += 1; else out.push({ name, span: 1, sticky: c.sticky });
+    }
+    return out;
+  }, [columns]);
+  const bandStart = useMemo(() => {
+    const starts = new Set();
+    let prev;
+    columns.forEach((c, i) => { if (i > 0 && c.band !== prev && c.band) starts.add(c.key); prev = c.band; });
+    return starts;
+  }, [columns]);
+
   return html`<div class=${cls("table-wrap", maxHeight && "tall")} style=${maxHeight ? { maxHeight } : null} id=${id}>
-    <table class=${cls("data", dense && "dense", tight && "tight")}>
+    <table class=${cls("data", dense && "dense", tight && "tight", bands && "banded")}>
       ${caption ? html`<caption class="sr-only">${caption}</caption>` : null}
-      <thead><tr>
+      <thead>
+        ${bands ? html`<tr class="band-row">${bands.map((b, i) => html`<th key=${i} colspan=${b.span} class=${cls("band", b.name && "named", b.sticky && "sticky-col")}>${b.name ? (bandLabels?.[b.name] || b.name) : ""}</th>`)}</tr>` : null}
+        <tr>
         ${columns.map((c) => html`<th key=${c.key} scope="col"
-            class=${cls(c.num && "num", c.sortable !== false && "sortable", c.sticky && "sticky-col", c.headClass)}
+            class=${cls(c.num && "num", c.sortable !== false && "sortable", c.sticky && "sticky-col", c.headClass, bandStart.has(c.key) && "band-start", sort?.key === c.key && "sorted")}
             style=${c.width ? { width: c.width, minWidth: c.width } : null}
             aria-sort=${sort?.key === c.key ? (sort.dir === "asc" ? "ascending" : "descending") : undefined}
             onClick=${() => clickHeader(c)} onMouseEnter=${showHint(c)} onMouseLeave=${tooltip.hide}>
             ${c.label}<span class="sort" aria-hidden="true">${sort?.key === c.key ? (sort.dir === "asc" ? "▲" : "▼") : ""}</span>
           </th>`)}
-      </tr></thead>
+        </tr>
+      </thead>
       <tbody>
         ${visible.map((row, i) => {
           const z = zone ? zone(row, i) : null;
@@ -83,7 +109,7 @@ export function DataTable({
             ${columns.map((c, ci) => {
               const raw = c.value ? c.value(row) : row[c.key];
               const heat = heatStyle(c, raw);
-              return html`<td key=${c.key} class=${cls(c.num && "num", c.sticky && "sticky-col", ci === 0 && z && "zone-" + z, c.className)} style=${heat}>${c.render ? c.render(row, i) : isBlank(raw) ? html`<span class="muted">–</span>` : raw}</td>`;
+              return html`<td key=${c.key} class=${cls(c.num && "num", c.sticky && "sticky-col", ci === 0 && z && "zone-" + z, c.className, bandStart.has(c.key) && "band-start", sort?.key === c.key && "sorted")} style=${heat}>${c.render ? c.render(row, i) : isBlank(raw) ? html`<span class="muted">–</span>` : raw}</td>`;
             })}
           </tr>`;
         })}

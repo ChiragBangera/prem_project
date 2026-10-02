@@ -195,7 +195,7 @@ def test_partial_season_team_profile_has_upcoming_and_schedule(demo_league_parti
     profile = team_profile(demo_league_partial, "Arsenal")
     assert profile["upcoming"] and profile["schedule"]["remaining"] > 0
     first = profile["upcoming"][0]
-    assert first["venue"] in ("h", "a") and abs(sum(first["forecast"].values()) - 1) < 1e-6
+    assert first["venue"] in ("h", "a") and first["opp_strength"] is not None and "forecast" not in first
     assert profile["schedule"]["remaining_avg_opp"] is not None
 
 
@@ -281,7 +281,8 @@ def test_similarity_and_player_detail_on_demo_data(demo_provider, demo_league):
     assert detail["player"]["name"] == star["name"] and detail["group_label"] == "Attacker"
     assert detail["finishing"]["shots"] == star["shots"] and detail["finishing"]["goals"] == star["goals"]
     assert detail["finishing"]["xg"] == pytest.approx(star["xg"], abs=0.02)
-    assert [b["category"] for b in detail["blocks"]] == ["Shooting", "Creation", "Involvement", "Availability", "Discipline"]
+    assert {b["category"] for b in detail["blocks"]} >= {"Shooting", "Creating chances", "Involvement", "Availability", "Discipline"}
+    assert all(i["pct"] is not None for b in detail["blocks"] if b["group"] == "shooting" for i in b["items"] if i["needs"] == "base")
     assert len(detail["profile"]) == 7 and all(0 <= p["pct"] <= 100 for p in detail["profile"])
     assert detail["career"] and detail["career"][0]["season"] == 2019
     assert len(detail["shots"]) == star["shots"] and detail["shots"][0]["opponent"]

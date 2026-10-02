@@ -1,0 +1,68 @@
+/* Team page: style profile, fixtures, result chips, the chances chart toggles and the "versus the league" view. */
+
+/* ---- style profile ---- */
+.sprofile { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 22px 44px; }
+.sp-group { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.sp-title { font-size: var(--fs-2xs); font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); padding-bottom: 6px; border-bottom: 1px solid var(--line); margin-bottom: 2px; }
+.sp-row { display: grid; grid-template-columns: minmax(84px, 126px) minmax(0, 1fr) 58px 30px; gap: 12px; align-items: center; min-height: 30px; font-size: var(--fs-sm); border-radius: var(--r-sm); }
+.sp-row:hover { background: var(--surface-2); }
+.sp-label { font-weight: 600; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sp-name { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.sp-track { position: relative; height: 10px; border-radius: 5px; background: var(--surface-3); }
+.sp-fill { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 5px 3px 3px 5px; }
+.sp-median { position: absolute; top: -3px; bottom: -3px; left: 50%; width: 1px; background: var(--ink-3); opacity: 0.55; }
+.sp-track.style { height: 4px; margin: 3px 0; }
+.sp-dot { position: absolute; top: -4px; width: 12px; height: 12px; margin-left: -6px; border-radius: 50%; background: var(--ink-2); border: 2px solid var(--surface); box-shadow: 0 0 0 1px var(--line-2); }
+.sp-value { text-align: right; color: var(--ink-3); font-size: var(--fs-xs); white-space: nowrap; }
+.sp-pct { text-align: right; font-weight: 700; }
+@media (max-width: 960px) { .sprofile { grid-template-columns: minmax(0, 1fr); } }
+
+/* ---- fixtures ---- */
+.fixtures { display: flex; flex-direction: column; }
+.fixture-row { display: grid; grid-template-columns: 72px minmax(0, 1fr); gap: 14px; align-items: center; padding: 11px 18px; border-bottom: 1px solid var(--line); transition: background var(--dur); }
+.fixture-row:last-child { border-bottom: 0; }
+a.fixture-row:hover { background: var(--surface-2); }
+.fx-when { display: flex; flex-direction: column; line-height: 1.3; }
+.fx-when b { font-size: var(--fs-md); font-weight: 700; }
+.fx-teams { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.fx-side { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.fx-side .form { margin-left: auto; flex: none; }
+.fx-name { font-weight: 650; font-size: var(--fs-md); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+a.fx-name:hover { text-decoration: underline; text-underline-offset: 2px; }
+.fx-ctx { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* in a narrow card (the briefing's side column) the kick-off goes above the teams, so each side keeps room for its name and form */
+.fixtures { container-type: inline-size; }
+@container (max-width: 440px) {
+  .fixture-row { grid-template-columns: minmax(0, 1fr); gap: 8px; padding: 12px 18px 14px; }
+  .fx-when { flex-direction: row; align-items: baseline; gap: 8px; }
+  .fx-when b { font-size: var(--fs-sm); }
+}
+
+/* ---- result chips ---- */
+.rchip { display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 8px; border-radius: 5px; font-size: var(--fs-xs); font-weight: 650; font-variant-numeric: tabular-nums; white-space: nowrap; background: var(--surface-3); color: var(--ink-2); }
+.rchip b { font-weight: 800; }
+.rchip.w { background: var(--good-wash); color: var(--good-ink); }
+.rchip.l { background: var(--crit-wash); color: var(--crit-ink); }
+
+/* ---- chances: toggles above one chart ---- */
+.chart-toggles { display: flex; flex-direction: column; gap: 10px; padding-bottom: 14px; margin-bottom: 16px; border-bottom: 1px solid var(--line); }
+.toggle-row { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; }
+.toggle-row .fb-label { width: 92px; }
+
+/* ---- versus the league ---- */
+.edge { display: flex; flex-direction: column; }
+.edge-key { display: flex; justify-content: space-between; font-size: var(--fs-2xs); letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink-3); padding: 0 56px 8px 80px; }
+.edge-row { display: grid; grid-template-columns: minmax(110px, 190px) minmax(0, 1fr); gap: 14px; align-items: center; padding: 10px 0; border-top: 1px solid var(--line); border-radius: var(--r-sm); }
+.edge-row:hover { background: var(--surface-2); }
+.edge-row.dim { opacity: 0.6; }
+.edge-label { font-size: var(--fs-sm); }
+.edge-lines { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.edge-line { display: grid; grid-template-columns: 70px minmax(0, 1fr) 56px; gap: 10px; align-items: center; }
+.edge-name { font-size: var(--fs-xs); color: var(--ink-3); }
+.edge-track { position: relative; height: 12px; }
+.edge-track .axis { position: absolute; left: 50%; top: -4px; bottom: -4px; width: 1px; background: var(--axis); }
+.edge-track .fill { position: absolute; top: 2px; bottom: 2px; }
+.edge-track .fill.pos { background: var(--pos); border-radius: 0 4px 4px 0; }
+.edge-track .fill.neg { background: var(--neg); border-radius: 4px 0 0 4px; }
+.edge-val { text-align: right; }
+@media (max-width: 720px) { .edge-row { grid-template-columns: minmax(0, 1fr); gap: 6px; } .edge-key { padding-left: 80px; } }

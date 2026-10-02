@@ -110,6 +110,7 @@ class Repository:
         self._weights: dict[tuple[str, str], int] = {}
         self._budget = memory_budget
         self._inflight: dict[tuple[str, str], asyncio.Task] = {}
+        self.epochs: dict[str, int] = {}  # kind -> how many payloads of that kind were stored since start (a cheap "something changed" token)
 
     # ------------------------------------------------------------------ public API
 
@@ -144,19 +145,44 @@ class Repository:
         )
 
     async def match(
-        self, match_id: int, *, final: bool = True, refresh: bool = False, force: bool = False
+        self, match_id: int, *, final: bool = True, expect_shots: bool = False, refresh: bool = False, force: bool = False
     ) -> Fetched[MatchPage]:
+        """One match's shots and line-ups.
+
+        ``final`` says the match is old enough for Understat to have settled its numbers; only then is the page kept for good.
+        ``expect_shots`` says the match was a real one with chances (it has an xG), so a page with no shots yet is a page that is
+        not ready, and is asked for again instead of being frozen empty.
+        """
         return await self._load(
             "match",
             str(int(match_id)),
             fetch=lambda: self.provider.match(int(match_id)),
             parse=lambda raw: normalize_match_page(raw, int(match_id)),
-            is_complete=lambda page: final,
+            is_complete=lambda page: final and (not expect_shots or any(page.shots.values())),
             ttl=lambda page, complete: FOREVER if complete else self.settings.ttl_match_open,
             refresh=refresh,
             force=force,
             weight=1,
         )
+
+    def cached_match(self, match_id: int) -> MatchPage | None:
+        """The parsed match page if it is on this computer, however old. Never touches the network; blocks, so call it from a thread."""
+        key = str(int(match_id))
+        entry = self._mem.get(("match", key))
+        if entry is not None:
+            return entry.value
+        record = self.store.get("match", key)
+        if record is None:
+            return None
+        try:
+            return normalize_match_page(record.body, int(match_id))
+        except (ValueError, TypeError, KeyError):
+            return None
+
+    def match_status(self, match_id: int) -> tuple[float, bool] | None:
+        """``(fetched_at, complete)`` of a stored match page, or None. One small query."""
+        meta = self.store.meta("match", str(int(match_id)))
+        return None if meta is None else (meta[0], meta[2])
 
     async def team_page(
         self, team: str, season: int, *, refresh: bool = False, force: bool = False
@@ -331,6 +357,7 @@ class Repository:
         )
         entry = _Entry(stamp, complete, source, value)
         self._remember(kind, key, entry, weight)
+        self.epochs[kind] = self.epochs.get(kind, 0) + 1
         return entry
 
     async def _entry_from_record(self, record: Record, parse, is_complete) -> _Entry | None:

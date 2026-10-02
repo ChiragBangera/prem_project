@@ -7,7 +7,7 @@ from datetime import date
 import pytest
 
 from app.analytics.players import (
-    Merged,
+    SeasonInput,
     archetype_tags,
     build_dataset,
     merge_players,
@@ -67,8 +67,8 @@ def test_role_model_assigns_profile_to_the_closer_family():
 def test_merge_sums_seasons_and_keeps_latest_identity():
     a = league_of([make_player(1, "A", minutes=1000, goals=5, team="Alpha FC", season=2024)], season=2024)
     b = league_of([make_player(1, "A", minutes=2000, goals=10, team="Beta United", season=2025, position="M")], season=2025)
-    (m,) = merge_players([b, a])
-    assert (m.minutes, m.goals) == (3000, 15)
+    (m,) = merge_players([SeasonInput(b), SeasonInput(a)])
+    assert (m.c["minutes"], m.c["goals"]) == (3000, 15)
     assert m.teams == ["Beta United"] and m.position == "M" and m.seasons == [2024, 2025]
     assert m.available == 2 * 10 * 90  # two seasons of ten matches
 
@@ -167,7 +167,8 @@ def test_multi_family_players_are_inferred_from_their_profile():
 def test_goalkeepers_have_no_percentiles_or_tags():
     ds = build(field_of_forwards() + [make_player(999, "Keeper", position="GK", minutes=3000, goals=0, xg=0, npxg=0, shots=0, kp=0, xa=0)])
     keeper = by_name(ds, "Keeper")
-    assert keeper["group"] == "GK" and keeper["pct"] == {} and keeper["output"] is None and keeper["tags"] == []
+    assert keeper["group"] == "GK" and keeper["output"] is None and keeper["tags"] == []
+    assert not {"npxg90", "shots90", "xa90", "kp90", "xgchain90", "xgbuildup90", "contrib90"} & set(keeper["pct"])  # no shooting or creating percentiles for a goalkeeper
 
 
 def test_archetype_tags_explain_themselves():

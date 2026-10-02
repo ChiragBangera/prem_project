@@ -43,7 +43,9 @@ def demo_app(tmp_path):
 
 
 def rows_of(c, **params) -> dict[int, dict]:
-    return {r["id"]: r for r in c.get("/api/players", params={"leagues": "EPL", **params}).json()["rows"]}
+    body = c.get("/api/players", params={"leagues": "EPL", **params}).json()
+    at = {k: body["keys"].index(k) for k in ("minutes", "output")}
+    return {r["id"]: {**r, "minutes": r["v"][at["minutes"]], "output": r["v"][at["output"]]} for r in body["rows"]}
 
 
 def test_a_squad_list_gives_the_exact_birthdate_and_is_marked_as_such(tmp_path):

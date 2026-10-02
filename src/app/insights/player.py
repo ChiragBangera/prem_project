@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
-import math
 from typing import Sequence
 
 from app.analytics.ages import sure_age
-from app.analytics.metrics import EVENT_BY_KEY, EVENT_PROFILE, METRIC_BY_KEY, GROUP_LABELS
+from app.analytics.metrics import EVENT_BY_KEY, EVENT_PROFILE, METRIC_BY_KEY
 
 from .core import (
-    Insight, clamp_score, confidence_from_minutes, ev, f1, f2, ordinal, plural, player_link, signed,
+    Insight, clamp_score, confidence_from_minutes, ev, f1, f2, ordinal, player_link, signed,
 )
 
 WORDS = {"ATT": "attackers", "MID": "midfielders", "DEF": "defenders", "GK": "goalkeepers"}

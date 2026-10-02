@@ -33,20 +33,15 @@ export const HELP = {
     good: "'Upside' items: better than the results show, or likely to last.",
     bad: "'Watch' and 'Downside' items: results flattering the team or player. 'Small sample' means few games or minutes, so be cautious.",
   },
-  "The run-in": {
-    what: "The rest of the season replayed thousands of times using the model's win, draw and loss probabilities.",
-    good: "A high percentage in Title or Top 4 means that outcome happens in most of the replays.",
-    bad: "A high percentage in Relegation is danger. A small percentage is still possible, just rare.",
-  },
   "Next fixtures": {
-    what: "The model's win, draw and loss chances for each game, with the most likely score. Built from chances created and allowed, not bookmakers.",
-    good: "A long bar for the team means the model expects it to win. Near-equal thirds is an open game.",
-    bad: "Treat them as odds, not predictions: a 20% outcome still happens one game in five.",
+    what: "The coming matches, with kickoff in your own time zone and what each side looks like going in: league position, last five results and chance difference per game.",
+    good: "A side high in the table with strong recent form and a positive chance difference is in good shape.",
+    bad: "Form is five matches, a small sample. The chance difference is the steadier guide.",
   },
   "Latest results": {
-    what: "Recent scores with the xG (chances) underneath.",
+    what: "Recent scores with who scored, the xG (chances), possession and shots.",
     good: "When the score matches the xG, the result was deserved.",
-    bad: "'Did not follow the chances' marks results that flattered a team or were unfair to them.",
+    bad: "'Against the run of play' marks results that flattered a team or were unfair to them.",
   },
   "Points against expected points": {
     what: "Each team's actual points against the points the chances were worth (xPts).",
@@ -93,6 +88,11 @@ export const HELP = {
     good: "A taller bar means that side created better chances in that period.",
     bad: "Very short bars mean a quiet spell. One tall bar can be a single big chance rather than sustained pressure.",
   },
+  "How the game was played": {
+    what: "Possession (share of passes), passing, corners, fouls, cards and the shape each side used, from the event data.",
+    good: "More of the ball is not the same as better chances: compare it with the xG.",
+    bad: "A side with little possession can still be the dangerous one (counter-attacking). Read possession next to chance quality.",
+  },
 
   // Player
   "Every metric": PERCENTILES,
@@ -126,12 +126,22 @@ export const HELP = {
     good: "High match percentages mean a very similar style.",
     bad: "Similar style is not similar quality. Compare minutes and role score too.",
   },
+  "Maps": {
+    what: "Where he touches the ball, passes, defends and carries it, drawn from every match of the event data he played. Choose a layer above the pitch.",
+    good: "Heat where his role says it should be: a full-back high on the touchline, a centre-back in front of his own box.",
+    bad: "Few matches make a thin picture. Carries are an estimate from the order of events, and a pass network's receiver is inferred.",
+  },
 
   // Team
   "Every match: chances against results": {
     what: "One bar per match: blue if the team created more chances than it allowed, orange if it allowed more. The marker above is what happened: won, drew or lost.",
     good: "Blue bars and green wins together: winning while the better team.",
     bad: "Wins on orange bars were lucky; losses on blue bars were unlucky. A row of orange bars is a warning.",
+  },
+  "How they play": {
+    what: "Where the team stands among the teams of its own league and season on results, chance creation and prevention, possession, pressing and set pieces. Bars are percentiles; a dot on a track is a style measure where more is neither better nor worse.",
+    good: "Long bars in the areas that matter for the way the team wants to play. The thin tick is the league median.",
+    bad: "A style measure is not a grade: a low possession share can be a plan. Read the style next to the chance quality.",
   },
   "Against the rest of the league": TEAM_PERCENTILES,
   "Chances created and allowed": {
@@ -140,10 +150,10 @@ export const HELP = {
     bad: "'Against' climbing above 'for' means the team is being outplayed.",
   },
   "Points and expected points": XPTS,
-  "Squad contributions": {
-    what: "Every player's minutes, goals against xG, assists and share of the team's attacking output.",
-    good: "Output spread across several players; G – xG near zero means unremarkable finishing.",
-    bad: "One player carrying most of the xG is a dependency. Big positive G – xG usually fades.",
+  "Where the output comes from": {
+    what: "The squad's biggest contributors to the team's non-penalty xG, xA and attacking chains, as shares.",
+    good: "Output spread across several players.",
+    bad: "One or two players carrying most of it is a dependency: the team is easier to stop, and fragile when they are missing.",
   },
   "Splits": {
     what: "The same team in different circumstances, such as home and away or against strong and weak sides.",
@@ -151,9 +161,25 @@ export const HELP = {
     bad: "A big home/away gap or poor results against weaker sides shows where points leak.",
   },
   "What is next": {
-    what: "Upcoming games with win, draw and loss chances and how strong each opponent is.",
-    good: "Green 'easy' opponents and high win chances.",
+    what: "Upcoming games, with kickoff in your time zone and how strong each opponent is on chance difference.",
+    good: "Kind opponents and a run-in easier than the games already played.",
     bad: "A tougher run-in than the games already played.",
+  },
+  "Style and maps": {
+    what: "Pitch maps of everything the team does with the ball and against it, from the event data: touches, passes, pass network, defending, carries, take-ons, goalkeeper actions and shots.",
+    good: "Shapes that match the way the manager says the team plays.",
+    bad: "A few matches make a thin picture; narrow by home, away or recent matches only when there are enough.",
+  },
+  "Every shot": SHOT_MAP,
+  "Match by match": {
+    what: "Every league match with the score, the chances and (where event data is stored) possession, passing, field tilt, pressing and the shape used.",
+    good: "Results that follow the chances and style that stays steady.",
+    bad: "A dash means no event data for that match yet, never zero.",
+  },
+  "Does having the ball help?": {
+    what: "One dot per match: possession on the way across, chance difference up the side, coloured by the result.",
+    good: "Dots rising to the right mean possession turns into better chances for this team.",
+    bad: "Dots high on the left show a team that is dangerous without the ball.",
   },
 
   // Team history
@@ -183,39 +209,19 @@ export const HELP = {
     bad: "Below zero means being outplayed. A season with good points but a low xG line is likely to slip.",
   },
 
-  // Optional event data
-  "Defending and passing": {
-    what: "Duels, tackles, interceptions and passing from WhoScored's event data, each ranked among players in the same role who have event data. Defensive duels are tackles, challenges and aerial duels as the defending side.",
-    good: "Long bars. A high duel win rate on plenty of duels, strong interception and recovery numbers, and passing that is both accurate and moves the ball forward.",
-    bad: "A high duel count can just mean a team that defends a lot, and a high forward-pass ratio with poor accuracy is losing the ball. Read volume and rate together, and watch the minutes behind each number.",
+  // Data
+  "Automatic updates": {
+    what: "While the app is open it looks for newly finished matches and fetches only those, politely and within a time budget. It keeps what it has if something fails and tries again later.",
+    good: "'On', with a recent cycle and no problems.",
+    bad: "Problems listed under 'Needs attention' are retried by themselves with a growing delay; a season that does not exist yet is not a problem.",
+  },
+  "What is on this computer": {
+    what: "Each league season stored, and how complete each layer is: league data, match pages (scorers, shots, positions) and event data (maps, passing, duels).",
+    good: "Bars full for the finished seasons you care about.",
+    bad: "A part-filled bar for a live season is normal: it fills as matches are played and fetched.",
   },
 
-  // Forecast and compare
-  "Markets": {
-    what: "The model's probabilities for common bets, such as over 2.5 goals and both teams scoring.",
-    good: "Useful as a sense of how open a game is.",
-    bad: "These are model estimates, not offers, and not tested against bookmaker prices.",
-  },
-  "Scoreline probabilities": {
-    what: "The chance of every exact score. The ringed cell is the likeliest.",
-    good: "A concentrated cluster shows the likely region.",
-    bad: "Even the top score is usually under 15%, so exact scores are hard to call.",
-  },
-  "How the season could end": {
-    what: "Thousands of simulated seasons, playing out every remaining match from each team's rating: how often each team finishes in each position.",
-    good: "A high percentage for a high finish means that outcome is likely.",
-    bad: "A wide spread means an uncertain finish.",
-  },
-  "Do the percentages mean what they say?": {
-    what: "A check of the model against past matches: when it said 60%, did that happen about 60% of the time?",
-    good: "Dots on the diagonal line: the percentages can be trusted.",
-    bad: "Dots far from the line mean the model was over- or under-confident.",
-  },
-  "Models compared": {
-    what: "How this model's past forecasts compare with simpler alternatives.",
-    good: "Lower is better on the error columns. The best in each column is bold.",
-    bad: "Small differences are noise over a short stretch of games.",
-  },
+  // Compare
   "Profile against role peers": PERCENTILES,
   "Profile against the league": TEAM_PERCENTILES,
   "Net chances through the season": {
@@ -236,19 +242,21 @@ export function helpFor(title) {
 }
 
 export const FEATURES = [
-  { name: "Shot map: player", where: "Scout → click a player → 'Finishing and shots' tab", what: "Every shot he has taken, on a pitch, plus how lucky or unlucky his finishing is.", href: "/scout" },
-  { name: "Shot map: match", where: "Matches → click any match → 'Shot map' card", what: "Both teams' shots on one pitch for a single game.", href: "/matches" },
-  { name: "Where a team's chances come from", where: "League → click a team → 'Chances' tab", what: "Chances created and allowed in seven breakdowns (situation, shot zone, timing, game state, attack speed, formation, shot result), each explained and ranked against the league. Not a pitch drawing.", href: "/league" },
-  { name: "Chances against results, match by match", where: "League → click a team → Overview", what: "Shows which results were deserved and which were lucky.", href: "/league" },
+  { name: "Find players by anything", where: "Scout", what: "Every player is listed; narrow with role, position, profile, club, minutes, age, playing time or a limit on any metric. Nothing is pre-selected.", href: "/scout" },
+  { name: "Lenses: quick filters, explained", where: "Scout and Teams → Lenses row", what: "Goal threats, Ball winners, Hidden gems and more. Point at one to read exactly which rules it adds; it never changes your columns or sorting.", href: "/scout" },
+  { name: "Your own columns", where: "Scout and Teams → Columns", what: "Pick any of the metrics (or start from Attacking, Defending, Passing ...). They are grouped under their kind in the table.", href: "/scout" },
+  { name: "The map, and Top N", where: "Scout and Teams → Table / Map", what: "Plot everyone on any two metrics. 'Show Top 20' limits both the table and the map to the first 20 of your sort.", href: "/scout" },
+  { name: "Scout for teams", where: "Teams", what: "The same filters, lenses, columns and map over every team measure: results, chances, possession, pressing, set pieces, discipline.", href: "/teams" },
+  { name: "Team style profile", where: "Teams → a team → Overview → 'How they play'", what: "Where a side stands in its league on results, creating, preventing, possession, pressing and set pieces.", href: "/teams" },
+  { name: "Pitch maps for a team", where: "A team → Style & maps", what: "Touch heat map, passes by type, pass network, defending, carries, take-ons, goalkeeper actions and shots, for the whole season, home or away, or the last 5, 10 or 20 matches.", href: "/teams" },
+  { name: "Pitch maps for a player", where: "A player → Maps", what: "The same layers for one player across all his matches.", href: "/scout" },
+  { name: "Chances in one chart with toggles", where: "A team → Chances", what: "Break the chances down by situation, zone, timing, game state, speed, formation or result, and draw them as bars, versus the league, columns, a mix or on the pitch. Every shot is drawn below.", href: "/teams" },
+  { name: "The whole squad, ranked", where: "A team → Players", what: "The club's players in the same table as Scout, with lenses, columns and a map.", href: "/teams" },
+  { name: "Match by match", where: "A team → Matches", what: "Every league match with the chances, possession, passing and pressing, and whether having the ball helped.", href: "/teams" },
+  { name: "Matches, with scorers", where: "Matches", what: "Each matchweek as compact cards: score, scorers, xG, possession and shots. Times are in your time zone. 'Results that lied' lists results that went against the chances.", href: "/matches" },
   { name: "Expected points (xPts)", where: "League → 'Expected' view", what: "The table the chances say it should be, and who is over- or under-performing.", href: "/league" },
-  { name: "Title, top-4 and relegation odds", where: "Briefing → 'The run-in'; Forecast → 'Season'", what: "The rest of the season simulated thousands of times.", href: "/" },
-  { name: "Find players by role and style", where: "Scout → pick a Lens (Goal threats, Hidden gems, Young and good...)", what: "Ranked player list with filters for role, minutes, age and club.", href: "/scout" },
-  { name: "Lucky or unlucky finishers", where: "Scout → 'Unlucky finishers' and 'Running hot' lenses", what: "Players scoring well below or above what their chances say.", href: "/scout" },
   { name: "Compare two players or two teams", where: "Compare, or tick players in Scout", what: "Side-by-side percentile profiles with the differences spelled out.", href: "/compare" },
-  { name: "Next fixtures and match odds", where: "Forecast → 'Fixtures' and 'Match lab'", what: "Win, draw and loss chances and likely scores for any pairing.", href: "/forecast" },
-  { name: "Compare a team across seasons", where: "League → click a team → 'History' tab", what: "Points, league position and chances by matchweek, with up to 8 of the team's seasons laid over each other.", href: "/league" },
-  { name: "Defending and passing metrics", where: "Scout → 'Defending & passing' columns (after fetching event data); the player page card", what: "Defensive duels, tackles, interceptions, forward-pass ratio and progressive passes per 90, ranked among players in the same role. Optional: needs event data fetched with prem events sync.", href: "/scout" },
   { name: "Track players you like", where: "Star any player, then open Shortlist", what: "Live numbers and your own notes.", href: "/shortlist" },
-  { name: "Sync more leagues and seasons", where: "Data", what: "Fetch other leagues or older seasons and check the connection.", href: "/data" },
-  { name: "What a number means", where: "Method, or hover any (i) button", what: "Plain-language definitions of every metric.", href: "/method" },
+  { name: "What a number means", where: "Dictionary, or hover any (i) button", what: "Every metric, raw or derived: its formula, inputs, how to read it, caveats and typical values.", href: "/dictionary" },
+  { name: "How fresh the data is, and what failed", where: "Data", what: "Automatic updates, coverage of every league season, what the last cycle did, what failed and when it will retry. Switch event data on or off.", href: "/data" },
 ];

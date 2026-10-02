@@ -9,77 +9,60 @@ from typing import Sequence
 from app.data.models import CareerSeason, PlayerPage, Shot
 from app.stats import per90, safe_div, shot_luck
 
-from .metrics import EVENT_BY_KEY, EVENT_PROFILE, GROUP_LABELS, METRIC_BY_KEY, PROFILE_METRICS
+from app.metrics.player import GROUPS, PLAYER_METRICS, PROFILE, PROFILE_FULL
+
+from .metrics import GROUP_LABELS
 
 PITCH_L, PITCH_W = 105.0, 68.0
-
-BLOCKS: tuple[tuple[str, tuple[str, ...]], ...] = (
-    ("Shooting", ("npxg90", "shots90", "xgps", "goals90")),
-    ("Creation", ("xa90", "kp90", "contrib90")),
-    ("Involvement", ("xgchain90", "xgbuildup90", "buildup_share")),
-    ("Availability", ("minutes", "games", "mins_per_app", "minutes_share")),
-    ("Discipline", ("yellow90",)),
-)
+_BY_KEY = {m.key: m for m in PLAYER_METRICS}
 
 
-def metric_blocks(row: dict) -> list[dict]:
+def metric_blocks(row: dict, pools: dict | None = None) -> list[dict]:
+    """Every metric he has a value for, grouped as in the registry, each with its percentile among role peers and how many peers that is."""
+    pools = pools or {}
+    pct, rank = row.get("full_pct", {}), row.get("full_rank", {})
     blocks = []
-    for category, keys in BLOCKS:
+    for group in GROUPS:
         items = []
-        for key in keys:
-            metric = METRIC_BY_KEY[key]
-            value = row.get(key)
+        for metric in PLAYER_METRICS:
+            if metric.group != group.key:
+                continue
+            value = row.get(metric.key)
             if value is None:
                 continue
-            items.append(
-                {
-                    "key": key, "label": metric.label, "short": metric.short, "unit": metric.unit,
-                    "decimals": metric.decimals, "value": value,
-                    "pct": row["pct"].get(key), "rank": row["rank"].get(key), "pool_n": row.get("pool_n"),
-                    "higher_is_better": metric.higher_is_better, "what": metric.what, "read": metric.read,
-                }
-            )
+            items.append({
+                "key": metric.key, "label": metric.label, "short": metric.short, "unit": metric.unit, "decimals": metric.decimals, "value": value,
+                "pct": pct.get(metric.key), "rank": rank.get(metric.key), "pool_n": pools.get(row["group"], {}).get(metric.key),
+                "higher_is_better": metric.hib is not False, "hib": metric.hib, "what": metric.what, "read": metric.read, "needs": metric.needs, "source": metric.source,
+                "formula": metric.formula,
+            })
         if items:
-            blocks.append({"category": category, "items": items})
+            blocks.append({"group": group.key, "category": group.label, "blurb": group.blurb, "items": items})
     return blocks
 
 
-def event_card(row: dict) -> dict:
-    """The "defending and passing" card: every event metric he has, role-relevant ones first, each with its percentile among role peers."""
+def event_summary(row: dict, pools: dict | None = None) -> dict:
+    """How much event data stands behind his event metrics, so the page can say so."""
     if not row.get("ev_minutes"):
         return {"available": False}
-    focus = EVENT_PROFILE.get(row["group"], ())
-    items = []
-    for key in (*focus, *(k for k in EVENT_BY_KEY if k not in focus)):
-        value = row.get(key)
-        if value is None:
-            continue
-        m = EVENT_BY_KEY[key]
-        items.append({
-            "key": key, "label": m.label, "short": m.short, "category": m.category, "unit": m.unit, "decimals": m.decimals, "value": value,
-            "pct": row["evpct"].get(key), "rank": row["evrank"].get(key), "higher_is_better": m.higher_is_better, "what": m.what, "read": m.read,
-            "focus": key in focus,
-        })
-    return {
-        "available": True, "minutes": row["ev_minutes"], "matches": row["ev_matches"], "in_pool": row["ev_in_pool"],
-        "pool_n": row["ev_pool_n"], "pool_minutes": row["ev_pool_minutes"], "items": items,
-    }
+    return {"available": True, "minutes": row["ev_minutes"], "matches": row["ev_matches"], "in_pool": row["ev_in_pool"],
+            "pool_n": (pools or {}).get(row["group"], {}).get("tackles90", row.get("ev_pool_n", 0)), "pool_minutes": row["ev_pool_minutes"]}
 
 
 def profile(row: dict) -> list[dict]:
-    """The role's key metrics in display order, each with its percentile."""
+    """The role's key metrics in display order, each with its percentile (the wider all-data set when event data exists)."""
     out = []
-    for key in PROFILE_METRICS.get(row["group"], ()):
-        if key not in row["pct"]:
+    pct, rank = row.get("full_pct", {}), row.get("full_rank", {})
+    use_full = row.get("score_full") is not None
+    keys = (PROFILE_FULL if use_full else PROFILE).get(row["group"], ())
+    for key in keys:
+        if key not in pct:
             continue
-        metric = METRIC_BY_KEY[key]
-        out.append(
-            {
-                "key": key, "label": metric.label, "short": metric.short, "category": metric.category,
-                "value": row[key], "pct": row["pct"][key], "rank": row["rank"].get(key),
-                "decimals": metric.decimals, "higher_is_better": metric.higher_is_better,
-            }
-        )
+        metric = _BY_KEY[key]
+        out.append({
+            "key": key, "label": metric.label, "short": metric.short, "category": metric.group, "value": row.get(key), "pct": pct[key], "rank": rank.get(key),
+            "decimals": metric.decimals, "unit": metric.unit, "higher_is_better": metric.hib is not False,
+        })
     return out
 
 
@@ -189,17 +172,17 @@ def career_rows(career: Sequence[CareerSeason], dob: str | None = None) -> list[
     return rows
 
 
-def player_detail(row: dict, page: PlayerPage | None, seasons: Sequence[int], team_context: dict | None = None) -> dict:
+def player_detail(row: dict, page: PlayerPage | None, seasons: Sequence[int], team_context: dict | None = None, pools: dict | None = None) -> dict:
     shots = [s for s in (page.shots if page else []) if not seasons or s.season in seasons]
     return {
         "player": {k: row[k] for k in (
             "id", "name", "team", "teams", "league", "seasons", "pos", "group", "group_source", "group_conf",
-            "favorite", "dob", "dob_basis", "age", "minutes", "games", "sample", "in_pool", "tags", "output", "pool_n",
+            "favorite", "dob", "dob_basis", "age", "minutes", "games", "sample", "in_pool", "tags", "output", "score_full", "pool_n", "pos2", "pos_min",
         )},
         "group_label": GROUP_LABELS.get(row["group"], row["group"]),
         "profile": profile(row),
-        "blocks": metric_blocks(row),
-        "events": event_card(row),
+        "blocks": metric_blocks(row, pools),
+        "events": event_summary(row, pools),
         "totals": {k: row[k] for k in ("goals", "npg", "assists", "shots", "kp", "yellow", "red", "xg", "npxg", "xa", "xgchain", "xgbuildup", "g_xg", "a_xa", "g_xg_z")},
         "finishing": finishing(shots) if shots else None,
         "shots": shot_rows(shots),

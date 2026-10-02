@@ -13,7 +13,6 @@ Three jobs, all pure functions over the raw ``groups`` of a team page:
 from __future__ import annotations
 
 import math
-from typing import Sequence
 
 from app.insights.core import Insight, ev, ordinal
 

@@ -73,7 +73,6 @@ class Fixture:
     ag: int | None = None
     hxg: float | None = None
     axg: float | None = None
-    forecast: tuple[float, float, float] | None = None  # Understat's own (home, draw, away)
     round: int = 0
 
     @property

@@ -9,26 +9,27 @@ from __future__ import annotations
 
 import asyncio
 import json
-import math
 import os
 import time
-from dataclasses import asdict
 from datetime import date
 from pathlib import Path
 from typing import Any, Callable
 
-from app import __version__, glossary
+from app import __version__
 from app.analytics import compare as compare_engine
+from app.analytics import matchsum
 from app.analytics.chances import MIN_LEAGUE_TEAMS, chance_insights, compare_to_league, league_baseline, prepare_breakdowns
 from app.analytics.match import match_report
-from app.analytics.metrics import EVENT_METRICS, EVENT_MIXED, EVENT_PROFILE, GROUP_LABELS, PLAYER_METRICS, PROFILE_METRICS, TEAM_METRICS
 from app.analytics.player_detail import player_detail
-from app.analytics.players import build_dataset
+from app.analytics.players import SeasonInput, build_dataset
 from app.analytics.similarity import similar_players
 from app.analytics.table import compute_table, league_context, rank_trajectories
+from app.analytics.teams import TeamInput, build_team_dataset, squad_ages
 from app.analytics.team import find_team, squad_rows, team_history, team_profile
 from app.config import Settings
-from app.data.demo import DemoProvider
+from app.data.demo import WORLD_VERSION, DemoProvider
+from app.data.matchbook import MatchBook
+from app.data.matchsync import MatchSync
 from app.data.rosters import RosterClient, link_roster
 from app.data.repository import Fetched, Repository
 from app.data.store import Store
@@ -36,21 +37,22 @@ from app.data.understat import UnderstatClient
 from app.data.normalize import normalize_league as parse_league, normalize_match_page, normalize_player_page
 from app.data.wikidata import BirthdateResolver
 from app.enrich import Enricher, FavoriteIndex
-from app.events.link import link_season
-from app.events.rates import merge_totals
-from app.events.store import STATUS_PREFIX, EventStore
-from app.errors import AppError, BadRequest, DataUnavailable, NotFound, UpstreamError
-from app.forecast.calibrate import calibrate
-from app.forecast.model import Forecaster, build_forecaster, fixtures_forecast
-from app.forecast.simulate import simulate_season
+from app.events import maps as event_maps
+from app.events.link import link_by_lineups, link_fixtures, link_season
+from app.events.store import DERIVED_MARK, STATUS_PREFIX, EventStore
+from app.errors import AppError, BadRequest, DataUnavailable, NotFound
 from app.insights.briefing import compose_insights, movers, recent_matches
-from app.insights.core import Insight, dicts, rank
+from app.insights.core import dicts, rank
 from app.insights.league import league_insights
 from app.insights.match import match_insights
 from app.insights.player import player_insights, scouting_highlights
 from app.insights.team import team_insights
 from app.jobs import JobManager
 from app.leagues import DEFAULT_LEAGUE, FIRST_SEASON, LEAGUES, available_seasons, current_season, fold, normalize_league, season_label
+from app.metrics.catalog import build_catalog
+from app.metrics.dictionary import build_dictionary
+from app.sync.autosync import AutoSync
+from app.sync.demofeed import DemoEventFeed
 
 MIN_ROUNDS_FOR_DEFAULT = 3  # a season with fewer rounds than this is not yet worth defaulting to
 CONTESTED_DAYS = 366  # a squad list and a club-confirmed Wikidata entry more than a year apart cannot both be right about one man
@@ -59,10 +61,25 @@ HISTORY_MAX_SEASONS = 8  # one colour each in the charts
 PACKAGED_MANAGERS = Path(__file__).parent / "data" / "managers.json"
 
 
+def compact_row(row: dict, keys: list[str]) -> dict:
+    """One scouting row for the wire: who he is, and two arrays (values and percentiles) aligned with the dataset's ``keys``."""
+    pct = row["full_pct"]
+    return {
+        "id": row["id"], "name": row["name"], "team": row["team"], "teams": row["teams"], "league": row["league"], "seasons": row["seasons"],
+        "group": row["group"], "group_source": row["group_source"], "pos2": row["pos2"], "pos_min": dict(list(row["pos_min"].items())[:3]),
+        "dob": row["dob"], "dob_basis": row["dob_basis"], "age": row["age"], "sample": row["sample"], "in_pool": row["in_pool"],
+        "ev_minutes": row["ev_minutes"], "ev_matches": row["ev_matches"], "ev_in_pool": row["ev_in_pool"], "tags": row["tags"],
+        "v": [row.get(k) if k not in ("age",) else row["age"] for k in keys],
+        "p": [None if pct.get(k) is None else round(pct[k]) for k in keys],
+    }
+
+
 class Workbench:
     def __init__(self, settings: Settings | None = None, *, provider=None, today: date | None = None):
         self.settings = settings or Settings.from_env()
         self.store = Store(self.settings.db_path)
+        if self.settings.demo:
+            self._refresh_demo_world()
         if provider is None:
             if self.settings.demo:
                 override = os.getenv("PREM_TODAY")
@@ -81,6 +98,13 @@ class Workbench:
         self.resolver = BirthdateResolver(self.store, self.settings)
         self.favorites = FavoriteIndex(self.store)
         self.events = EventStore(self.store)
+        self.matchbook = MatchBook(self.repo)
+        self.matchsync = MatchSync(self.repo)
+        self._catalog = build_catalog()
+        self.auto = AutoSync(self)
+        self.demo_feed: DemoEventFeed | None = None
+        self._boot_task: asyncio.Task | None = None
+        self._links: dict[tuple[str, int], tuple[Any, dict]] = {}
         self.rosters = RosterClient(self.store, self.settings, today=lambda: self.today)
         self._roster_links: dict[tuple[str, int], tuple[Any, tuple[dict, list]]] = {}
         self._dob_index: tuple[tuple, dict[int, str]] | None = None
@@ -92,9 +116,48 @@ class Workbench:
         self._locks: dict[tuple, asyncio.Lock] = {}
         self._search_index: tuple[Any, list[dict], list[dict]] | None = None
 
+    def _refresh_demo_world(self) -> None:
+        """The demo world is made from code, so a copy stored by an older version of it would disagree with this one: start it afresh. Your shortlist stays."""
+        if self.store.kv_get("demo:world") == WORLD_VERSION:
+            return
+        self.store.clear()
+        for key in self.store.kv_prefix(STATUS_PREFIX):
+            self.store.kv_delete(key)
+        self.store.kv_delete(DERIVED_MARK)
+        self.store.kv_set("demo:world", WORLD_VERSION)
+
     # ------------------------------------------------------------------ lifecycle
 
+    async def start(self) -> None:
+        """Begin the work that happens while the app runs: adopt stored event pages, bring derived layers up to date, start the updater."""
+        self._boot_task = asyncio.create_task(self._boot())
+        self.auto.start()
+        if self.settings.demo and self.settings.demo_events:
+            self.demo_feed = DemoEventFeed(self)
+            self.demo_feed.start()
+
+    async def _boot(self) -> None:
+        """First thing after start: put every stored event page into the store and rebuild what older code made. Quick when nothing changed."""
+        from app.events import raw as R
+
+        try:
+            self.store.kv_set("boot:state", {"stage": "importing", "at": time.time()})
+            adopted = await asyncio.to_thread(R.import_soccerdata_cache, self.store, self.settings.data_dir)
+            pending = await asyncio.to_thread(self.events.pending_rebuild)
+            if pending:
+                self.store.kv_set("boot:state", {"stage": "rebuilding", "total": pending, "at": time.time()})
+                await asyncio.to_thread(self.events.ensure_current)
+            self.store.kv_set("boot:state", {"stage": "done", "adopted": adopted["imported"], "rebuilt": pending, "at": time.time()})
+        except Exception as exc:  # pragma: no cover - defensive: a failure here must not stop the app
+            self.store.kv_set("boot:state", {"stage": "failed", "error": f"{type(exc).__name__}: {str(exc)[:160]}", "at": time.time()})
+
     async def close(self) -> None:
+        if self.demo_feed is not None:
+            await self.demo_feed.close()
+        await self.auto.close()
+        if self._boot_task is not None and not self._boot_task.done():
+            self._boot_task.cancel()
+            await asyncio.gather(self._boot_task, return_exceptions=True)
         await self.jobs.close()
         await self.enricher.close()
         await self.rosters.close()
@@ -202,17 +265,16 @@ class Workbench:
             "cache": {"leagues": self.repo.cached_leagues(), "items": stats["total_items"], "bytes": stats["total_bytes"]},
             "enrichment": self.enricher.status(),
             "jobs": self.jobs.recent(3),
+            "auto": self.auto.brief(),
         }
 
     def catalog(self) -> dict:
-        return {
-            "metrics": {m.key: m.to_dict() for m in (*PLAYER_METRICS, *EVENT_METRICS)},
-            "event_profiles": {**EVENT_PROFILE, "MIXED": EVENT_MIXED},
-            "team_metrics": {m.key: m.to_dict() for m in TEAM_METRICS},
-            "profiles": {g: list(keys) for g, keys in PROFILE_METRICS.items()},
-            "groups": GROUP_LABELS,
-            "glossary": glossary.glossary_payload(),
-        }
+        """The metric registry for the browser: every metric, group, column preset and lens."""
+        return self._catalog
+
+    def dictionary(self) -> dict:
+        """The data dictionary: every metric with its recipe, the raw sources and fields, the counters and the concepts."""
+        return build_dictionary()
 
     # ------------------------------------------------------------------ league loading
 
@@ -278,17 +340,86 @@ class Workbench:
     # ------------------------------------------------------------------ players (scouting)
 
     async def _dataset(self, code_seasons: list[tuple[str, int]]):
+        """The scouting dataset for these league seasons, with every metric computed and ranked. Rebuilt only when something it is made from changes."""
         fetched = [await self._load(code, s) for code, s in code_seasons]
-        version = (*self._v(*code_seasons), *(self.events.version(code, s) for code, s in code_seasons), self._roster_version())
+        version = (*self._v(*code_seasons), *(self.events.version(code, s) for code, s in code_seasons), self.repo.epochs.get("match", 0), self._roster_version())
         key = ("dataset", tuple(code_seasons))
 
         def compute():
             roster = self._roster_dobs()
-            return build_dataset([f.data for f in fetched], dob_of=self.dob_of, favorite_of=self.favorite_of, today=self.today,
-                                 dob_info=lambda name, teams, reference, pid: self.dob_info(name, teams, reference, pid, roster),
-                                 events_of=self._events_of(code_seasons, fetched))
+            inputs = [self._season_input(f.data) for f in fetched]
+            ds = build_dataset(inputs, favorite_of=self.favorite_of, today=self.today,
+                               dob_info=lambda name, teams, reference, pid: self.dob_info(name, teams, reference, pid, roster))
+            ds.coverage = {
+                "shots": {f"{i.ls.league}:{i.ls.season}": list(self.matchbook.coverage(i.ls)) for i in inputs},
+                "events": {f"{i.ls.league}:{i.ls.season}": len(self.events.match_ids(i.ls.league, i.ls.season)) for i in inputs},
+            }
+            return ds
 
         return await self._memo_async(key, version, compute), fetched
+
+    # ------------------------------------------------------------------ what is known about a season, gathered for the analytics
+
+    def _season_input(self, ls) -> SeasonInput:
+        """Understat's season plus what the stored match pages and the event data add to it. Blocking: call from a worker thread."""
+        pages = self.matchbook.pages(ls)
+        complete = self.matchbook.complete(ls, pages)
+        return SeasonInput(
+            ls, shots=matchsum.player_shots(pages.values()) if complete else None,
+            positions=matchsum.position_minutes(pages.values()) if complete else None, events=self._linked_events(ls, pages),
+        )
+
+    def _event_links(self, ls, pages=None) -> dict | None:
+        """How WhoScored's matches, clubs and players line up with this Understat season, remembered until either side changes. None without event data."""
+        agg = self.events.season(ls.league, ls.season)
+        if not agg["games"]:
+            return None
+        version = (self.events.version(ls.league, ls.season), self.repo.version("league", f"{ls.league}:{ls.season}"), self.repo.epochs.get("match", 0))
+        hit = self._links.get((ls.league, ls.season))
+        if hit is not None and hit[0] == version:
+            return hit[1]
+        fixtures, alias, unlinked_matches = link_fixtures(agg, ls.fixtures)
+        totals = {pid: {"id": pid, "name": p["name"], "teams": p["teams"], "min": p["c"].get("min", 0)} for pid, p in agg["players"].items()}
+        linked, unlinked = link_season(totals, ls.players)
+        players = {uid: t["id"] for uid, t in linked.items()}
+        by_id = {}
+        if unlinked:
+            pages = self.matchbook.pages(ls) if pages is None else pages
+            if pages:
+                left = [agg["players"][u["id"]] for u in unlinked]
+                extra = link_by_lineups(left, ls.players, pages, fixtures, alias, taken=players.keys())
+                players.update(extra)
+                by_id = {w: uid for uid, w in extra.items()}
+        left_out = [u for u in unlinked if u["id"] not in by_id]
+        info = {"agg": agg, "fixtures": fixtures, "alias": alias, "players": players, "unlinked_matches": unlinked_matches, "unlinked_players": left_out}
+        self._links[(ls.league, ls.season)] = (version, info)
+        return info
+
+    def _linked_events(self, ls, pages=None) -> dict[int, dict] | None:
+        """Understat player id -> his event counters for this season. None when no event data has been stored for it."""
+        info = self._event_links(ls, pages)
+        if info is None:
+            return None
+        players = info["agg"]["players"]
+        return {uid: {"c": players[w]["c"], "matches": players[w]["matches"], "starts": players[w]["starts"], "pos": players[w]["pos"]} for uid, w in info["players"].items()}
+
+    def _linked_team_events(self, ls) -> dict[str, dict] | None:
+        """Understat club -> its event totals (for and against) for this season. None without event data."""
+        info = self._event_links(ls)
+        if info is None:
+            return None
+        out = {}
+        for ws, t in info["agg"]["teams"].items():
+            us = info["alias"].get(ws)
+            if us in ls.teams:
+                out[us] = {"c": t["c"], "a": t["a"], "matches": t["matches"], "formations": t["formations"], "managers": t["managers"]}
+        return out
+
+    def _team_shots(self, ls) -> dict[str, dict] | None:
+        pages = self.matchbook.pages(ls)
+        if not self.matchbook.complete(ls, pages):
+            return None
+        return matchsum.team_shots([(f, pages[f.id]) for f in ls.fixtures if f.id in pages])
 
     # ------------------------------------------------------------------ squad lists (exact birthdates)
 
@@ -336,23 +467,8 @@ class Workbench:
         self._dob_index = (version, index)
         return index
 
-    def _events_of(self, code_seasons: list[tuple[str, int]], fetched) -> Callable[[int], dict | None] | None:
-        """Understat player id -> event counts summed over the seasons in this view; None when no events are stored for any of them."""
-        parts: dict[int, list[dict]] = {}
-        for (code, season), f in zip(code_seasons, fetched):
-            totals = self.events.season_totals(code, season)
-            if not totals:
-                continue
-            linked, _unlinked = link_season(totals, f.data.players)
-            for pid, t in linked.items():
-                parts.setdefault(pid, []).append(t)
-        if not parts:
-            return None
-        merged = {pid: merge_totals(ps) for pid, ps in parts.items()}
-        return merged.get
-
     async def event_status(self) -> list[dict]:
-        """Per league-season: matches stored, how many exist, how well players link, and the state of any fetching run."""
+        """Per league-season: matches stored, how many exist, how well they line up with Understat, and the state of any fetching run."""
         seen: dict[tuple[str, int], None] = {(l, s): None for l, s, _n in self.events.seasons()}
         for key in self.store.kv_prefix(STATUS_PREFIX):
             league, _, season = key[len(STATUS_PREFIX):].partition(":")
@@ -361,18 +477,21 @@ class Workbench:
         out = []
         for league, season in sorted(seen):
             entry: dict = {"league": league, "season": season, "matches": len(self.events.match_ids(league, season)), "total": None,
-                           "status": self.events.status(league, season), "linked": None, "unlinked": []}
+                           "status": self.events.status(league, season), "linked": None, "unlinked": [], "unlinked_n": 0, "matches_linked": None}
             if self.store.meta("league", f"{league}:{season}") is not None:   # only from the cache: this must never go to the network
                 try:
                     fetched = await self._load(league, season)
                     entry["total"] = len(fetched.data.played)
-                    totals = self.events.season_totals(league, season)
-                    if totals:
-                        version = (self.events.version(league, season), self.repo.version("league", f"{league}:{season}"))
+                    if entry["matches"]:
+                        version = (self.events.version(league, season), self.repo.version("league", f"{league}:{season}"), self.repo.epochs.get("match", 0))
 
-                        def report(totals=totals, players=fetched.data.players):
-                            linked, unlinked = link_season(totals, players)
-                            return {"linked": len(linked), "unlinked": sorted(unlinked, key=lambda u: -u["minutes"])[:10], "unlinked_n": len(unlinked)}
+                        def report(ls=fetched.data):
+                            info = self._event_links(ls)
+                            if info is None:
+                                return {}
+                            left = sorted(info["unlinked_players"], key=lambda u: -u["minutes"])
+                            return {"linked": len(info["players"]), "unlinked": left[:10], "unlinked_n": len(left),
+                                    "matches_linked": len(info["fixtures"]), "matches_unlinked": len(info["unlinked_matches"])}
 
                         entry.update(await self._memo_async(("events-link", league, season), version, report))
                 except AppError:
@@ -423,7 +542,7 @@ class Workbench:
             out.append(entry)
         return out
 
-    async def players_view(self, leagues: list[str], seasons: list[str | int], *, min_minutes: int = 90) -> dict:
+    async def _targets(self, leagues: list[str], seasons: list[str | int]) -> tuple[list[tuple[str, int]], list[str]]:
         codes = [self._league_code(l) for l in leagues] or [DEFAULT_LEAGUE]
         targets: list[tuple[str, int]] = []
         notes: list[str] = []
@@ -439,6 +558,12 @@ class Workbench:
         targets = list(dict.fromkeys(targets))
         if not targets:
             raise DataUnavailable("None of the requested league seasons could be loaded.", hint="Open the Data page to sync, or try another season.")
+        return targets, notes
+
+    async def players_view(self, leagues: list[str], seasons: list[str | int], *, min_minutes: int = 1) -> dict:
+        """Every player of the chosen league seasons with every metric and its percentile. Nothing is filtered here beyond a one-minute floor:
+        filtering, sorting, top-N and the map all happen in the browser, on this one payload."""
+        targets, notes = await self._targets(leagues, seasons)
         ds, fetched = await self._dataset(targets)
         rows = [r for r in ds.rows if r["minutes"] >= min_minutes]
 
@@ -456,17 +581,51 @@ class Workbench:
             "scope": {
                 "leagues": sorted({c for c, _ in targets}), "seasons": sorted({s for _, s in targets}),
                 "labels": [season_label(s) for s in sorted({s for _, s in targets})], "notes": notes,
-                "pool_minutes": ds.pool_minutes, "group_sizes": ds.group_sizes, "n": len(rows),
+                "pool_minutes": ds.pool_minutes, "ev_pool_minutes": ds.ev_pool_minutes, "group_sizes": ds.group_sizes, "n": len(rows),
                 "age_reference": ds.age_reference,
             },
             "meta": {"stale": any(f.meta.stale for f in fetched), "source": fetched[0].meta.source,
                      "fetched_at": fetched[0].meta.to_dict()["fetched_at"], "errors": [f.meta.error for f in fetched if f.meta.error]},
             "coverage": {"ages_known": ds.ages_known, "players": len(ds.rows), "inferred_roles": ds.inferred, "roles_known": len(self.favorites),
-                         "event_players": ds.event_players, "event_pool_minutes": ds.event_pool_minutes,
-                         "event_matches": sum(len(self.events.match_ids(c, s)) for c, s in targets)},
+                         "event_players": ds.event_players, "event_pool_minutes": ds.ev_pool_minutes,
+                         "event_matches": sum(len(self.events.match_ids(c, s)) for c, s in targets), **ds.coverage},
             "enrichment": self.enricher.status(),
-            "rows": rows,
+            "keys": ds.keys, "pools": ds.pools, "rows": [compact_row(r, ds.keys) for r in rows],
             "highlights": dicts(rank(scouting_highlights(ds.rows), limit=12, per_kind=2, diversify=True)),
+        }
+
+    async def teams_view(self, leagues: list[str], seasons: list[str | int]) -> dict:
+        """Every team of the chosen league seasons with every team metric and its percentile within its own league and season."""
+        targets, notes = await self._targets(leagues, seasons)
+        fetched = [await self._load(code, s) for code, s in targets]
+        version = (*self._v(*targets), *(self.events.version(code, s) for code, s in targets), self.repo.epochs.get("match", 0), self._roster_version())
+
+        def compute():
+            inputs = []
+            roster = self._roster_dobs()
+            for f in fetched:
+                ls = f.data
+                reference = min(self.today, date(ls.season + 1, 6, 30))
+
+                def age_of(p, ls=ls, reference=reference):
+                    dob, basis = self.dob_info(p.name, p.teams, reference, p.id, roster)
+                    if not dob or basis == "name":
+                        return None
+                    born = date.fromisoformat(dob[:10])
+                    return reference.year - born.year - ((reference.month, reference.day) < (born.month, born.day))
+
+                inputs.append(TeamInput(ls, shots=self._team_shots(ls), events=self._linked_team_events(ls), ages=squad_ages(ls, age_of)))
+            return build_team_dataset(inputs)
+
+        ds = await self._memo_async(("teams", tuple(targets)), version, compute)
+        cfg = {code: LEAGUES[code] for code, _ in targets}
+        keys = ds.keys
+        rows = [{**{k: v for k, v in r.items() if k not in ("values", "pct")}, "v": [r["values"].get(k) for k in keys], "p": [None if r["pct"].get(k) is None else round(r["pct"][k]) for k in keys]} for r in ds.rows]
+        return {
+            "scope": {"leagues": sorted({c for c, _ in targets}), "seasons": sorted({s for _, s in targets}), "labels": [season_label(s) for s in sorted({s for _, s in targets})],
+                      "notes": notes, "pools": ds.pools, "n": len(rows), "league_names": {c: cfg[c].name for c in cfg}},
+            "meta": {"stale": any(f.meta.stale for f in fetched), "errors": [f.meta.error for f in fetched if f.meta.error]},
+            "coverage": ds.coverage, "keys": keys, "rows": rows,
         }
 
     async def player_view(self, player_id: int, league: str | None, season, seasons: list[int] | None = None) -> dict:
@@ -514,7 +673,7 @@ class Workbench:
             mine = squad.get(player_id)
             if mine:
                 team_ctx = {"team": team_name, "chain_share": mine["chain_share"], "share_npxg": mine["share_npxg"], "share_xa": mine["share_xa"]}
-        detail = player_detail(row, page, want, team_ctx)
+        detail = player_detail(row, page, want, team_ctx, ds.pools)
         if not detail["events"]["available"]:
             detail["events"]["stored"] = bool(self.events.seasons())  # lets the page say "not fetched for this season" only when event data exists elsewhere
         similar = similar_players(row, ds.rows, limit=8)
@@ -585,21 +744,7 @@ class Workbench:
         profile = team_profile(ls, t.name, eras=self.eras_for(code, t.name))
         cfg = LEAGUES[code]
         insights = rank(team_insights(profile, ucl_places=cfg.ucl_places, relegation_places=cfg.relegation_places))
-        forecasts, mine = [], []
-        try:
-            fc = await self._forecaster(code, s)
-            mine = [fc.row(f) for f in sorted(ls.upcoming, key=lambda f: f.dt) if t.name in (f.home, f.away)]
-            forecasts = mine[:6]
-        except (AppError, ValueError):
-            pass
-        # Understat often has no forecast for upcoming fixtures; use the ratings model, from this team's side.
-        by_id = {f["id"]: f for f in mine}
-        for u in profile["upcoming"]:
-            f = by_id.get(u["match_id"])
-            if u["forecast"] is None and f:
-                home = u["venue"] == "h"
-                u["forecast"] = {"win": f["p_home"] if home else f["p_away"], "draw": f["p_draw"], "loss": f["p_away"] if home else f["p_home"]}
-        return {"scope": scope, "meta": fetched.meta.to_dict(), "profile": profile, "insights": dicts(insights), "forecasts": forecasts,
+        return {"scope": scope, "meta": fetched.meta.to_dict(), "profile": profile, "insights": dicts(insights),
                 "teams": [{"name": x.name, "short": x.short} for x in sorted(ls.teams.values(), key=lambda x: x.name)]}
 
     async def team_history_view(self, league: str, team: str, seasons: list[int]) -> dict:
@@ -684,29 +829,237 @@ class Workbench:
             "comparison": comparison, "insights": chance_insights(t.name, prepared[t.name], comparison),
         }
 
+    # ------------------------------------------------------------------ pitch maps (from the stored events)
+
+    @staticmethod
+    def _pick_matches(log: list[dict], venue: str, last: int | None) -> list[dict]:
+        rows = [r for r in log if venue == "all" or (venue == "h") == r["home"]]
+        return rows[-last:] if last else rows
+
+    def _map_payload(self, code: str, season: int, matches: list[tuple[int, int]], selection, *, team: str, extra: dict) -> dict:
+        silver = [(i, self.events.silver(code, season, game)) for i, game in matches]
+        silver = [(i, m) for i, m in silver if m is not None]
+        layer = event_maps.collect(silver, selection)
+        lines = {name: event_maps.lines_view(layer, flags=flag) for name, flag in
+                 (("prog", event_maps.PF_PROG), ("key", event_maps.PF_KEY), ("box", event_maps.PF_BOX), ("f3", event_maps.PF_F3), ("long", event_maps.PF_LONG),
+                  ("cross", event_maps.PF_CROSS), ("through", event_maps.PF_THROUGH))}
+        return {
+            "available": True, "dims": [event_maps.NX, event_maps.NY], "n": len(silver), "counts": layer["n"],
+            "grids": {"touches": layer["touches"], "pass_from": layer["pass_from"], "def": layer["def_grid"], "recover": layer["recover_grid"]},
+            "lines": lines, "all_passes": event_maps.lines_view(layer, limit=600), "carries": layer["carries"], "def": layer["def"], "takeons": layer["takeons"], "gk": layer["gk"],
+            "zones": event_maps.zone_shares(layer), "network": event_maps.pass_network(silver, team) if selection.player is None else None, **extra,
+        }
+
+    async def team_maps_view(self, league: str, season, team: str, *, venue: str = "all", last: int | None = None) -> dict:
+        """Where a team touches the ball, passes, defends and carries, from its stored matches: grids, pass lines, defensive actions, a pass network."""
+        if venue not in ("all", "h", "a"):
+            raise BadRequest("venue must be 'all', 'h' or 'a'.")
+        code, s, fetched, scope = await self._scope(league, season)
+        ls = fetched.data
+        t = find_team(ls, team)
+        key = ("team-maps", code, s, t.name, venue, last)
+        version = (self.events.version(code, s), self.repo.version("league", f"{code}:{s}"), self.repo.epochs.get("match", 0))
+
+        def compute():
+            info = self._event_links(ls)
+            if info is None:
+                return {"available": False, "reason": "No event data has been stored for this league and season yet."}
+            ws = next((w for w, us in info["alias"].items() if us == t.name), None)
+            agg = info["agg"]["teams"].get(ws) if ws else None
+            if agg is None:
+                return {"available": False, "reason": f"{t.name} has no event data in this season."}
+            log = self._pick_matches(agg["log"], venue, last)
+            if not log:
+                return {"available": False, "reason": "No matches fit those filters."}
+            games = [(i, r["game"]) for i, r in enumerate(log)]
+            fixtures = info["fixtures"]
+            listing = [{"i": i, "game": r["game"], "date": r["date"], "opp": info["alias"].get(r["opp"], r["opp"]), "home": r["home"], "gf": r["gf"], "ga": r["ga"],
+                        "match_id": fixtures[r["game"]].id if r["game"] in fixtures else None} for i, r in enumerate(log)]
+            return self._map_payload(code, s, games, event_maps.Selection(team=ws), team=ws, extra={"matches": listing, "formations": agg["formations"], "manager": max(agg["managers"], key=agg["managers"].get) if agg["managers"] else None})
+
+        out = await self._memo_async(key, version, compute)
+        return {"scope": scope, "team": t.name, **out}
+
+    async def player_maps_view(self, player_id: int, league: str | None, season, *, last: int | None = None) -> dict:
+        """Where a player touches the ball, passes, defends and carries, from his stored matches."""
+        code = self._league_code(league) if league else (await self._locate_player(player_id)) or DEFAULT_LEAGUE
+        resolved, note = await self.resolve_season(code, season)
+        fetched = await self._load(code, resolved)
+        ls = fetched.data
+        key = ("player-maps", code, resolved, player_id, last)
+        version = (self.events.version(code, resolved), self.repo.version("league", f"{code}:{resolved}"), self.repo.epochs.get("match", 0))
+
+        def compute():
+            info = self._event_links(ls)
+            if info is None:
+                return {"available": False, "reason": "No event data has been stored for this league and season yet."}
+            wid = info["players"].get(player_id)
+            if wid is None:
+                return {"available": False, "reason": "He could not be matched safely to the event data, so no map is drawn rather than a wrong one."}
+            player = info["agg"]["players"][wid]
+            log = [{"game": g, "club": c, "minutes": m, "started": st} for g, c, m, st in player["log"]]
+            log = log[-last:] if last else log
+            if not log:
+                return {"available": False, "reason": "He has no matches in the event data."}
+            fixtures = info["fixtures"]
+            listing = []
+            for i, r in enumerate(log):
+                f = fixtures.get(r["game"])
+                home = f is not None and info["alias"].get(r["club"]) == f.home
+                listing.append({"i": i, "game": r["game"], "date": f.date if f else None, "opp": (f.away if home else f.home) if f else None, "home": home, "minutes": round(r["minutes"]),
+                                "started": r["started"], "match_id": f.id if f else None})
+            games = [(i, r["game"]) for i, r in enumerate(log)]
+            return self._map_payload(code, resolved, games, event_maps.Selection(player=wid), team=log[-1]["club"], extra={"matches": listing, "ws_id": wid, "name": player["name"], "minutes": round(sum(r["minutes"] for r in log))})
+
+        out = await self._memo_async(key, version, compute)
+        return {"scope": {"league": code, "season": resolved, "label": season_label(resolved), "note": note}, "player_id": player_id, **out}
+
+    async def team_shots_view(self, league: str, season, team: str, *, venue: str = "all", last: int | None = None) -> dict:
+        """The team's shots and the shots it faced, from the stored Understat match pages: position, xG, result, scorer."""
+        code, s, fetched, scope = await self._scope(league, season)
+        ls = fetched.data
+        t = find_team(ls, team)
+
+        def compute():
+            pages = self.matchbook.pages(ls)
+            mine = [f for f in sorted(ls.fixtures, key=lambda f: (f.dt, f.id)) if f.played and t.name in (f.home, f.away) and f.id in pages]
+            mine = [f for f in mine if venue == "all" or (venue == "h") == (f.home == t.name)]
+            mine = mine[-last:] if last else mine
+            for_, against = [], []
+            for f in mine:
+                side = "h" if f.home == t.name else "a"
+                for sh in pages[f.id].shots.get(side, []):
+                    for_.append([round(sh.x, 3), round(sh.y, 3), round(sh.xg, 3), sh.result, sh.minute, sh.player, sh.situation, sh.shot_type, f.id])
+                for sh in pages[f.id].shots.get("a" if side == "h" else "h", []):
+                    against.append([round(sh.x, 3), round(sh.y, 3), round(sh.xg, 3), sh.result, sh.minute, sh.player, sh.situation, sh.shot_type, f.id])
+            have, total = self.matchbook.coverage(ls, pages)
+            return {"for": for_, "against": against, "matches": len(mine), "coverage": [have, total]}
+
+        out = await self._memo_async(("team-shots", code, s, t.name, venue, last), (self.repo.version("league", f"{code}:{s}"), self.repo.epochs.get("match", 0)), compute)
+        return {"scope": scope, "team": t.name, **out}
+
+    async def team_matches_view(self, league: str, season, team: str) -> dict:
+        """One team's season match by match: result, the chances, and (where event data exists) possession, passing and pressing in that match."""
+        code, s, fetched, scope = await self._scope(league, season)
+        ls = fetched.data
+        t = find_team(ls, team)
+
+        def compute():
+            info = self._event_links(ls)
+            rows = {r["n"]: r for r in team_profile(ls, t.name)["matches"]}
+            by_fixture = {}
+            if info is not None:
+                ws = next((w for w, us in info["alias"].items() if us == t.name), None)
+                agg = info["agg"]["teams"].get(ws) if ws else None
+                for r in (agg["log"] if agg else []):
+                    f = info["fixtures"].get(r["game"])
+                    if f is not None:
+                        c, a = r["c"], r["a"]
+                        pf, pa = c.get("passes", 0), a.get("passes", 0)
+                        by_fixture[f.id] = {"poss": None if pf + pa == 0 else round(100 * pf / (pf + pa)), "passes": pf, "pass_acc": None if not pf else round(100 * c.get("pass_ok", 0) / pf),
+                                            "prog": c.get("prog", 0), "tilt": None if not (c.get("touch_att3", 0) + a.get("touch_att3", 0)) else round(100 * c.get("touch_att3", 0) / (c.get("touch_att3", 0) + a.get("touch_att3", 0))),
+                                            "tackles": c.get("tackles", 0), "interceptions": c.get("interceptions", 0), "recoveries": c.get("recoveries", 0),
+                                            "fouls": c.get("fouls", 0), "corners": c.get("corners", 0), "formation": r["formation"], "manager": r["manager"]}
+            return [{**row, **by_fixture.get(row["match_id"], {})} for row in rows.values()]
+
+        out = await self._memo_async(("team-matches", code, s, t.name), (self.repo.version("league", f"{code}:{s}"), self.events.version(code, s), self.repo.epochs.get("match", 0)), compute)
+        return {"scope": scope, "team": t.name, "matches": out}
+
+    # ------------------------------------------------------------------ the dictionary's numbers
+
+    async def dictionary_stats(self, league: str, season) -> dict:
+        """For each metric, what typical, good and elite look like in this league season: the 10th, 25th, 50th, 75th and 90th percentiles of the
+        values of players in the ranking pool (per role group) and of teams. This is what turns a definition into a way to read a number."""
+        code, s, fetched, scope = await self._scope(league, season)
+        ds, _ = await self._dataset([(code, s)])
+        teams = await self.teams_view([code], [s])
+        version = (self.repo.version("league", f"{code}:{s}"), self.events.version(code, s), self.repo.epochs.get("match", 0))
+
+        def compute():
+            import numpy as np
+            qs = (10, 25, 50, 75, 90)
+            players: dict[str, dict[str, list]] = {}
+            for i, key in enumerate(ds.keys):
+                per = {}
+                for group in ("ATT", "MID", "DEF", "GK"):
+                    vals = [r["v"][i] for r in rows_for(group) if r["v"][i] is not None]
+                    if len(vals) >= 8:
+                        per[group] = [len(vals), *[round(float(x), 4) for x in np.percentile(vals, qs)]]
+                if per:
+                    players[key] = per
+            teams_out = {}
+            for i, key in enumerate(teams["keys"]):
+                vals = [r["v"][i] for r in teams["rows"] if r["v"][i] is not None]
+                if len(vals) >= 8:
+                    teams_out[key] = [len(vals), *[round(float(x), 4) for x in np.percentile(vals, qs)]]
+            return {"quantiles": list(qs), "players": players, "teams": teams_out}
+
+        compact = [compact_row(r, ds.keys) for r in ds.rows]
+        by_group: dict[str, list] = {}
+        for r in compact:
+            if (r["in_pool"] and r["group"] != "GK") or (r["group"] == "GK" and r["in_pool"]):
+                by_group.setdefault(r["group"], []).append(r)
+        rows_for = lambda g: by_group.get(g, [])  # noqa: E731
+        stats = await self._memo_async(("dict-stats", code, s), version, compute)
+        return {"scope": scope, **stats}
+
     # ------------------------------------------------------------------ matches
 
     async def matches_view(self, league: str, season) -> dict:
+        """Every fixture by matchweek, each with its score, who scored, and the numbers behind the result."""
         code, s, fetched, scope = await self._scope(league, season)
         ls = fetched.data
+        summaries = await self._memo_async(("match-summaries", code, s), (self.repo.version("league", f"{code}:{s}"), self.repo.epochs.get("match", 0), self.events.version(code, s)),
+                                           lambda: self._match_summaries(ls))
         by_round: dict[int, list] = {}
         for f in sorted(ls.fixtures, key=lambda f: (f.dt, f.id)):
             by_round.setdefault(f.round, []).append(f)
-        rounds = []
         recent = {m["id"]: m for m in recent_matches(ls, limit=len(ls.fixtures))}
+        rounds = []
         for number, fixtures in sorted(by_round.items()):
             rounds.append({
                 "round": number, "from": fixtures[0].date, "to": fixtures[-1].date, "played": all(f.played for f in fixtures),
-                "matches": [
-                    {"id": f.id, "date": f.date, "dt": f.dt, "home": f.home, "away": f.away, "home_short": f.home_short, "away_short": f.away_short,
-                     "played": f.played, "hg": f.hg, "ag": f.ag, "hxg": None if f.hxg is None else round(f.hxg, 2), "axg": None if f.axg is None else round(f.axg, 2),
-                     "flag": recent.get(f.id, {}).get("flag"),
-                     "forecast": None if f.forecast is None else {"home": round(f.forecast[0], 3), "draw": round(f.forecast[1], 3), "away": round(f.forecast[2], 3)}}
-                    for f in fixtures
-                ],
+                "matches": [self._fixture_card(f, summaries, recent) for f in fixtures],
             })
         latest = max((r["round"] for r in rounds if any(m["played"] for m in r["matches"])), default=None)
-        return {"scope": scope, "meta": fetched.meta.to_dict(), "rounds": rounds, "latest_round": latest}
+        have = sum(1 for r in rounds for m in r["matches"] if "scorers" in m)
+        return {"scope": scope, "meta": fetched.meta.to_dict(), "rounds": rounds, "latest_round": latest,
+                "coverage": {"scorers": have, "played": ls.n_played, "events": len(self.events.match_ids(code, s))}}
+
+    @staticmethod
+    def _fixture_card(f, summaries: dict, recent: dict) -> dict:
+        """One fixture as the match card shows it: teams, score, kickoff (UTC), the result's flag, and whatever the stored pages add (scorers, possession ...)."""
+        return {"id": f.id, "date": f.date, "dt": f.dt, "utc": f.dt[:10] + "T" + f.dt[11:19] + "Z" if len(f.dt) >= 19 else None, "round": f.round,
+                "home": f.home, "away": f.away, "home_short": f.home_short, "away_short": f.away_short,
+                "played": f.played, "hg": f.hg, "ag": f.ag, "hxg": None if f.hxg is None else round(f.hxg, 2), "axg": None if f.axg is None else round(f.axg, 2),
+                "flag": recent.get(f.id, {}).get("flag"), **summaries.get(f.id, {})}
+
+    def _match_summaries(self, ls) -> dict[int, dict]:
+        """Per fixture id: scorers and shot counts from the stored match page, and possession and passing from the event data. Blocking."""
+        pages = self.matchbook.pages(ls)
+        out: dict[int, dict] = {}
+        for f in ls.fixtures:
+            page = pages.get(f.id)
+            if page is not None:
+                out[f.id] = matchsum.fixture_summary(f, page)
+        info = self._event_links(ls, pages)
+        if info is not None:
+            for gid, fixture in info["fixtures"].items():
+                gold = self.events.gold(ls.league, ls.season, gid)
+                if gold is None:
+                    continue
+                home_name = info["alias"].get(gold["teams"][0]["name"])
+                flip = home_name is not None and home_name != fixture.home
+                a, b = (gold["teams"][1], gold["teams"][0]) if flip else (gold["teams"][0], gold["teams"][1])
+                pa, pb = a["c"].get("passes", 0), b["c"].get("passes", 0)
+                out.setdefault(fixture.id, {})["stats"] = {
+                    "poss": None if pa + pb == 0 else [round(100 * pa / (pa + pb)), round(100 * pb / (pa + pb))],
+                    "passes": [pa, pb], "pass_acc": [None if not pa else round(100 * a["c"].get("pass_ok", 0) / pa), None if not pb else round(100 * b["c"].get("pass_ok", 0) / pb)],
+                    "corners": [a["c"].get("corners", 0), b["c"].get("corners", 0)], "fouls": [a["c"].get("fouls", 0), b["c"].get("fouls", 0)],
+                    "yellow": [a["c"].get("yellow", 0), b["c"].get("yellow", 0)], "red": [a["c"].get("red", 0), b["c"].get("red", 0)],
+                    "formations": [a["formation"], b["formation"]], "managers": [a["manager"], b["manager"]],
+                }
+        return out
 
     async def match_view(self, match_id: int, league: str, season) -> dict:
         code, s, fetched, scope = await self._scope(league, season)
@@ -715,72 +1068,13 @@ class Workbench:
             raise NotFound(f"Match {match_id} is not in {scope['league_name']} {scope['label']}.", hint="Check the league and season.")
         if not fixture.played:
             raise BadRequest("That match has not been played yet: there are no shots to analyse.")
-        page = await self.repo.match(match_id, final=True)
+        page = await self.repo.match(match_id, final=self.matchsync.is_final(fixture), expect_shots=bool((fixture.hxg or 0) + (fixture.axg or 0) > 0))
         report = match_report(fixture, page.data)
+        report["scorers"] = matchsum.scorers(page.data)
         insights = rank(match_insights(report))
-        return {"scope": scope, "meta": page.meta.to_dict(), "report": report, "insights": dicts(insights)}
-
-    # ------------------------------------------------------------------ forecast
-
-    async def _forecaster(self, code: str, season: int) -> Forecaster:
-        fetched = await self._load(code, season)
-        prior = None
-        try:
-            prior = (await self._load(code, season - 1)).data if season - 1 >= FIRST_SEASON else None
-        except AppError:
-            prior = None
-        version = self._v((code, season), *(((code, season - 1),) if prior is not None else ()))
-        return await self._memo_async(("forecaster", code, season), version, lambda: build_forecaster(fetched.data, prior, as_of=self.today.isoformat()))
-
-    async def forecast_fixtures_view(self, league: str, season, limit: int = 12) -> dict:
-        code, s, fetched, scope = await self._scope(league, season)
-        try:
-            fc = await self._forecaster(code, s)
-        except ValueError as exc:
-            raise DataUnavailable(str(exc), hint="Forecasts appear once about eight matches have been played.") from exc
-        rows = fixtures_forecast(fc, fetched.data, limit=limit)
-        return {"scope": scope, "meta": fetched.meta.to_dict(), "fixtures": rows, "model": {"used_previous_season": fc.used_previous_season,
-                "rho": round(fc.ratings.rho, 3), "home_advantage": round(float(math.exp(fc.ratings.home) - 1), 3),
-                "matches": fc.ratings.n_matches, "weights": {"ratings": fc.weight, "elo": round(1 - fc.weight, 2)}}}
-
-    async def forecast_match_view(self, league: str, season, home: str, away: str) -> dict:
-        code, s, fetched, scope = await self._scope(league, season)
-        ls = fetched.data
-        h, a = find_team(ls, home), find_team(ls, away)
-        if h.name == a.name:
-            raise BadRequest("Pick two different teams.")
-        try:
-            fc = await self._forecaster(code, s)
-        except ValueError as exc:
-            raise DataUnavailable(str(exc)) from exc
-        understat = next((f.forecast for f in ls.upcoming if f.home == h.name and f.away == a.name), None)
-        return {"scope": scope, "meta": fetched.meta.to_dict(), "forecast": fc.predict(h.name, a.name, understat=understat),
-                "teams": [{"name": x.name, "short": x.short} for x in sorted(ls.teams.values(), key=lambda x: x.name)]}
-
-    async def forecast_season_view(self, league: str, season, n_sims: int = 4000) -> dict:
-        code, s, fetched, scope = await self._scope(league, season)
-        try:
-            fc = await self._forecaster(code, s)
-        except ValueError as exc:
-            raise DataUnavailable(str(exc), hint="The season simulation needs at least eight played matches.") from exc
-        n_sims = max(500, min(int(n_sims), 20000))
-        version = self._v((code, s), (code, s - 1))
-        sim = await self._memo_async(("sim", code, s, n_sims), version, lambda: simulate_season(fc, fetched.data, n_sims=n_sims))
-        return {"scope": scope, "meta": fetched.meta.to_dict(), "simulation": sim}
-
-    async def calibration_view(self, league: str, season) -> dict:
-        code, s, fetched, scope = await self._scope(league, season)
-        prior = None
-        try:
-            prior = (await self._load(code, s - 1)).data if s - 1 >= FIRST_SEASON else None
-        except AppError:
-            pass
-        version = self._v((code, s), (code, s - 1))
-        try:
-            result = await self._memo_async(("calibration", code, s), version, lambda: calibrate(fetched.data, prior))
-        except ValueError as exc:
-            raise DataUnavailable(str(exc)) from exc
-        return {"scope": scope, "meta": fetched.meta.to_dict(), "calibration": result}
+        return {"scope": scope, "meta": page.meta.to_dict(), "report": report, "insights": dicts(insights),
+                "stats": (await self._memo_async(("match-summaries", code, s), (self.repo.version("league", f"{code}:{s}"), self.repo.epochs.get("match", 0), self.events.version(code, s)),
+                                                 lambda: self._match_summaries(fetched.data))).get(match_id, {}).get("stats")}
 
     # ------------------------------------------------------------------ briefing
 
@@ -793,22 +1087,29 @@ class Workbench:
         league_side = league_insights(table, ctx, relegation_places=cfg.relegation_places)
         ds, _ = await self._dataset([(code, s)])
         front = compose_insights(league_side, scouting_highlights(ds.rows), limit=8)
-
-        upcoming: list[dict] = []
-        race = None
-        try:
-            fc = await self._forecaster(code, s)
-            upcoming = fixtures_forecast(fc, ls, limit=10)
-            if not ctx["complete"]:
-                sim = await self._memo_async(("sim", code, s, 2000), self._v((code, s), (code, s - 1)), lambda: simulate_season(fc, ls, n_sims=2000))
-                race = [{k: t[k] for k in ("team", "short", "points", "exp_points", "p_title", "p_top4", "p_relegation", "played")} for t in sim["teams"]]
-        except (AppError, ValueError):
-            pass
-
+        n = len(table)
+        gaps = {}
+        if n >= 4 and not ctx["complete"]:
+            pts = [r["pts"] for r in table]
+            gaps = {"title": pts[0] - pts[1], "top": pts[cfg.ucl_places - 1] - pts[cfg.ucl_places] if cfg.ucl_places < n else None,
+                    "safety": pts[n - cfg.relegation_places - 1] - pts[n - cfg.relegation_places] if cfg.relegation_places < n else None}
+        summaries = await self._memo_async(("match-summaries", code, s), (self.repo.version("league", f"{code}:{s}"), self.repo.epochs.get("match", 0), self.events.version(code, s)),
+                                           lambda: self._match_summaries(ls))
+        latest = recent_matches(ls, limit=10)
+        by_id = {f.id: f for f in ls.fixtures}
+        recent_cards = [self._fixture_card(by_id[m["id"]], summaries, {m["id"]: m}) for m in latest if m["id"] in by_id]
+        upcoming = []
+        by_team = {r["team"]: r for r in table}
+        for f in sorted(ls.upcoming, key=lambda f: (f.dt, f.id))[:10]:
+            h, a = by_team.get(f.home), by_team.get(f.away)
+            upcoming.append({"id": f.id, "date": f.date, "dt": f.dt, "utc": f.dt[:10] + "T" + f.dt[11:19] + "Z" if len(f.dt) >= 19 else None, "round": f.round, "home": f.home, "away": f.away,
+                             "home_short": f.home_short, "away_short": f.away_short,
+                             "home_rank": h and h["rank"], "away_rank": a and a["rank"], "home_form": h and h["form"], "away_form": a and a["form"],
+                             "home_xgd": h and round(h["xgd_pg"], 2), "away_xgd": a and round(a["xgd_pg"], 2)})
         return {
-            "scope": scope, "meta": fetched.meta.to_dict(), "context": ctx, "insights": dicts(front),
+            "scope": scope, "meta": fetched.meta.to_dict(), "context": ctx, "insights": dicts(front), "gaps": gaps,
             "table": [{k: r[k] for k in ("rank", "team", "short", "played", "pts", "gd", "xpts", "xpts_gap", "xgd_pg", "form", "trend_xgd", "rank_xpts")} for r in table],
-            "recent": recent_matches(ls, limit=10), "movers": movers(ls), "upcoming": upcoming, "race": race,
+            "recent": recent_cards, "movers": movers(ls), "upcoming": upcoming,
             "highlights": dicts(rank(scouting_highlights(ds.rows), limit=6, per_kind=2, diversify=True)),
         }
 
@@ -973,18 +1274,55 @@ class Workbench:
 
     # ------------------------------------------------------------------ data status & sync
 
+    def _coverage_matrix(self) -> list[dict]:
+        """One row per league season that is tracked or stored: what is on this computer, against what exists. Reads only the local store."""
+        seen = {(l["league"], l["season"]) for l in self.repo.cached_leagues()}
+        seen.update(self.auto.tracked())
+        seen.update((l, s) for l, s, _n in self.events.seasons())
+        out = []
+        for code, season in sorted(seen, key=lambda k: (-k[1], list(LEAGUES).index(k[0]) if k[0] in LEAGUES else 99)):
+            meta = self.store.meta("league", f"{code}:{season}")
+            row: dict = {"league": code, "season": season, "label": season_label(season), "league_state": None if meta is None else ("final" if meta[2] else "live"),
+                         "fetched_at": None if meta is None else meta[0], "played": None, "pages": None, "events": len(self.events.match_ids(code, season)), "squads": None}
+            ls = self.repo.cached_league(code, season) if meta is not None else None
+            if ls is not None:
+                row["played"] = ls.n_played
+                row["pages"] = list(self.matchsync.coverage(ls))
+                row["fixtures"] = len(ls.fixtures)
+            body = self.rosters.cached(code, season)
+            row["squads"] = None if body is None else {"clubs": len(body["teams"]), "players": sum(len(t["players"]) for t in body["teams"]), "sparse": bool(body.get("sparse"))}
+            row["silver"] = len(self.store.keys_prefix("ws_silver", f"{code}:{season}:")) if row["events"] else 0
+            out.append(row)
+        return out
+
+    async def reclaim_download_cache(self) -> dict:
+        """Delete the browser tool's own copy of every event page that is safely in the store (about 1 MB each). Nothing in the store changes."""
+        from app.events import raw as R
+
+        if self.auto._proc_alive():
+            raise BadRequest("The event fetcher is running: wait for it to finish before reclaiming space.")
+        return await asyncio.to_thread(R.reclaim, self.store, self.settings.data_dir)
+
     async def data_status(self) -> dict:
+        from app.events import raw as R
+
         stats = self.store.stats()
+        matrix = await asyncio.to_thread(self._coverage_matrix)
+        reclaim = await asyncio.to_thread(R.reclaimable_bytes, self.store, self.settings.data_dir)
         return {
-            "mode": {"demo": self.settings.demo, "offline": self.settings.offline},
+            "mode": {"demo": self.settings.demo, "offline": self.settings.offline, "demo_events": self.demo_feed is not None},
             "store": {"path": str(self.settings.db_path), **stats},
             "leagues": self.repo.cached_leagues(),
             "enrichment": self.enricher.status(),
             "jobs": self.jobs.recent(6),
             "upstream": {"requests": getattr(self.provider, "requests_made", None)},
             "coverage": {"favorites": len(self.favorites)},
+            "matrix": matrix,
+            "auto": self.auto.state(),
+            "boot": self.store.kv_get("boot:state"),
             "events": await self.event_status(),
             "birthdates": await self.birthdate_status(),
+            "reclaimable_bytes": reclaim,
         }
 
     def start_sync(self, leagues: list[str], seasons: list[int], force: bool = False) -> dict:

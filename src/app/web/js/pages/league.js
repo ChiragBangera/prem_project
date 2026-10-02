@@ -2,7 +2,7 @@
 import { html, useMemo } from "../lib/html.js";
 import { useApi } from "../lib/api.js";
 import { useScope } from "../lib/scope.js";
-import { navigate, setQuery, useLocation } from "../lib/router.js";
+import { href, navigate, setQuery, useLocation } from "../lib/router.js";
 import { nf, ordinal, plural, signed } from "../lib/format.js";
 import { Tip } from "../lib/tooltip.js";
 import { Async, Card, DataNotices, Form, Insights, PageHead, Segmented, Select, TeamName, useDocumentTitle } from "../ui/common.js";
@@ -74,7 +74,7 @@ function headline(table) {
   return bits.length ? bits.join("; ") + "." : "Results and chances broadly agree across the table.";
 }
 
-function TeamMap({ table, follow, colorOf }) {
+function TeamMap({ table, follow, colorOf, scope }) {
   const avgX = table.reduce((s, t) => s + t.xg_pg, 0) / table.length;
   const avgY = table.reduce((s, t) => s + t.xga_pg, 0) / table.length;
   const points = table.map((t) => ({ id: t.team, x: t.xg_pg, y: t.xga_pg, label: t.short, highlight: follow.includes(t.team), color: follow.includes(t.team) ? colorOf(t.team) : undefined, data: t }));
@@ -82,7 +82,7 @@ function TeamMap({ table, follow, colorOf }) {
     xLabel="Chances created per game (xG) →" yLabel="← Chances allowed per game (xGA)"
     corners=${{ tr: "Dominant", tl: "Defence-led", br: "Attack-led", bl: "Struggling" }} hoverPad=${22}
     label="Attack versus defence, one marker per team"
-    onSelect=${(p) => navigate(`/team/${encodeURIComponent(p.id)}`)}
+    onSelect=${(p) => navigate(`/team/${encodeURIComponent(p.id)}`, { league: scope.league, season: scope.season })}
     renderTip=${(p) => html`<${Tip} title=${p.data.team} sub=${`${ordinal(p.data.rank)} · ${p.data.pts} pts`} rows=${[
       { label: "xG per game", value: nf(p.data.xg_pg, 2) }, { label: "xGA per game", value: nf(p.data.xga_pg, 2) }, { label: "xG difference / game", value: signed(p.data.xgd_pg, 2) },
     ]} />`} />`;
@@ -106,7 +106,7 @@ function LeagueView({ d, query }) {
 
   return html`
     <${PageHead} eyebrow=${`${scope.league_name} · ${scope.label} · after ${plural(scope.rounds_played, "matchweek")}`} title="League table" sub=${headline(table)}
-      actions=${html`<${CsvButton} columns=${columns} rows=${table} filename=${`${scope.league}-${scope.season}-table.csv`} />`} />
+      actions=${html`<a class="btn" href=${href("/teams", { lg: scope.league, ss: String(scope.season) })} title="Filter, rank and map every team measure: possession, pressing, set pieces ..."><span>All team measures</span></a><${CsvButton} columns=${columns} rows=${table} filename=${`${scope.league}-${scope.season}-table.csv`} />`} />
     <${DataNotices} scope=${scope} meta=${meta} />
     <${Insights} items=${insights} scope=${scope} limit=${3} />
 
@@ -118,7 +118,7 @@ function LeagueView({ d, query }) {
         <${Select} compact label="Window" value=${String(d.filter.last || "")} options=${[{ value: "", label: "Whole season" }, { value: "5", label: "Last 5" }, { value: "10", label: "Last 10" }]} onChange=${(v) => setQuery({ last: v || null })} />
       </div>`}>
       <${DataTable} columns=${columns} rows=${table} rowKey=${(r) => r.team} initialSort=${initialSort} dense
-        onRowClick=${(r) => navigate(`/team/${encodeURIComponent(r.team)}`)} caption="League table"
+        onRowClick=${(r) => navigate(`/team/${encodeURIComponent(r.team)}`, { league: scope.league, season: scope.season })} caption="League table"
         zone=${(r) => (view === "style" ? null : r.rank <= ucl ? "ucl" : r.rank > n - rel ? "rel" : "none")} />
       <div class="card-foot row wrap" style=${{ gap: "18px" }}>
         <span class="legend"><span class="item"><span class="swatch box" style=${{ background: "var(--c1)" }}></span>Champions League places</span><span class="item"><span class="swatch box" style=${{ background: "var(--crit)" }}></span>Relegation places</span></span>
@@ -128,7 +128,7 @@ function LeagueView({ d, query }) {
 
     <div class="grid cols-2">
       <${Card} title="Attack against defence" sub="Where each team sits on chances created and allowed. Dotted lines are league averages. Click a team to open it.">
-        <${TeamMap} table=${table} follow=${follow} colorOf=${colorOf} />
+        <${TeamMap} table=${table} follow=${follow} colorOf=${colorOf} scope=${scope} />
         <p class="xsmall muted" style=${{ marginTop: "8px" }}>Teams you follow in the race chart are outlined in the same colour. Up and to the right is better.</p>
       </${Card}>
       <${Card} title="The race, matchweek by matchweek" sub="Table position after each round. Click a line to follow it (up to four)."

@@ -10,16 +10,16 @@ import { Crest, Kbd } from "./common.js";
 export const PAGES = [
   { path: "/", name: "Briefing", icon: "briefing", hint: "What matters right now" },
   { path: "/league", name: "League table", icon: "table", hint: "Standings, expected points, style" },
-  { path: "/matches", name: "Matches", icon: "calendar", hint: "Results, xG and how deserved they were" },
-  { path: "/scout", name: "Scout", icon: "scout", hint: "Find players" },
+  { path: "/matches", name: "Matches", icon: "calendar", hint: "Results with scorers, xG and possession" },
+  { path: "/scout", name: "Scout: players", icon: "scout", hint: "Find players with any filter, lens or metric" },
+  { path: "/teams", name: "Teams: scout for clubs", icon: "shield", hint: "Every team measure: filters, lenses, columns, map" },
   { path: "/compare", name: "Compare", icon: "compare", hint: "Players or teams side by side" },
   { path: "/shortlist", name: "Shortlist", icon: "star", hint: "Players you are tracking" },
-  { path: "/forecast", name: "Forecast", icon: "forecast", hint: "Fixtures, match lab, season simulation" },
-  { path: "/data", name: "Data", icon: "database", hint: "Sync, coverage, cache" },
-  { path: "/guide", name: "Guide: where to find things", icon: "info", hint: "Shot maps, pitch maps, xPts and every other chart: where each one lives" },
-  { path: "/scout", name: "Shot map (player)", icon: "scout", hint: "Scout, click a player, then the Finishing and shots tab" },
-  { path: "/matches", name: "Shot map (match)", icon: "calendar", hint: "Matches, click a match, then the Shot map card" },
-  { path: "/method", name: "Method", icon: "book", hint: "How every number is made" },
+  { path: "/dictionary", name: "Data dictionary", icon: "dictionary", hint: "Every metric: raw or derived, how it is made and read" },
+  { path: "/data", name: "Data", icon: "database", hint: "Automatic updates, coverage, storage" },
+  { path: "/guide", name: "Guide: where to find things", icon: "info", hint: "Maps, filters, lenses, xPts and every other chart: where each one lives" },
+  { path: "/scout", name: "Lenses", icon: "scout", hint: "Quick filters in Scout: Goal threats, Ball winners, Hidden gems ..." },
+  { path: "/teams", name: "Style profile and pitch maps", icon: "shield", hint: "Open a team: Overview, then Style & maps" },
 ];
 
 export function rememberVisit(item) {

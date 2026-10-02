@@ -1,17 +1,19 @@
 // Compare: players side by side (percentile dot plot) or two teams (numbers, trend, meetings).
-import { html, useEffect, useMemo, useState } from "../lib/html.js";
+import { html, useMemo, useState } from "../lib/html.js";
 import { useApi } from "../lib/api.js";
 import { useScope, useMeta } from "../lib/scope.js";
-import { navigate, setQuery, useLocation } from "../lib/router.js";
-import { debounce, dateShort, nf, ordinal, plural, signed, cls, fold } from "../lib/format.js";
+import { setQuery, useLocation } from "../lib/router.js";
+import { debounce, dateShort, nf, ordinal, signed } from "../lib/format.js";
 import { Icon } from "../lib/icons.js";
 import { shortlistStore, useStore } from "../lib/store.js";
-import { Async, Badge, Button, Card, Crest, DataNotices, EmptyState, Insights, Notice, PageHead, Section, Segmented, Select, Star, TeamName, useDocumentTitle, playerHref, metricValue, POS_LABEL, matchHref, teamHref } from "../ui/common.js";
+import { Async, Card, Crest, DataNotices, EmptyState, Notice, PageHead, Section, Segmented, Select, useDocumentTitle, playerHref, metricValue, POS_LABEL, matchHref, teamHref } from "../ui/common.js";
 import { DataTable } from "../ui/table.js";
 import { PercentileDots } from "../charts/bars.js";
 import { LineChart, SERIES_COLORS } from "../charts/lines.js";
-import { ProbBar } from "../charts/bars.js";
 import { useStableSlots } from "../lib/slots.js";
+import { fmtMetric, blank } from "../lib/metricfmt.js";
+import { STYLE_GROUPS } from "../ui/styleprofile.js";
+import { buildContext } from "../ui/explore/model.js";
 
 // ------------------------------------------------------------------ player picker
 
@@ -112,6 +114,27 @@ function PickedChips({ ids, data, remove, colorOf }) {
 
 // ------------------------------------------------------------------ teams
 
+/** The two teams on the style measures of the team page (results, creating, preventing, possession, pressing, set pieces), as percentiles in their league. */
+function StyleCompare({ a, b, scope, colors }) {
+  const { catalog } = useMeta();
+  const q = useApi("/api/teams", { leagues: [scope.league], seasons: [scope.season] });
+  const ctx = useMemo(() => (q.data && catalog ? buildContext("team", q.data, catalog) : null), [q.data, catalog]);
+  if (!ctx) return null;
+  const ra = q.data.rows.find((r) => r.team === a.team), rb = q.data.rows.find((r) => r.team === b.team);
+  if (!ra || !rb) return null;
+  const dots = STYLE_GROUPS.flatMap((g) => g.keys).filter((k) => ctx.idx[k] !== undefined).map((k) => {
+    const i = ctx.idx[k], def = ctx.metrics[k];
+    return { k, i, def, va: ra.v[i], vb: rb.v[i], pa: ra.p[i], pb: rb.p[i] };
+  }).filter((m) => !blank(m.va) && !blank(m.vb)).map((m) => ({
+    key: m.k, label: m.def.short, values: [m.va, m.vb], pct: [m.pa, m.pb], format: (v) => fmtMetric(m.def, v),
+    best: m.def.hib === null || m.pa == null || m.pb == null || m.pa === m.pb ? -1 : m.pa > m.pb ? 0 : 1,
+  }));
+  if (!dots.length) return null;
+  return html`<${Card} title="Style compared" sub="Percentile among the teams of the league, higher is better; for style measures (possession, long balls, defensive height) the dot shows where the team sits, not who is better. Ringed: the better side.">
+    <${PercentileDots} metrics=${dots} subjects=${[{ name: a.team }, { name: b.team }]} colors=${colors} />
+  </${Card}>`;
+}
+
 function TeamsView({ d, colors }) {
   const { a, b } = d;
   const cum = (xs) => xs.reduce((acc, v) => [...acc, (acc[acc.length - 1] || 0) + v], []);
@@ -138,6 +161,7 @@ function TeamsView({ d, colors }) {
       <${PercentileDots} metrics=${dots} subjects=${[{ name: a.team }, { name: b.team }]} colors=${colors} />
       <div class="legend" style=${{ marginTop: "14px" }}>${[a, b].map((t, i) => html`<span class="item" key=${t.team}><span class="swatch dot" style=${{ background: colors[i] }}></span>${t.team}</span>`)}</div>
     </${Card}>
+    <${StyleCompare} a=${a} b=${b} scope=${d.scope} colors=${colors} />
     <div class="grid cols-2 top">
       <${Card} title="Net chances through the season" sub="Running total of xG minus xGA, match by match.">
         <${LineChart} x=${idx} series=${[{ key: "a", label: a.team, values: cum(d.xgd_by_match.a), color: colors[0], endLabel: a.short }, { key: "b", label: b.team, values: cum(d.xgd_by_match.b), color: colors[1], endLabel: b.short }]}
@@ -151,7 +175,7 @@ function TeamsView({ d, colors }) {
       <div class="stack" style=${{ "--gap": "10px" }}>${d.meetings.map((m) => html`<a class="row between meeting" key=${m.id} href=${matchHref(m.id)}>
         <span class="muted small num">${dateShort(m.date)}</span>
         <span><b>${m.home}</b> ${m.played ? html`<b class="num">${m.hg}–${m.ag}</b>` : "v"} <b>${m.away}</b></span>
-        <span class="muted small num">${m.played ? `xG ${nf(m.hxg, 1)}–${nf(m.axg, 1)}` : m.forecast ? `${Math.round(m.forecast.home * 100)}% / ${Math.round(m.forecast.draw * 100)}% / ${Math.round(m.forecast.away * 100)}%` : ""}</span>
+        <span class="muted small num">${m.played ? `xG ${nf(m.hxg, 1)}–${nf(m.axg, 1)}` : ""}</span>
       </a>`)}</div>
     </${Card}>` : null}
   </div>`;

@@ -240,8 +240,6 @@ async def test_a_season_the_feed_has_little_for_is_kept_but_flagged_and_looked_a
 
 
 async def test_a_sync_job_fetches_the_squad_lists_with_the_league_data_and_logs_it(env, repo):
-    import asyncio
-
     from app.jobs import JobManager
 
     jobs = JobManager(repo, rosters=env.client)

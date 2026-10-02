@@ -1,68 +1,76 @@
-// Matches: every fixture by matchweek, each read through its chances.
+// Matches: every fixture of a matchweek as a compact card: the score, who scored, and the numbers behind the result.
 import { html, useEffect, useMemo, useRef } from "../lib/html.js";
 import { useApi } from "../lib/api.js";
 import { useScope } from "../lib/scope.js";
-import { setQuery, useLocation } from "../lib/router.js";
-import { dateShort, nf, plural, probText, timeOf, weekday, cls } from "../lib/format.js";
-import { Icon } from "../lib/icons.js";
-import { Async, Badge, Button, Card, Crest, DataNotices, EmptyState, PageHead, Segmented, useDocumentTitle, matchHref } from "../ui/common.js";
-import { FLAG_LABEL, labHref, verdict } from "../ui/blocks.js";
-import { ProbBar } from "../charts/bars.js";
-import { poissonOutcome } from "../lib/stats.js";
-
-function XgDuel({ hxg, axg }) {
-  const total = (hxg + axg) || 1;
-  return html`<div class="duel" role="img" aria-label=${`Expected goals ${nf(hxg, 2)} to ${nf(axg, 2)}`}>
-    <span class="num">${nf(hxg, 1)}</span>
-    <span class="duel-bar"><i class="h" style=${{ flex: hxg / total + " 1 0" }}></i><i class="a" style=${{ flex: axg / total + " 1 0" }}></i></span>
-    <span class="num">${nf(axg, 1)}</span>
-  </div>`;
-}
-
-function MatchCard({ m }) {
-  const flagged = Boolean(m.flag);
-  const homeWon = m.played && m.hg > m.ag, awayWon = m.played && m.ag > m.hg;
-  const v = m.flag ? verdict({ ...m, ...(() => { const o = poissonOutcome(m.hxg, m.axg); return { p_home: o.home, p_away: o.away }; })() }) : null;
-  return html`<a class=${cls("mcard", flagged && "flagged")} href=${m.played ? matchHref(m.id) : labHref(m.home, m.away)}>
-    <div class="mcard-top"><span class="muted xsmall num">${weekday(m.date)} ${dateShort(m.date)}${!m.played ? ` · ${timeOf(m.dt)}` : ""}</span>${m.flag ? html`<${Badge} tone="warn">${FLAG_LABEL[m.flag]}</${Badge}>` : null}</div>
-    <div class="mcard-teams">
-      <div class=${cls("line", homeWon && "won")}><${Crest} team=${m.home} short=${m.home_short} size=${24} /><span class="name">${m.home}</span><span class="goals figure num">${m.played ? m.hg : ""}</span></div>
-      <div class=${cls("line", awayWon && "won")}><${Crest} team=${m.away} short=${m.away_short} size=${24} /><span class="name">${m.away}</span><span class="goals figure num">${m.played ? m.ag : ""}</span></div>
-    </div>
-    ${m.played ? html`<div class="stack" style=${{ "--gap": "4px" }}><span class="xsmall muted">Chances created (xG)</span><${XgDuel} hxg=${m.hxg} axg=${m.axg} /></div>` : null}
-    ${m.forecast ? html`<div class="stack" style=${{ "--gap": "4px" }}><span class="xsmall muted">${m.played ? "Before kickoff, the model gave" : "Model forecast"}</span><${ProbBar} home=${m.forecast.home} draw=${m.forecast.draw} away=${m.forecast.away} homeLabel=${m.home_short} awayLabel=${m.away_short} compact /></div>` : null}
-    ${v ? html`<div class="result-verdict">${v}</div>` : null}
-  </a>`;
-}
+import { href, setQuery, useLocation } from "../lib/router.js";
+import { cls, dateShort, plural } from "../lib/format.js";
+import { Async, Button, DataNotices, EmptyState, Notice, PageHead, Segmented, useDocumentTitle } from "../ui/common.js";
+import { MatchCard, kickoff } from "../ui/matchcard.js";
 
 function RoundStrip({ rounds, value, onPick }) {
   const ref = useRef(null);
   useEffect(() => { ref.current?.querySelector('[aria-current="true"]')?.scrollIntoView({ block: "nearest", inline: "center" }); }, [value]);
   return html`<div class="roundstrip" ref=${ref} role="group" aria-label="Matchweeks">
-    ${rounds.map((r) => html`<button type="button" key=${r.round} class=${cls("round", r.played ? "done" : "todo")} aria-current=${String(r.round === value)} onClick=${() => onPick(r.round)} title=${`${dateShort(r.from)}${r.to !== r.from ? ` to ${dateShort(r.to)}` : ""}`}>${r.round}</button>`)}
+    ${rounds.map((r) => html`<button type="button" key=${r.round} class=${cls("round", r.played ? "done" : "todo")} aria-current=${String(r.round === value)} onClick=${() => onPick(r.round)} title=${`Matchweek ${r.round}: ${dateShort(r.from)}${r.to !== r.from ? ` to ${dateShort(r.to)}` : ""}`}>${r.round}</button>`)}
+  </div>`;
+}
+
+/** Group matches by the day they kick off in the viewer's own time zone. */
+function byDay(matches) {
+  const days = [];
+  const index = new Map();
+  for (const m of [...matches].sort((a, b) => (a.utc || a.dt).localeCompare(b.utc || b.dt))) {
+    const k = kickoff(m);
+    let day = index.get(k.key);
+    if (!day) { day = { key: k.key, label: k.long, matches: [] }; index.set(k.key, day); days.push(day); }
+    day.matches.push(m);
+  }
+  return days;
+}
+
+function RoundSummary({ matches }) {
+  const played = matches.filter((m) => m.played);
+  if (!played.length) return null;
+  const goals = played.reduce((s, m) => s + m.hg + m.ag, 0);
+  const home = played.filter((m) => m.hg > m.ag).length, draw = played.filter((m) => m.hg === m.ag).length, away = played.length - home - draw;
+  const xg = played.reduce((s, m) => s + (m.hxg ?? 0) + (m.axg ?? 0), 0);
+  return html`<div class="round-summary">
+    <span><b class="num">${played.length}</b> played</span>
+    <span><b class="num">${goals}</b> goals (${(goals / played.length).toFixed(1)} a game)</span>
+    <span><b class="num">${xg.toFixed(1)}</b> total xG</span>
+    <span>${home} home wins · ${draw} draws · ${away} away wins</span>
   </div>`;
 }
 
 function MatchesView({ d, query }) {
-  const { scope, meta, rounds, latest_round: latest } = d;
+  const { scope, meta, rounds, latest_round: latest, coverage } = d;
   const view = query.view === "flagged" ? "flagged" : "round";
   const round = Number(query.round) || latest || rounds.find((r) => !r.played)?.round || 1;
   const current = rounds.find((r) => r.round === round) || rounds[0];
   const flagged = useMemo(() => rounds.flatMap((r) => r.matches.filter((m) => m.flag).map((m) => ({ ...m, round: r.round }))).sort((a, b) => b.dt.localeCompare(a.dt)), [rounds]);
   const list = view === "flagged" ? flagged : current?.matches || [];
+  const days = useMemo(() => (view === "flagged" ? [{ key: "all", label: `${plural(flagged.length, "result")} that went against the chances`, matches: flagged }] : byDay(list)), [view, list, flagged]);
+  const missingScorers = coverage && coverage.played > coverage.scorers;
+
   return html`
-    <${PageHead} eyebrow=${`${scope.league_name} · ${scope.label}`} title="Matches" sub=${view === "flagged" ? `${plural(flagged.length, "result")} this season went against what the chances said.` : `Matchweek ${round}: results next to the chances behind them, and what the model expected beforehand.`}
+    <${PageHead} eyebrow=${`${scope.league_name} · ${scope.label}`} title="Matches"
+      sub=${view === "flagged" ? `${plural(flagged.length, "result")} this season went against what the chances said: the winner created less, or the favourite only drew.` : `Matchweek ${round}: results with the scorers, and the numbers that explain them. Times are in your time zone.`}
       actions=${html`<${Segmented} label="View" value=${view} onChange=${(v) => setQuery({ view: v === "round" ? null : v })} options=${[{ value: "round", label: "By matchweek" }, { value: "flagged", label: `Results that lied (${flagged.length})` }]} />`} />
     <${DataNotices} scope=${scope} meta=${meta} />
+    ${missingScorers ? html`<${Notice} icon="clock">Scorers are shown for ${coverage.scorers} of ${coverage.played} played matches. The rest arrive as the app downloads each match page in the background (<a class="link" href=${href("/data")}>Data status</a>).</${Notice}>` : null}
     ${view === "round" ? html`
-      <div class="row" style=${{ gap: "10px" }}>
+      <div class="round-nav">
         <${Button} kind="quiet" icon="chevronLeft" title="Previous matchweek" disabled=${round <= 1} onClick=${() => setQuery({ round: round - 1 })} />
         <${RoundStrip} rounds=${rounds} value=${round} onPick=${(r) => setQuery({ round: r })} />
         <${Button} kind="quiet" icon="chevronRight" title="Next matchweek" disabled=${round >= rounds.length} onClick=${() => setQuery({ round: round + 1 })} />
       </div>
-      <div class="row between wrap"><h2 class="section-title" style=${{ fontSize: "var(--fs-lg)" }}>Matchweek ${round} <span class="muted small" style=${{ fontWeight: 400 }}>${current ? `${dateShort(current.from)}${current.to !== current.from ? ` to ${dateShort(current.to)}` : ""}` : ""}</span></h2></div>
-    ` : null}
-    ${list.length ? html`<div class="mgrid">${list.map((m) => html`<${MatchCard} key=${m.id} m=${m} />`)}</div>` : html`<${EmptyState} icon="calendar" title="Nothing here" text=${view === "flagged" ? "No result this season strongly defied its chances." : "No matches in this matchweek."} />`}
+      <div class="round-head"><h2>Matchweek ${round}</h2><span class="muted">${current ? `${dateShort(current.from)}${current.to !== current.from ? ` to ${dateShort(current.to)}` : ""}` : ""}</span><${RoundSummary} matches=${list} /></div>` : null}
+    ${list.length
+      ? days.map((day) => html`<section class="day" key=${day.key}>
+          <h3 class="day-title">${day.label}<span class="muted">${view === "flagged" ? "" : plural(day.matches.length, "match", "matches")}</span></h3>
+          <div class="mgrid">${day.matches.map((m) => html`<${MatchCard} key=${m.id} m=${m} showDate=${view === "flagged"} />`)}</div>
+        </section>`)
+      : html`<${EmptyState} icon="calendar" title="Nothing here" text=${view === "flagged" ? "No result this season strongly defied its chances." : "No matches in this matchweek."} />`}
   `;
 }
 

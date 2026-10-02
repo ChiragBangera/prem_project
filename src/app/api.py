@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import math
 from contextlib import asynccontextmanager
@@ -47,6 +48,50 @@ class SafeJSONResponse(JSONResponse):
         return super().render(_clean(content))
 
 
+class ETagMiddleware:
+    """Gives every cacheable GET under ``/api`` a validator, and answers 304 when the browser already holds that exact body.
+
+    The browser keeps what it has loaded (its own HTTP cache, plus the app's IndexedDB cache) and asks again with ``If-None-Match``;
+    an unchanged answer costs a few bytes and no re-parse. Things that must always be live (status, jobs, search) are left alone.
+    """
+
+    SKIP = ("/api/data", "/api/health", "/api/search", "/api/shortlist", "/api/docs", "/api/openapi")
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        path = scope.get("path", "")
+        if scope["type"] != "http" or scope["method"] != "GET" or not path.startswith("/api/") or path.startswith(self.SKIP):
+            return await self.app(scope, receive, send)
+        wanted = next((v.decode() for k, v in scope["headers"] if k == b"if-none-match"), None)
+        started: dict | None = None
+        chunks: list[bytes] = []
+
+        async def capture(message):
+            nonlocal started
+            if message["type"] == "http.response.start":
+                started = message
+                return
+            chunks.append(message.get("body", b""))
+            if message.get("more_body"):
+                return
+            body = b"".join(chunks)
+            headers = list(started["headers"])
+            if started["status"] == 200:
+                etag = 'W/"' + hashlib.blake2b(body, digest_size=12).hexdigest() + '"'
+                headers = [(k, v) for k, v in headers if k not in (b"etag", b"cache-control")] + [(b"etag", etag.encode()), (b"cache-control", b"no-cache")]
+                if wanted == etag:
+                    keep = [(k, v) for k, v in headers if k in (b"etag", b"cache-control", b"vary")]
+                    await send({"type": "http.response.start", "status": 304, "headers": keep})
+                    await send({"type": "http.response.body", "body": b""})
+                    return
+            await send({**started, "headers": headers})
+            await send({"type": "http.response.body", "body": body})
+
+        await self.app(scope, receive, capture)
+
+
 class ShortlistItem(BaseModel):
     name: str = ""
     team: str = ""
@@ -58,6 +103,12 @@ class SyncRequest(BaseModel):
     leagues: list[str] = Field(default_factory=lambda: ["EPL"])
     seasons: list[int] = Field(default_factory=list)
     force: bool = False
+
+
+class AutoPrefs(BaseModel):
+    enabled: bool | None = None
+    seasons_back: int | None = Field(None, ge=0, le=4)
+    events: dict | None = None
 
 
 def ok(payload: Any, status: int = 200) -> SafeJSONResponse:
@@ -82,6 +133,7 @@ def create_app(settings: Settings | None = None, *, provider=None, today: date |
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         app.state.wb = Workbench(settings, provider=provider, today=today)
+        await app.state.wb.start()
         yield
         await app.state.wb.close()
 
@@ -89,6 +141,7 @@ def create_app(settings: Settings | None = None, *, provider=None, today: date |
         title="Prem Lab", version=__version__, lifespan=lifespan, default_response_class=SafeJSONResponse,
         docs_url="/api/docs", redoc_url=None, openapi_url="/api/openapi.json",
     )
+    app.add_middleware(ETagMiddleware)
     app.add_middleware(GZipMiddleware, minimum_size=1024)
 
     def wb(request: Request) -> Workbench:
@@ -155,9 +208,37 @@ def create_app(settings: Settings | None = None, *, provider=None, today: date |
     async def team_chances_league(request: Request, team: str, league: str = "EPL", season: str = "auto"):
         return ok(await wb(request).team_chances_league_view(league, season, team))
 
+    @app.get("/api/dictionary")
+    async def dictionary(request: Request):
+        return ok(wb(request).dictionary())
+
+    @app.get("/api/dictionary/stats")
+    async def dictionary_stats(request: Request, league: str = "EPL", season: str = "auto"):
+        return ok(await wb(request).dictionary_stats(league, season))
+
     @app.get("/api/players")
-    async def players(request: Request, leagues: str = "EPL", seasons: str = "auto", min_minutes: int = Query(90, ge=0, le=3000)):
+    async def players(request: Request, leagues: str = "EPL", seasons: str = "auto", min_minutes: int = Query(1, ge=0, le=3000)):
         return ok(await wb(request).players_view(_list(leagues), _list(seasons) or ["auto"], min_minutes=min_minutes))
+
+    @app.get("/api/teams")
+    async def teams(request: Request, leagues: str = "EPL", seasons: str = "auto"):
+        return ok(await wb(request).teams_view(_list(leagues), _list(seasons) or ["auto"]))
+
+    @app.get("/api/maps/team")
+    async def maps_team(request: Request, team: str, league: str = "EPL", season: str = "auto", venue: str = "all", last: int | None = Query(None, ge=1, le=60)):
+        return ok(await wb(request).team_maps_view(league, season, team, venue=venue, last=last))
+
+    @app.get("/api/maps/player/{player_id}")
+    async def maps_player(request: Request, player_id: int, league: str | None = None, season: str = "auto", last: int | None = Query(None, ge=1, le=60)):
+        return ok(await wb(request).player_maps_view(player_id, league, season, last=last))
+
+    @app.get("/api/team/shots")
+    async def team_shots(request: Request, team: str, league: str = "EPL", season: str = "auto", venue: str = "all", last: int | None = Query(None, ge=1, le=60)):
+        return ok(await wb(request).team_shots_view(league, season, team, venue=venue, last=last))
+
+    @app.get("/api/team/matches")
+    async def team_matches(request: Request, team: str, league: str = "EPL", season: str = "auto"):
+        return ok(await wb(request).team_matches_view(league, season, team))
 
     @app.get("/api/player/{player_id}")
     async def player(request: Request, player_id: int, league: str | None = None, season: str = "auto", seasons: str | None = None):
@@ -189,22 +270,6 @@ def create_app(settings: Settings | None = None, *, provider=None, today: date |
     async def match(request: Request, match_id: int, league: str = "EPL", season: str = "auto"):
         return ok(await wb(request).match_view(match_id, league, season))
 
-    @app.get("/api/forecast/fixtures")
-    async def forecast_fixtures(request: Request, league: str = "EPL", season: str = "auto", limit: int = Query(12, ge=1, le=40)):
-        return ok(await wb(request).forecast_fixtures_view(league, season, limit))
-
-    @app.get("/api/forecast/match")
-    async def forecast_match(request: Request, home: str, away: str, league: str = "EPL", season: str = "auto"):
-        return ok(await wb(request).forecast_match_view(league, season, home, away))
-
-    @app.get("/api/forecast/season")
-    async def forecast_season(request: Request, league: str = "EPL", season: str = "auto", sims: int = Query(4000, ge=500, le=20000)):
-        return ok(await wb(request).forecast_season_view(league, season, sims))
-
-    @app.get("/api/forecast/calibration")
-    async def forecast_calibration(request: Request, league: str = "EPL", season: str = "auto"):
-        return ok(await wb(request).calibration_view(league, season))
-
     @app.get("/api/search")
     async def search(request: Request, q: str = "", limit: int = Query(8, ge=1, le=20)):
         return ok(await wb(request).search_view(q, limit))
@@ -233,6 +298,23 @@ def create_app(settings: Settings | None = None, *, provider=None, today: date |
     @app.post("/api/data/check")
     async def data_check(request: Request):
         return ok(await wb(request).check_connection())
+
+    @app.get("/api/data/auto")
+    async def data_auto(request: Request):
+        return ok(wb(request).auto.state())
+
+    @app.put("/api/data/auto")
+    async def data_auto_set(request: Request, body: AutoPrefs):
+        return ok({"prefs": wb(request).auto.set_prefs(body.model_dump(exclude_none=True)), **wb(request).auto.state()})
+
+    @app.post("/api/data/auto/run")
+    async def data_auto_run(request: Request):
+        wb(request).auto.wake()
+        return ok({"started": True})
+
+    @app.post("/api/data/reclaim")
+    async def data_reclaim(request: Request):
+        return ok(await wb(request).reclaim_download_cache())
 
     @app.get("/api/data/jobs/{job_id}")
     async def job(request: Request, job_id: str):

@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 
+import json
 import math
-import time
 
 import pytest
 
 from app.data.store import Store
 from app.events.fetch import FetchUnavailable, _finished, find_browser, make_reader, sync_season
 from app.events.store import EventStore
+
+from .events_kit import AWAY, end, ev, match, player
 
 
 class Frame:
@@ -33,20 +35,31 @@ def match_events(pid=1):
 
 
 class FakeReader:
-    def __init__(self, games, broken=()):
-        self.games, self.broken = games, set(broken)
+    """Stands in for soccerdata's reader: it "downloads" a match by writing its raw page into the download cache, as the real one does."""
+
+    def __init__(self, games, data_dir, broken=(), empty=()):
+        self.games, self.broken, self.empty = games, set(broken), set(empty)
         self.event_calls, self.schedule_calls = [], []
+        self.data_dir = data_dir / "fake-cache"
 
     def read_schedule(self, force_cache=False):
         self.schedule_calls.append(force_cache)
-        return Frame(self.games)
+        return Frame([{**g, "league": "ENG-Premier League", "season": "2526"} for g in self.games])
 
-    def read_events(self, match_id, output_fmt="events", force_cache=False):
+    def read_events(self, match_id, output_fmt=None, force_cache=False):
         assert force_cache, "finished matches are final: never let soccerdata re-download the season's match list per match"
+        assert output_fmt is None, "only the page is wanted: the app keeps the whole raw document, not a DataFrame"
         self.event_calls.append(match_id)
         if match_id in self.broken:
             raise RuntimeError("blocked")
-        return Frame(match_events(1))   # the same player turns up in every match, so his totals add up
+        folder = self.data_dir / "events" / "ENG-Premier League_2526"
+        folder.mkdir(parents=True, exist_ok=True)
+        (folder / f"{match_id}.json").write_text("null" if match_id in self.empty else json.dumps(raw_doc(passes=1)))
+
+
+def raw_doc(passes=1):
+    events = [ev("Pass", 1, minute=1 + i) for i in range(passes)] + [ev("Tackle", 1, minute=50)] + [ev("Pass", 2, team=AWAY, minute=1 + i % 90) for i in range(60)] + [end(100)]
+    return match(events, home_players=[player(1)], away_players=[player(2, team_side="away")])
 
 
 def games(n, unplayed=0):
@@ -67,42 +80,58 @@ def run(events, reader, tmp_path, **kw):
     return status, lines
 
 
-def test_only_finished_matches_are_fetched_and_stored(events, tmp_path):
-    reader = FakeReader(games(3, unplayed=2))
+def reader_for(tmp_path, n, **kw):
+    unplayed = kw.pop("unplayed", 0)
+    return FakeReader(games(n, unplayed), tmp_path, **kw)
+
+
+def test_only_finished_matches_are_fetched_and_stored_raw(events, tmp_path):
+    reader = reader_for(tmp_path, 3, unplayed=2)
     status, _ = run(events, reader, tmp_path)
     assert reader.event_calls == [100, 101, 102]                       # the unplayed fixtures are never requested
-    assert sorted(events.match_ids("EPL", 2025)) == [100, 101, 102]
+    assert events.match_ids("EPL", 2025) == [100, 101, 102]
     assert status["running"] is False and status["done"] == 3 and status["failed"] == 0
-    totals = events.season_totals("EPL", 2025)
-    assert totals[1]["passes"] == 3 and totals[1]["tackles"] == 3 and totals[1]["min"] == 270.0 and totals[1]["matches"] == 3
+    season = events.season("EPL", 2025)
+    assert season["players"][1]["c"]["passes"] == 3 and season["players"][1]["c"]["tackles"] == 3 and season["players"][1]["matches"] == 3
+    assert events.raw.get("EPL", 2025, 100)["home"]["name"] == "Reds"  # the page as served is in the store: nothing needs fetching again to change a definition
 
 
 def test_running_again_only_fetches_what_is_missing(events, tmp_path):
-    run(events, FakeReader(games(2)), tmp_path)
-    reader = FakeReader(games(4))                                       # two more matches have been played since
+    run(events, reader_for(tmp_path, 2), tmp_path)
+    reader = reader_for(tmp_path, 4)                                    # two more matches have been played since
     status, lines = run(events, reader, tmp_path)
     assert reader.event_calls == [102, 103] and "2 already stored" in " ".join(lines)
     assert reader.schedule_calls == [True]                              # the match list was read recently, so it comes from cache
     assert status["done"] == 2
 
 
-def test_matches_stored_in_an_older_format_are_read_again(events, tmp_path):
-    events.store.put("events", "EPL:2025:100", {"v": 1, "game": 100, "rows": []}, source="whoscored", complete=True)
-    reader = FakeReader(games(2))
-    run(events, reader, tmp_path)
-    assert reader.event_calls == [100, 101] and events.has_current_match("EPL", 2025, 100)
+def test_a_page_downloaded_but_never_stored_is_adopted_not_fetched_again(events, tmp_path):
+    first = reader_for(tmp_path, 2)
+    first.read_events(100, force_cache=True)                            # a run that died right after the download, before storing it
+    folder = tmp_path / "soccerdata" / "data" / "WhoScored" / "events" / "ENG-Premier League_2526"
+    folder.mkdir(parents=True)
+    (folder / "100.json").write_text((first.data_dir / "events" / "ENG-Premier League_2526" / "100.json").read_text())
+    reader = reader_for(tmp_path, 2)
+    status, lines = run(events, reader, tmp_path)
+    assert reader.event_calls == [101] and events.match_ids("EPL", 2025) == [100, 101] and any("Adopted 1" in l for l in lines)
 
 
 def test_limit_caps_a_run_and_one_failure_does_not_stop_it(events, tmp_path):
-    reader = FakeReader(games(6), broken=[101])
+    reader = reader_for(tmp_path, 6, broken=[101])
     status, lines = run(events, reader, tmp_path, limit=3)
-    assert reader.event_calls == [100, 101, 102] and sorted(events.match_ids("EPL", 2025)) == [100, 102]
-    assert status["done"] == 2 and status["failed"] == 1 and "101" not in status["last_error"] and "Reds v Blues" in status["last_error"]
+    assert reader.event_calls == [100, 101, 102] and events.match_ids("EPL", 2025) == [100, 102]
+    assert status["done"] == 2 and status["failed"] == 1 and "Reds v Blues" in status["last_error"]
     assert any("FAILED" in line for line in lines)
 
 
+def test_an_empty_page_is_a_failure_not_a_stored_match(events, tmp_path):
+    reader = reader_for(tmp_path, 2, empty=[100])
+    status, _ = run(events, reader, tmp_path)
+    assert events.match_ids("EPL", 2025) == [101] and status["failed"] == 1 and "no events" in status["last_error"]
+
+
 def test_a_wall_of_failures_stops_the_run(events, tmp_path):
-    reader = FakeReader(games(10), broken=range(100, 110))
+    reader = reader_for(tmp_path, 10, broken=range(100, 110))
     status, lines = run(events, reader, tmp_path, max_failures=3)
     assert len(reader.event_calls) == 3 and status["failed"] == 3 and status["running"] is False
     assert "blocking" in lines[-1]

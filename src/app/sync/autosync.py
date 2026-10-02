@@ -1,0 +1,356 @@
+"""The background updater: while the app runs, keep the local data current without anyone pressing a button.
+
+One *cycle* every ``interval`` (shorter while there is a backlog):
+
+1. **League seasons.** For every league and every tracked season (this one, and as many previous ones as the preferences say), ask the
+   repository for the season. It decides, by its freshness policy, whether to touch the network: a finished season never is, a live one
+   refreshes around matchdays. A failure keeps what is stored and is retried later with a growing delay.
+2. **Match pages.** Fetch only the finished matches whose page is missing or not final yet, politely and within a time budget so a big
+   backlog is worked off over several cycles instead of in one long burst.
+3. **Squad lists** (exact birthdates), through the existing background enrichment.
+4. **Event data.** The slow one. If enabled (and the optional dependencies and a browser exist), start the event fetcher as a separate
+   process for the first league season with finished matches still missing, bounded to a few dozen matches per run. A separate process keeps
+   a browser crash or a blocked page away from the app, and the store is the only thing the two share.
+5. **Housekeeping.** Adopt match pages the download cache holds but the store lacks, and rebuild derived layers made by older code.
+
+Everything is idempotent and resumable: stopping the app at any point loses nothing, and the next cycle carries on from what the store holds.
+What it did, what failed and when it will look again is kept in the store and shown on the Data page.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import importlib.util
+import logging
+import os
+import sys
+import time
+from collections import deque
+from typing import TYPE_CHECKING, Any, Callable
+
+from app.errors import AppError
+from app.events import raw as R
+from app.events.fetch import find_browser
+from app.leagues import LEAGUES, current_season, season_label
+
+if TYPE_CHECKING:  # pragma: no cover
+    from app.workbench import Workbench
+
+log = logging.getLogger("prem.autosync")
+
+STATE_KEY = "autosync:state"
+PREFS_KEY = "autosync:prefs"
+FAIL_PREFIX = "autosync:fail:"
+EVENT_RUN_PREFIX = "autosync:events:"
+CYCLE_BUDGET = 300.0           # seconds of fetching per cycle before it yields
+BACKLOG_INTERVAL = 90.0        # look again this soon while there is still a backlog
+BACKOFF_BASE, BACKOFF_MAX = 300.0, 6 * 3600.0
+EVENT_BATCH = 60               # matches per event-fetcher run
+EVENT_RECHECK = 3 * 3600.0     # a season the fetcher found nothing more to do for is not run again sooner than this
+
+def pretty(code: str, season: int) -> str:
+    """"La Liga 2026/27": how a league season is named in anything a person reads (keys in the store stay ``La_liga:2026``)."""
+    league = LEAGUES.get(code)
+    return f"{league.name if league else code} {season_label(season)}"
+
+
+DEFAULT_PREFS: dict[str, Any] = {
+    "enabled": True,
+    "seasons_back": 1,                         # previous seasons whose league data and match pages are kept complete
+    "events": {"enabled": None, "leagues": list(LEAGUES), "seasons_back": 0},   # enabled None: on once event data has been used before
+}
+
+
+class AutoSync:
+    def __init__(self, wb: "Workbench", *, clock: Callable[[], float] = time.time, spawn: Callable[..., Any] | None = None):
+        self.wb = wb
+        self.settings = wb.settings
+        self._clock = clock
+        self._spawn = spawn or asyncio.create_subprocess_exec
+        self._task: asyncio.Task | None = None
+        self._wake = asyncio.Event()
+        self._lock = asyncio.Lock()
+        self._stop = False
+        self._proc: Any = None
+        self._proc_label: str | None = None
+        self._log: deque[dict] = deque(maxlen=40)
+        self.running = False
+        self.next_at: float | None = None
+
+    # ------------------------------------------------------------------ preferences
+
+    @property
+    def store(self):
+        return self.wb.store
+
+    def prefs(self) -> dict:
+        saved = self.store.kv_get(PREFS_KEY) or {}
+        events = {**DEFAULT_PREFS["events"], **(saved.get("events") or {})}
+        return {**DEFAULT_PREFS, **{k: v for k, v in saved.items() if k != "events"}, "events": events}
+
+    def set_prefs(self, patch: dict) -> dict:
+        current = self.prefs()
+        merged = {**current, **{k: v for k, v in patch.items() if k in ("enabled", "seasons_back") and v is not None}}
+        if isinstance(patch.get("events"), dict):
+            events = {**current["events"], **{k: v for k, v in patch["events"].items() if k in ("enabled", "leagues", "seasons_back")}}
+            events["leagues"] = [l for l in events["leagues"] if l in LEAGUES] or list(LEAGUES)
+            events["seasons_back"] = max(0, min(int(events.get("seasons_back") or 0), 3))
+            merged["events"] = events
+        merged["seasons_back"] = max(0, min(int(merged["seasons_back"]), 4))
+        self.store.kv_set(PREFS_KEY, merged)
+        self.wake()
+        return merged
+
+    # ------------------------------------------------------------------ what the event fetcher needs
+
+    @staticmethod
+    def events_capability() -> dict:
+        """Whether the optional event-data dependencies and a browser are present, and if not, what to do."""
+        if importlib.util.find_spec("soccerdata") is None:
+            return {"available": False, "reason": "The optional event-data package is not installed.", "hint": "Run the app with `uv run --extra events prem serve`."}
+        browser = find_browser()
+        if browser is None:
+            return {"available": False, "reason": "No Chrome, Chromium, Brave or Edge was found.", "hint": "Install one of them; it is found automatically."}
+        return {"available": True, "reason": None, "browser": browser}
+
+    def events_enabled(self) -> bool:
+        pref = self.prefs()["events"]["enabled"]
+        if pref is not None:
+            return bool(pref)
+        if self.settings.auto_events is not None:
+            return self.settings.auto_events
+        return bool(self.wb.events.seasons())  # on by default only once event data has been used here before
+
+    # ------------------------------------------------------------------ lifecycle
+
+    def start(self) -> None:
+        if self._task is None and self.settings.auto:
+            self._task = asyncio.create_task(self._loop())
+
+    async def close(self) -> None:
+        self._stop = True
+        self._wake.set()
+        if self._task is not None:
+            self._task.cancel()
+            await asyncio.gather(self._task, return_exceptions=True)
+        if self._proc is not None and self._proc.returncode is None:
+            self._proc.terminate()
+            try:
+                await asyncio.wait_for(self._proc.wait(), 10)
+            except (asyncio.TimeoutError, ProcessLookupError):
+                pass
+
+    def wake(self) -> None:
+        self._wake.set()
+
+    async def _loop(self) -> None:
+        await asyncio.sleep(self.settings.auto_first_delay)
+        failures = 0
+        while not self._stop:
+            delay = self.settings.auto_interval
+            try:
+                if self.prefs()["enabled"]:
+                    result = await self.run_once()
+                    failures = 0 if not result["errors"] else min(failures + 1, 5)
+                    delay = BACKLOG_INTERVAL if result["backlog"] and not result["errors"] else self.settings.auto_interval * (2 ** failures if failures else 1)
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:  # pragma: no cover - the updater must never take the app down
+                log.exception("auto-update cycle failed")
+                self._note("error", f"cycle failed: {type(exc).__name__}: {str(exc)[:120]}")
+                failures = min(failures + 1, 5)
+                delay = min(self.settings.auto_interval * 2 ** failures, 2 * 3600)
+            self.next_at = self._clock() + delay
+            self._wake.clear()
+            try:
+                await asyncio.wait_for(self._wake.wait(), timeout=delay)
+            except asyncio.TimeoutError:
+                pass
+
+    # ------------------------------------------------------------------ one cycle
+
+    def _note(self, level: str, message: str) -> None:
+        self._log.append({"t": self._clock(), "level": level, "msg": message})
+
+    def _in_backoff(self, key: str) -> bool:
+        fail = self.store.kv_get(FAIL_PREFIX + key)
+        return bool(fail) and fail.get("next_try", 0) > self._clock()
+
+    def _fail(self, key: str, error: str) -> None:
+        previous = self.store.kv_get(FAIL_PREFIX + key) or {"n": 0}
+        n = previous["n"] + 1
+        self.store.kv_set(FAIL_PREFIX + key, {"n": n, "error": error[:200], "at": self._clock(), "next_try": self._clock() + min(BACKOFF_MAX, BACKOFF_BASE * 2 ** (n - 1))})
+
+    def _ok(self, key: str) -> None:
+        if self.store.kv_get(FAIL_PREFIX + key) is not None:
+            self.store.kv_delete(FAIL_PREFIX + key)
+
+    def tracked(self) -> list[tuple[str, int]]:
+        """League seasons kept current, newest first: every league's current season, then the earlier ones the preferences ask for."""
+        now = current_season(self.wb.today)
+        back = self.prefs()["seasons_back"]
+        return [(code, now - k) for k in range(back + 1) for code in LEAGUES]
+
+    async def run_once(self) -> dict:
+        """One cycle. Returns what was done, what failed and whether a backlog remains."""
+        async with self._lock:
+            self.running = True
+            started = self._clock()
+            deadline = time.monotonic() + CYCLE_BUDGET
+            result: dict[str, Any] = {"started": started, "leagues": {}, "events": {}, "errors": [], "backlog": 0, "rebuilt": 0, "adopted": 0}
+            try:
+                if self.settings.offline or self.settings.demo:
+                    return {**result, "finished": self._clock(), "skipped": "offline or demo mode"}
+                await self._housekeeping(result)
+                for code, season in self.tracked():
+                    if self._stop or time.monotonic() > deadline:
+                        result["backlog"] += 1
+                        continue
+                    await self._league_season(code, season, result, deadline)
+                await self._events(result)
+                result["finished"] = self._clock()
+                self._note("info", f"cycle done: {sum(v.get('fetched', 0) for v in result['leagues'].values())} match pages fetched, {len(result['errors'])} problems")
+                return result
+            finally:
+                self.running = False
+                self.store.kv_set(STATE_KEY, {"last": {**result, "finished": result.get("finished", self._clock())}, "log": list(self._log)})
+
+    async def _housekeeping(self, result: dict) -> None:
+        """Adopt match pages the download cache holds but the store lacks, and rebuild derived layers made by older code."""
+        try:
+            adopted = await asyncio.to_thread(R.import_soccerdata_cache, self.store, self.settings.data_dir)
+            result["adopted"] = adopted["imported"]
+            if adopted["imported"]:
+                self._note("info", f"adopted {adopted['imported']} event pages from the download cache")
+            if await asyncio.to_thread(self.wb.events.pending_rebuild):
+                rebuilt = await asyncio.to_thread(self.wb.events.ensure_current)
+                result["rebuilt"] = rebuilt["rebuilt"]
+                self._note("info", f"rebuilt derived event data for {rebuilt['rebuilt']} matches")
+        except Exception as exc:  # pragma: no cover - defensive
+            result["errors"].append(f"housekeeping: {type(exc).__name__}")
+
+    async def _league_season(self, code: str, season: int, result: dict, deadline: float) -> None:
+        key = f"{code}:{season}"
+        entry = result["leagues"].setdefault(key, {})
+        if self._in_backoff(key):
+            entry["state"] = "waiting"
+            return
+        try:
+            fetched = await self.wb.repo.league(code, season)
+        except AppError as exc:
+            if exc.status == 404:
+                entry["state"] = "not available"  # the season does not exist yet (or never did): nothing to retry
+                return
+            self._fail(key, exc.message)
+            entry["state"] = "failed"
+            result["errors"].append(f"{pretty(code, season)}: {exc.message[:100]}")
+            self._note("warn", f"{pretty(code, season)}: {exc.message[:100]}")
+            return
+        entry["state"] = "stale" if fetched.meta.stale else "ok"
+        self._ok(key)
+        ls = fetched.data
+        try:
+            run = await self.wb.matchsync.run(ls, stop=lambda: self._stop or time.monotonic() > deadline)
+            entry.update({"fetched": run["fetched"], "failed": run["failed"], "remaining": run["remaining"]})
+            if run["remaining"]:
+                result["backlog"] += run["remaining"]
+            if run["failed"]:
+                result["errors"].append(f"{pretty(code, season)}: {run['failed']} match pages failed ({self.wb.matchsync.last_error or 'unknown'})")
+            if run["fetched"]:
+                self._note("info", f"{pretty(code, season)}: fetched {run['fetched']} match pages")
+        except Exception as exc:  # pragma: no cover - defensive
+            result["errors"].append(f"{pretty(code, season)}: {type(exc).__name__}")
+        if not self.settings.demo:
+            self.wb.enricher.schedule_rosters([(code, season)])
+
+    # ------------------------------------------------------------------ the event fetcher (a separate process)
+
+    def _proc_alive(self) -> bool:
+        return self._proc is not None and self._proc.returncode is None
+
+    async def _events(self, result: dict) -> None:
+        cap = self.events_capability()
+        enabled = self.events_enabled()
+        result["events"] = {"enabled": enabled, "available": cap["available"], "reason": cap.get("reason"), "running": self._proc_label if self._proc_alive() else None, "started": None}
+        if not enabled or not cap["available"] or self._proc_alive():
+            return
+        prefs = self.prefs()["events"]
+        now = current_season(self.wb.today)
+        for back in range(prefs["seasons_back"] + 1):
+            for code in prefs["leagues"]:
+                season = now - back
+                key = f"events:{code}:{season}"
+                if self._in_backoff(key):
+                    continue
+                if self.store.meta("league", f"{code}:{season}") is None:
+                    continue
+                played = self.wb.repo.cached_league(code, season)
+                if played is None:
+                    continue
+                stored = len(self.wb.events.match_ids(code, season))
+                if stored >= played.n_played:
+                    continue
+                last = self.store.kv_get(EVENT_RUN_PREFIX + f"{code}:{season}") or {}
+                if last and last.get("played") == played.n_played and self._clock() - last.get("at", 0) < EVENT_RECHECK:
+                    continue  # the fetcher already looked at exactly this many finished matches and found nothing more it could read
+                await self._start_events(code, season, played.n_played, result)
+                return
+
+    async def _start_events(self, code: str, season: int, played: int, result: dict) -> None:
+        label = pretty(code, season)
+        cmd = [sys.executable, "-m", "app.cli", "events", "sync", "--league", code, "--seasons", str(season), "--limit", str(EVENT_BATCH), "--data-dir", str(self.settings.data_dir)]
+        logs = self.settings.data_dir / "logs"
+        logs.mkdir(parents=True, exist_ok=True)
+        try:
+            handle = open(logs / f"events-{code}-{season}.log", "ab")
+            self._proc = await self._spawn(*cmd, stdout=handle, stderr=handle, env={**os.environ, "PREM_DATA_DIR": str(self.settings.data_dir)})
+        except Exception as exc:
+            self._fail(f"events:{code}:{season}", f"{type(exc).__name__}: {exc}")
+            result["errors"].append(f"could not start the event fetcher: {type(exc).__name__}")
+            return
+        self._proc_label = label
+        self.store.kv_set(EVENT_RUN_PREFIX + f"{code}:{season}", {"played": played, "at": self._clock()})
+        result["events"]["started"] = label
+        self._note("info", f"started the event fetcher for {label} ({played - len(self.wb.events.match_ids(code, season))} matches missing)")
+        asyncio.create_task(self._reap(self._proc, handle, f"{code}:{season}"))
+
+    @staticmethod
+    def _named(key: str) -> str:
+        """``La_liga:2026`` -> "La Liga 2026/27" (anything else is left as it is)."""
+        code, _, season = key.partition(":")
+        return pretty(code, int(season)) if season.isdigit() else key
+
+    async def _reap(self, proc, handle, key: str) -> None:
+        try:
+            code = await proc.wait()
+        finally:
+            handle.close()
+        if code != 0:
+            self._fail(f"events:{key}", f"the fetcher exited with status {code}")
+            self._note("warn", f"event fetcher for {self._named(key)} exited with status {code}")
+        else:
+            self._ok(f"events:{key}")
+            self._note("info", f"event fetcher for {self._named(key)} finished")
+        self.wake()  # look again at once: there may be more to fetch
+
+    # ------------------------------------------------------------------ for the Data page
+
+    def brief(self) -> dict:
+        """A few fields for the top bar's status pill (cheap: no capability probing)."""
+        last = (self.store.kv_get(STATE_KEY) or {}).get("last") or {}
+        return {
+            "enabled": bool(self.settings.auto and self.prefs()["enabled"]), "running": self.running, "next_at": self.next_at,
+            "finished": last.get("finished"), "errors": len(last.get("errors") or []), "backlog": last.get("backlog", 0),
+            "events_running": self._proc_label if self._proc_alive() else None,
+        }
+
+    def state(self) -> dict:
+        saved = self.store.kv_get(STATE_KEY) or {}
+        cap = self.events_capability()
+        return {
+            "auto": self.settings.auto, "prefs": self.prefs(), "running": self.running, "next_at": self.next_at,
+            "last": saved.get("last"), "log": list(self._log) or saved.get("log", []),
+            "events": {"capability": cap, "enabled": self.events_enabled(), "process": self._proc_label if self._proc_alive() else None},
+            "failures": {k[len(FAIL_PREFIX):]: v for k, v in self.store.kv_prefix(FAIL_PREFIX).items() if v},
+            "tracked": [{"league": c, "season": s} for c, s in self.tracked()],
+        }

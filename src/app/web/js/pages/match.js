@@ -1,16 +1,16 @@
 // Match report: the score, what the chances say it should have been, and how the game unfolded.
-import { html, useMemo } from "../lib/html.js";
+import { html } from "../lib/html.js";
 import { useApi } from "../lib/api.js";
 import { useScope } from "../lib/scope.js";
-import { href, navigate, useLocation } from "../lib/router.js";
-import { cls, dateLong, nf, pct, plural, signed, timeOf, weekday, probText } from "../lib/format.js";
-import { Tip } from "../lib/tooltip.js";
-import { Async, Badge, Card, Crest, DataNotices, Insights, PageHead, TeamName, useDocumentTitle, playerHref, teamHref } from "../ui/common.js";
+import { dateLong, formation, nf, timeOf, weekday, probText } from "../lib/format.js";
+
+import { Async, Badge, Card, Crest, DataNotices, Insights, PageHead, useDocumentTitle, playerHref, teamHref } from "../ui/common.js";
 import { DataTable } from "../ui/table.js";
 import { MatchPitch } from "../charts/pitch.js";
 import { XgRace } from "../charts/race.js";
-import { Frame, AxisY, AxisX, niceTicks, scaleBand, scaleLinear } from "../charts/core.js";
+import { Frame, AxisY, niceTicks, scaleBand, scaleLinear } from "../charts/core.js";
 import { tooltip } from "../lib/tooltip.js";
+import { scorerLines } from "../ui/matchcard.js";
 
 const RESULT = { Goal: "Goal", SavedShot: "Saved", BlockedShot: "Blocked", MissedShots: "Off target", ShotOnPost: "Hit the post", OwnGoal: "Own goal" };
 const SITUATION = { OpenPlay: "Open play", FromCorner: "Corners", SetPiece: "Set pieces", DirectFreekick: "Free kicks", Penalty: "Penalties" };
@@ -85,9 +85,39 @@ function PlayersTable({ side, list, team, scope }) {
   </${Card}>`;
 }
 
+/** Who scored, under the team's name on the scoreboard. */
+function Scorers({ list, align }) {
+  const lines = scorerLines(list);
+  if (!lines.length) return null;
+  return html`<div class=${"sb-scorers " + align}>${lines.map((l, i) => html`<span key=${l.id ?? i}><b>${l.full}</b> ${l.minutes.join(", ")}</span>`)}</div>`;
+}
+
+const SHAPE = (f) => formation(f) || "–";
+
+/** What the event data adds to the result: possession, passing, set pieces, discipline and the shape each side used. */
+function HowPlayed({ stats, f }) {
+  if (!stats) return null;
+  const pair = (label, v, format = (x) => String(x), inverse = false) => (v && v[0] != null && v[1] != null ? html`<${Tug} label=${label} home=${v[0]} away=${v[1]} format=${format} inverse=${inverse} />` : null);
+  return html`<${Card} title="How the game was played" sub="From the event data: who had the ball, how they used it, and the shape each side played.">
+    <div class="stack" style=${{ "--gap": "12px" }}>
+      ${pair("Possession (share of passes)", stats.poss, (v) => `${v}%`)}
+      ${pair("Passes", stats.passes)}
+      ${pair("Pass accuracy", stats.pass_acc, (v) => `${v}%`)}
+      ${pair("Corners", stats.corners)}
+      ${pair("Fouls", stats.fouls, undefined, true)}
+      ${pair("Yellow cards", stats.yellow, undefined, true)}
+      ${stats.red && (stats.red[0] || stats.red[1]) ? pair("Red cards", stats.red, undefined, true) : null}
+    </div>
+    <div class="row between small" style=${{ marginTop: "14px", gap: "12px" }}>
+      <span><b>${f.home_short}</b> <span class="muted">${SHAPE(stats.formations?.[0])}${stats.managers?.[0] ? ` · ${stats.managers[0]}` : ""}</span></span>
+      <span style=${{ textAlign: "right" }}><b>${f.away_short}</b> <span class="muted">${SHAPE(stats.formations?.[1])}${stats.managers?.[1] ? ` · ${stats.managers[1]}` : ""}</span></span>
+    </div>
+  </${Card}>`;
+}
+
 function MatchView({ d }) {
   const scope = useScope();
-  const { report: r, insights, scope: dscope, meta } = d;
+  const { report: r, insights, scope: dscope, meta, stats } = d;
   const f = r.fixture, s = r.summary;
   const chances = [...r.key_chances].sort((a, b) => b.xg - a.xg).slice(0, 6);
   const goalsHome = f.hg, goalsAway = f.ag;
@@ -95,9 +125,9 @@ function MatchView({ d }) {
     <${PageHead} eyebrow=${`${dscope.league_name} · ${dscope.label} · Matchweek ${f.round}`} title=${`${f.home} v ${f.away}`} sub=${`${weekday(f.date)} ${dateLong(f.date)}, kicked off ${timeOf(f.dt)}.`} />
     <${DataNotices} scope=${dscope} meta=${meta} />
     <div class="scoreboard card">
-      <a class="sb-team" href=${teamHref(f.home)}><${Crest} team=${f.home} short=${f.home_short} size=${56} /><span>${f.home}</span></a>
-      <div class="sb-score"><div class="figure">${goalsHome}<i>–</i>${goalsAway}</div><div class="sb-xg num">xG ${nf(f.hxg, 2)} – ${nf(f.axg, 2)}</div></div>
-      <a class="sb-team away" href=${teamHref(f.away)}><${Crest} team=${f.away} short=${f.away_short} size=${56} /><span>${f.away}</span></a>
+      <div class="sb-col"><a class="sb-team" href=${teamHref(f.home)}><${Crest} team=${f.home} short=${f.home_short} size=${56} /><span>${f.home}</span></a><${Scorers} list=${r.scorers?.h} align="start" /></div>
+      <div class="sb-score"><div class="figure">${goalsHome}<i>–</i>${goalsAway}</div><div class="sb-xg num">xG ${nf(f.hxg, 2)} – ${nf(f.axg, 2)}${stats?.poss ? html` · possession ${stats.poss[0]}–${stats.poss[1]}%` : ""}</div></div>
+      <div class="sb-col away"><a class="sb-team away" href=${teamHref(f.away)}><${Crest} team=${f.away} short=${f.away_short} size=${56} /><span>${f.away}</span></a><${Scorers} list=${r.scorers?.a} align="end" /></div>
     </div>
     <${Insights} items=${insights} scope=${dscope} />
 
@@ -125,6 +155,10 @@ function MatchView({ d }) {
       </${Card}>
     </div>
 
+    ${stats ? html`<div class="grid cols-2 top"><${HowPlayed} stats=${stats} f=${f} /><${Card} title="When the chances came" sub="Expected goals in each period of the match.">
+        <${Buckets} b=${r.buckets} homeShort=${f.home_short} awayShort=${f.away_short} />
+        <div class="legend" style=${{ marginTop: "6px" }}><span class="item"><span class="swatch box" style=${{ background: "var(--c1)" }}></span>${f.home}</span><span class="item"><span class="swatch box" style=${{ background: "var(--c2)" }}></span>${f.away}</span></div>
+      </${Card}></div>` : null}
     <div class="grid cols-2 top">
       <${Card} flush title="The best chances" sub="The six shots with the highest xG.">
         <div class="chancelist">${chances.map((c) => html`<div class="chance" key=${c.id}>
@@ -135,10 +169,10 @@ function MatchView({ d }) {
           <b class="num" style=${{ width: "44px", textAlign: "right" }}>${nf(c.xg, 2)}</b>
         </div>`)}</div>
       </${Card}>
-      <${Card} title="When the chances came" sub="Expected goals in each period of the match.">
+      ${stats ? null : html`<${Card} title="When the chances came" sub="Expected goals in each period of the match.">
         <${Buckets} b=${r.buckets} homeShort=${f.home_short} awayShort=${f.away_short} />
         <div class="legend" style=${{ marginTop: "6px" }}><span class="item"><span class="swatch box" style=${{ background: "var(--c1)" }}></span>${f.home}</span><span class="item"><span class="swatch box" style=${{ background: "var(--c2)" }}></span>${f.away}</span></div>
-      </${Card}>
+      </${Card}>`}
     </div>
 
     <div class="grid cols-2 top">

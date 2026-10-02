@@ -94,7 +94,6 @@ export function MatchPitch({ home, away, homeColor = "var(--c1)", awayColor = "v
   </div>`;
 }
 
-
 // Zone outlines on the attacking half (metres, goal at the top). Each is a hole-punched path so the zones do not overlap.
 const ZONE_PATH = {
   outside: "M0 0H68V52.5H0Z M13.84 0V16.5H54.16V0Z",

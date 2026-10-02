@@ -75,18 +75,6 @@ def _split_teams(title: Any) -> list[str]:
     return parts or ["Unknown"]
 
 
-def _forecast(value: Any) -> tuple[float, float, float] | None:
-    if not isinstance(value, dict):
-        return None
-    w, d, l = (maybe_num(value.get(k)) for k in ("w", "d", "l"))
-    if w is None or d is None or l is None:
-        return None
-    total = w + d + l
-    if total <= 0:
-        return None
-    return (w / total, d / total, l / total)  # tolerates 0..1 and 0..100 scales
-
-
 # ---------------------------------------------------------------------- league
 
 
@@ -125,7 +113,6 @@ def _fixtures(raw: Any, warnings: list[str]) -> list[Fixture]:
                     ag=integer(goals.get("a")) if played else None,
                     hxg=maybe_num(xg.get("h")) if played else None,
                     axg=maybe_num(xg.get("a")) if played else None,
-                    forecast=_forecast(item.get("forecast")),
                 )
             )
         except (KeyError, TypeError):
