@@ -314,6 +314,8 @@ await check("manager stints render as a table when managers.json has them", asyn
     await route.fulfill({ response: res, json: body });
   });
   await go("/team/Everton");
+  // the page may draw a stored copy first and then the answer it asked for (the one with the stints): wait for that, instead of reading at once
+  await page.waitForFunction(() => /Test Manager A/.test(document.querySelector("main")?.innerText || ""), null, { timeout: 15000 });
   const text = await page.locator("main").innerText();
   expect(text.includes("Test Manager A") && text.includes("Test Manager B") && text.includes("now"), "manager table missing");
   await page.unroute("**/api/team?*");
