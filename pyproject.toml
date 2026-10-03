@@ -31,6 +31,8 @@ dev = [
     "httpx>=0.27,<1",
     "pytest>=8",
     "pytest-asyncio>=0.24",
+    "ruff>=0.16,<0.17",      # pinned to the series the code is clean under: new rules arrive in new minors, so bump it on purpose
+    "mypy>=1.13,<3",
 ]
 # Optional event data (passes, duels, tackles) read from WhoScored; needs Chrome, Chromium, Brave or Edge installed.
 events = [
@@ -58,3 +60,39 @@ package = true
 testpaths = ["tests"]
 asyncio_mode = "auto"
 filterwarnings = ["error::ResourceWarning", "ignore:Using `httpx` with `starlette.testclient`"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 200       # the code keeps related things on one line; the rules below are about mistakes, not layout
+
+[tool.ruff.lint]
+select = [
+    "E4", "E7", "E9", "F",   # pycodestyle errors and pyflakes: syntax, imports, undefined and unused names, ambiguous names
+    "B",                     # likely bugs: closures over loop variables, unused loop variables, raise without from
+    "BLE",                   # blind excepts: each one that stays says why
+    "C4",                    # needless collection constructors
+    "SIM",                   # simplifications
+    "UP",                    # modern syntax for the Python versions we support
+    "RUF",                   # ruff's own: unused noqa, unused unpacked names, dangling tasks
+]
+ignore = [
+    "B905",                  # zip() without strict=: lengths are equal by construction wherever it is used
+    "SIM108",                # a plain if/else is often clearer than a conditional expression
+    "RUF001", "RUF002", "RUF003",   # typographic characters (×, –, accents in player names) are deliberate
+    "RUF005",                # [*a, b] against a + [b]: a matter of taste
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["B011", "SIM117"]     # assert False for "must not get here"; nested with-blocks read better in tests
+
+[tool.mypy]
+python_version = "3.11"
+files = ["src/app"]
+warn_unused_configs = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+check_untyped_defs = true
+
+[[tool.mypy.overrides]]
+module = ["soccerdata.*"]   # the optional event-data package ships no type information
+ignore_missing_imports = true
