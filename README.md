@@ -71,6 +71,8 @@ uv run prem serve           # http://127.0.0.1:8000, opens a browser
 
 Just want to look around first? `uv run prem serve --demo` serves a synthetic world that needs no network. It fills in its own match pages and event data in the background (current seasons first: the Premier League's is there within seconds, everything within a few minutes), so every feature, including the pitch maps, can be tried.
 
+On a Mac, `tools/prem-lab.command` starts the app with a double-click: it opens your browser when the app is ready, and Ctrl+C (or closing its window) stops the app, within a few seconds even if the updater is in the middle of something. If the app is already running somewhere else (another window, or in the background) the launcher just opens it and offers to stop it: Ctrl+C only reaches what runs in the window it is pressed in, so press S there instead. Put a link to it on the Desktop with `ln -s "$PWD/tools/prem-lab.command" ~/Desktop/"Prem Lab.command"`. It uses port 8010 (`PREM_PORT=8011` changes that) and `PREM_DEMO=1` makes it start the demo world. The launcher wears the Prem Lab icon (`tools/icon/`); macOS keeps a file's icon beside it rather than in it, so Git does not carry it: after a fresh clone, or a pull that replaces the launcher, run `tools/set-icon.sh` to put it back.
+
 | Command | What it does |
 | --- | --- |
 | `prem serve` | Run the app. `--demo`, `--offline`, `--port`, `--data-dir`, `--today`, `--no-open`, `--reload` |
