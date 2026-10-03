@@ -122,6 +122,7 @@ While the app runs, a **cycle** happens every 15 minutes (90 seconds while there
 | A request fails or times out | The stored copy is served, flagged stale; the failure is recorded and retried with a growing delay; other work continues |
 | A match page is read too soon after the whistle | Stored as not final; looked at again after 36 hours (or the open-match window) |
 | The event fetcher is killed mid-run | Status turns "stalled" after ten minutes; matches already stored remain; the next run skips them |
+| The app is stopped (Ctrl+C) in the middle of a job | Requests under way get five seconds, the event fetcher is asked to stop like Ctrl+C and killed if it has not after five more; whatever still runs fifteen seconds after the request (a long job in a worker thread, which cannot be interrupted) is abandoned. Every write is transactional and every job resumes, so nothing is lost |
 | The source refuses requests | The fetcher stops by itself and records why; nothing else is affected |
 | A raw page is unusable | Rejected, never half-stored; counted as "unusable" in the import report |
 | A definition changes | Bump the version; derived layers rebuild offline from the layer below; stale layers are also rebuilt on demand when read |

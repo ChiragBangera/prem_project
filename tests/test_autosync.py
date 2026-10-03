@@ -36,7 +36,7 @@ class Proc:
     """A stand-in for the event-fetcher process."""
 
     def __init__(self, code=0):
-        self.returncode, self.code = None, code
+        self.returncode, self.code, self.killed = None, code, False
 
     async def wait(self):
         self.returncode = self.code
@@ -44,6 +44,21 @@ class Proc:
 
     def terminate(self):
         self.returncode = -15
+
+    def kill(self):
+        self.killed, self.returncode = True, -9
+
+
+class Stubborn(Proc):
+    """A fetcher that ignores the polite request to stop and never ends by itself."""
+
+    def terminate(self):
+        pass
+
+    async def wait(self):
+        while self.returncode is None:
+            await asyncio.sleep(0.01)
+        return self.returncode
 
 
 def test_a_cycle_refreshes_every_tracked_league_season_and_fetches_only_missing_match_pages(tmp_path):
@@ -196,6 +211,23 @@ def test_no_event_fetcher_without_the_optional_dependencies_and_a_failed_one_bac
             await wb.close()
 
     run(go())
+
+
+def test_stopping_the_app_stops_the_event_fetcher_and_kills_one_that_will_not_go(tmp_path, monkeypatch):
+    import app.sync.autosync as mod
+
+    monkeypatch.setattr(mod, "STOP_WAIT", 0.05)
+
+    async def stop_with(proc):
+        wb, _ = make(tmp_path)
+        wb.auto._proc = proc
+        await wb.close()
+        return proc
+
+    polite = run(stop_with(Proc()))
+    assert polite.returncode is not None and not polite.killed                    # asked once, and it went
+    stubborn = run(stop_with(Stubborn()))
+    assert stubborn.killed and stubborn.returncode == -9                          # not left running in the background after the app has gone
 
 
 def test_it_does_nothing_in_demo_or_offline_mode(tmp_path):

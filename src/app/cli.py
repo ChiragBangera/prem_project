@@ -8,15 +8,19 @@ import logging
 import logging.handlers
 import os
 from pathlib import Path
+import signal
 import sys
 import threading
 import time
 import webbrowser
+from typing import Callable
 
 from app import __version__
 from app.config import Settings
 from app.errors import AppError
 from app.leagues import LEAGUES, current_season
+
+SHUTDOWN_GRACE = 15.0     # seconds a server that was asked to stop may take before the process exits anyway
 
 
 def _apply_env(args: argparse.Namespace) -> None:
@@ -51,6 +55,35 @@ def configure_logging(data_dir: Path) -> Path | None:
     return folder / "server.log"
 
 
+def exit_after(grace: float, *, hard_exit: Callable[[int], object] = os._exit) -> threading.Timer:
+    """Exit the process ``grace`` seconds from now, whatever is still running.
+
+    A server that was asked to stop must stop. What can hold it up is a long job in a worker thread: nothing can interrupt one, and Python waits
+    for them at exit. Everything the app writes is transactional and the updater picks up where it left off, so abandoning one loses nothing.
+    """
+    def fire() -> None:
+        print(f"\n  Still busy {grace:.0f} s after the request to stop, so exiting now. Nothing is lost: the next start carries on.", file=sys.stderr, flush=True)
+        logging.shutdown()
+        hard_exit(0)
+
+    timer = threading.Timer(grace, fire)
+    timer.daemon = True
+    timer.start()
+    return timer
+
+
+def _stoppable_server(config):
+    """A uvicorn server that cannot hang on its way out: it starts the countdown of :func:`exit_after` as soon as it begins to stop."""
+    import uvicorn
+
+    class Server(uvicorn.Server):
+        async def shutdown(self, *args, **kwargs) -> None:
+            exit_after(SHUTDOWN_GRACE)
+            await super().shutdown(*args, **kwargs)
+
+    return Server(config)
+
+
 def cmd_serve(args: argparse.Namespace) -> int:
     import uvicorn
 
@@ -62,8 +95,16 @@ def cmd_serve(args: argparse.Namespace) -> int:
     print(f"\n  Prem Lab {__version__}\n  {url}\n  data: {mode}\n  cache: {settings.db_path}\n  log: {log_file or 'not written'}\n  Ctrl+C to stop\n")
     if not args.no_open:
         threading.Thread(target=lambda: (time.sleep(0.8), webbrowser.open(url)), daemon=True).start()
-    uvicorn.run("app.api:app", host=args.host, port=args.port, reload=args.reload, log_level="warning")
-    return 0
+    options = {"host": args.host, "port": args.port, "log_level": "warning", "timeout_graceful_shutdown": 5}   # 5 s for requests under way when it is stopped
+    if args.reload:                                                  # a development aid, run by uvicorn's own supervisor
+        uvicorn.run("app.api:app", reload=True, **options)
+        return 0
+    server = _stoppable_server(uvicorn.Config("app.api:app", **options))
+    try:
+        server.run()
+    except KeyboardInterrupt:                                        # a second Ctrl+C while it is stopping
+        pass
+    return 0 if server.started else 3                                # 3 is what uvicorn itself exits with when it cannot start (the port is taken, say)
 
 
 def cmd_sync(args: argparse.Namespace) -> int:
@@ -142,6 +183,11 @@ def cmd_status(args: argparse.Namespace) -> int:
     return 0
 
 
+def _stop_like_ctrl_c(signum, frame) -> None:
+    """The updater stops the event fetcher with SIGTERM: treat that as Ctrl+C, so the run saves its place and closes its browser instead of being cut off."""
+    raise KeyboardInterrupt
+
+
 def cmd_events_sync(args: argparse.Namespace) -> int:
     """Fetch event data (passes, duels, tackles) from WhoScored into the local store. Slow; safe to stop and resume."""
     _apply_env(args)
@@ -156,6 +202,7 @@ def cmd_events_sync(args: argparse.Namespace) -> int:
     work = (settings.data_dir / "soccerdata").resolve()
     work.mkdir(parents=True, exist_ok=True)
     os.chdir(work)  # the browser tooling drops lock files in the working folder: keep them inside the data folder, not the project
+    signal.signal(signal.SIGTERM, _stop_like_ctrl_c)
     try:
         for season in seasons:
             print(f"\n{args.league} {season}: fetching event data from WhoScored (a match takes about 15 seconds; Ctrl+C is safe, run it again to carry on)")
