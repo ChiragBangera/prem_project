@@ -84,10 +84,10 @@ def test_your_own_correction_still_beats_the_squad_list_and_the_squad_list_beats
     wb = Workbench(Settings(data_dir=tmp_path, demo=True, min_interval=0), today=date(2026, 10, 1))
     try:
         roster = {1: "2000-02-02", 2: "2001-03-03"}
-        assert wb.dob_info("Corrected Man", ["Alpha FC"], None, 1, roster) == ("1990-01-01", "manual")
-        assert wb.dob_info("Someone", ["Alpha FC"], None, 1, roster) == ("2000-02-02", "roster")
-        assert wb.dob_info("Someone", ["Alpha FC"], None, 99, roster)[1] != "roster"     # not on a squad list: falls through to the old sources
-        assert wb.dob_info("Someone", ["Alpha FC"], None, 1, None)[1] != "roster" and wb.dob_info("Someone", ["Alpha FC"])[1] != "roster"
+        assert wb.ages.dob_info("Corrected Man", ["Alpha FC"], None, 1, roster) == ("1990-01-01", "manual")
+        assert wb.ages.dob_info("Someone", ["Alpha FC"], None, 1, roster) == ("2000-02-02", "roster")
+        assert wb.ages.dob_info("Someone", ["Alpha FC"], None, 99, roster)[1] != "roster"     # not on a squad list: falls through to the old sources
+        assert wb.ages.dob_info("Someone", ["Alpha FC"], None, 1, None)[1] != "roster" and wb.ages.dob_info("Someone", ["Alpha FC"])[1] != "roster"
     finally:
         asyncio.run(wb.close())
 
@@ -121,10 +121,10 @@ def test_wikidata_is_only_asked_about_players_the_squad_lists_leave_out_and_only
 
     async def go():
         try:
-            await wb.players_view(["EPL"], [2025])
+            await wb.scout.players(["EPL"], [2025])
             assert state["scheduled"] == [[("EPL", 2025)]] and asked == []              # squad lists first: Wikidata waits
             state["pending"] = False
-            await wb.players_view(["EPL"], [2025])
+            await wb.scout.players(["EPL"], [2025])
             assert [name for name, _team in asked[0]] == ["Di Keeper", "Bo Playmaker", "Ann Striker", "Cy Traveller"]   # by minutes, the keeper included
         finally:
             await wb.close()

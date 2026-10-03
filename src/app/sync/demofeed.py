@@ -67,7 +67,7 @@ class DemoEventFeed:
 
     async def _season(self, code: str, season: int) -> None:
         events = self.wb.events
-        fetched = await self.wb._load(code, season)
+        fetched = await self.wb.seasons.load(code, season)
         await self.wb.matchsync.run(fetched.data, limit=self.limit, stop=lambda: self._stop)
         data = await asyncio.to_thread(self.wb.provider.season_data, code, season)
         played = sorted(data.matches.values(), key=lambda m: (m.dt, m.id))
