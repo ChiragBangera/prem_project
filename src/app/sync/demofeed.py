@@ -27,7 +27,7 @@ log = logging.getLogger("prem.demofeed")
 class DemoEventFeed:
     BATCH = 20
 
-    def __init__(self, wb: "Workbench", *, limit: int | None = None, seasons_back: int = 1):
+    def __init__(self, wb: Workbench, *, limit: int | None = None, seasons_back: int = 1):
         self.wb = wb
         self.limit = limit              # at most this many matches per league season (tests use a few)
         self.seasons_back = seasons_back
@@ -77,17 +77,16 @@ class DemoEventFeed:
         if not todo:
             return
         events.set_status(code, season, running=True, started=time.time(), done=0, failed=0, last_error=None, stalled=False, total=len(todo), finished_matches=len(played))
+        def work(matches: list) -> None:
+            for match in matches:
+                events.ingest(code, season, game_id(match), synthesize_match(data, match))
+
         done = 0
         for i in range(0, len(todo), self.BATCH):
             if self._stop:
                 break
             chunk = todo[i: i + self.BATCH]
-
-            def work() -> None:
-                for match in chunk:
-                    events.ingest(code, season, game_id(match), synthesize_match(data, match))
-
-            await asyncio.to_thread(work)
+            await asyncio.to_thread(work, chunk)
             done += len(chunk)
             events.set_status(code, season, done=done)
             await asyncio.sleep(0.02)  # let requests through between batches

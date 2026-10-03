@@ -11,7 +11,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from dataclasses import dataclass
-from typing import Iterable
+from collections.abc import Iterable
 
 from app.data.repository import Repository
 from app.data.rosters import RosterClient
@@ -89,7 +89,7 @@ class Enricher:
 
     def schedule_ages(self, people: Iterable[tuple[str, str | None]]) -> int:
         pending = [(n, t) for n, t in people if n and not self.resolver.known(n)]
-        if not pending or "ages" in self._tasks and not self._tasks["ages"].done():
+        if not pending or ("ages" in self._tasks and not self._tasks["ages"].done()):
             return len(pending)
         self.ages = Progress("ages", total=len(pending), running=True)
         self._tasks["ages"] = asyncio.create_task(self._run_ages(pending))
@@ -100,7 +100,7 @@ class Enricher:
         if self.roster_client is None:
             return 0
         pending = [t for t in dict.fromkeys(targets) if self.roster_client.needs_fetch(*t)]
-        if not pending or "rosters" in self._tasks and not self._tasks["rosters"].done():
+        if not pending or ("rosters" in self._tasks and not self._tasks["rosters"].done()):
             return len(pending)
         self.rosters = Progress("rosters", total=len(pending), running=True)
         self._tasks["rosters"] = asyncio.create_task(self._run_rosters(pending))
@@ -115,7 +115,7 @@ class Enricher:
 
     def schedule_roles(self, player_ids: Iterable[int], limit: int = 240) -> int:
         pending = [pid for pid in dict.fromkeys(player_ids) if not self.favorites.known(pid)][:limit]
-        if not pending or "roles" in self._tasks and not self._tasks["roles"].done():
+        if not pending or ("roles" in self._tasks and not self._tasks["roles"].done()):
             return len(pending)
         self.roles = Progress("roles", total=len(pending), running=True)
         self._tasks["roles"] = asyncio.create_task(self._run_roles(pending))
@@ -130,7 +130,7 @@ class Enricher:
                 await self.resolver.resolve(chunk)
                 self.ages.done += len(chunk)
                 self.epoch += 1
-        except Exception as exc:  # never let a background job crash the app
+        except Exception as exc:  # noqa: BLE001 - never let a background job crash the app
             self.ages.last_error = str(exc)[:200]
             log.warning("age enrichment failed: %s", exc)
         finally:
@@ -138,12 +138,15 @@ class Enricher:
 
     async def _run_rosters(self, targets: list[tuple[str, int]]) -> None:
         client = self.roster_client
+        if client is None:        # only ever scheduled with a client; this keeps the type checker honest
+            self.rosters.running = False
+            return
         try:
             for league, season in targets:
                 before = client.version(league, season)
                 try:
                     await client.ensure(league, season)
-                except Exception as exc:  # never let a background job crash the app
+                except Exception as exc:  # noqa: BLE001 - never let a background job crash the app
                     self.rosters.failed += 1
                     client.last_error = f"{league} {season}: {str(exc)[:160]}"
                     client.cool_down()
@@ -167,7 +170,8 @@ class Enricher:
                 except AppError as exc:
                     self.roles.failed += 1
                     self.roles.last_error = exc.message[:200]
-                except Exception as exc:
+                except Exception as exc:  # noqa: BLE001 - one player's page must not stop the rest
+                    log.warning("position lookup for player %s failed: %s", pid, exc)
                     self.roles.failed += 1
                     self.roles.last_error = str(exc)[:200]
                 if (self.roles.done + self.roles.failed) % 20 == 0:

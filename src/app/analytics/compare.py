@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Sequence
+from collections.abc import Sequence
 
 from app.data.models import LeagueSeason
 from app.errors import BadRequest

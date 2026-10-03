@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import math
 from collections import defaultdict
-from typing import Iterable
+from collections.abc import Iterable
 
 from . import schema as S
 from .silver import FL_GOAL, FL_OWN_GOAL, FL_TOUCH, Match
@@ -497,7 +497,7 @@ def derive_match(m: Match) -> dict:
         for f in t["formations"]:
             if f["name"] and f["end"] > f["start"]:
                 formations[f["name"]] += f["end"] - f["start"]
-        main = max(formations, key=formations.get) if formations else None
+        main = max(formations, key=formations.__getitem__) if formations else None
         out_teams.append({"id": t["id"], "name": t["name"], "side": t["side"], "manager": t["manager"], "avg_age": t["avg_age"], "formation": main,
                           "formations": dict(formations), "gf": gf[idx], "ga": gf[1 - idx], "c": teams[idx].out()})
     return {"v": GOLD_VERSION, "game": m.game, "date": (m.info.get("start") or "")[:10], "ft": ft, "score": m.info.get("ft"), "teams": out_teams, "players": rows}

@@ -13,21 +13,24 @@ set pieces, shot distance) possible for every player, with no further requests. 
 from __future__ import annotations
 
 import asyncio
+import logging
 import time
-from datetime import datetime, timezone
-from typing import Callable
+from datetime import datetime, UTC
+from collections.abc import Callable
 
 from app.errors import AppError
 
 from .models import Fixture, LeagueSeason
 from .repository import Repository
 
+log = logging.getLogger("prem.matchsync")
+
 SETTLE_HOURS = 36  # Understat revises a match's shots for a day or so; older than this and the page is final
 
 
 def _kickoff(fixture: Fixture) -> float | None:
     try:
-        return datetime.fromisoformat(fixture.dt).replace(tzinfo=timezone.utc).timestamp()
+        return datetime.fromisoformat(fixture.dt).replace(tzinfo=UTC).timestamp()
     except ValueError:
         return None
 
@@ -73,6 +76,7 @@ class MatchSync:
                 self.last_error = f"match {fixture.id} ({fixture.home} v {fixture.away}): {exc.message}"[:200]
                 return False
             except Exception as exc:  # pragma: no cover - defensive: one bad page must not stop the rest
+                log.exception("match page %s failed unexpectedly", fixture.id)
                 self.last_error = f"match {fixture.id}: {type(exc).__name__}"
                 return False
 

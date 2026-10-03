@@ -70,17 +70,17 @@ def test_raw_means_exactly_the_figure_the_source_publishes():
 
 def test_lenses_and_views_only_name_metrics_that_exist_and_explain_themselves():
     for level, metrics, lenses, views in (("player", PLAYER_KEYS, PLAYER_LENSES, PLAYER_VIEWS), ("team", TEAM_KEYS, TEAM_LENSES, TEAM_VIEWS)):
-        assert len({l.key for l in lenses}) == len(lenses) and len({v.key for v in views}) == len(views)
-        for l in lenses:
-            assert l.level == level and l.blurb and len(l.explain) > 40 and l.rules and all(r.metric in metrics and r.op in (">=", "<=") for r in l.rules), l.key
-            assert all(m in metrics for m in l.show) and (l.sort is None or l.sort in metrics)
-            assert all(r.on in ("value", "pct") for r in l.rules)
+        assert len({lens.key for lens in lenses}) == len(lenses) and len({v.key for v in views}) == len(views)
+        for lens in lenses:
+            assert lens.level == level and lens.blurb and len(lens.explain) > 40 and lens.rules and all(r.metric in metrics and r.op in (">=", "<=") for r in lens.rules), lens.key
+            assert all(m in metrics for m in lens.show) and (lens.sort is None or lens.sort in metrics)
+            assert all(r.on in ("value", "pct") for r in lens.rules)
         for v in views:
             assert v.metrics and all(m in metrics for m in v.metrics) and len(set(v.metrics)) == len(v.metrics), v.key
     # a lens that needs event data says so, and says it in its own explanation
-    for l in PLAYER_LENSES:
-        if l.needs == "events":
-            assert "event data" in l.explain, l.key
+    for lens in PLAYER_LENSES:
+        if lens.needs == "events":
+            assert "event data" in lens.explain, lens.key
 
 
 # ------------------------------------------------------------------ arithmetic
@@ -98,7 +98,7 @@ def test_a_missing_array_reads_as_unknown_never_as_zero():
     f = frame(minutes=[900.0, 90.0])
     assert np.isnan(f["w_tackles"]).all() and f.has("minutes") and not f.has("w_tackles")
     m = rate("tackles90", "T", "T", "defending", "w_tackles", per="w_min", formula="x", inputs=("w_tackles", "w_min"), what="x", source="whoscored", needs="events")
-    value, num, den = m.compute(f)
+    value, _num, _den = m.compute(f)
     assert np.isnan(value).all()                       # no event data: blank
 
 

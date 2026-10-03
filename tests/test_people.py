@@ -95,7 +95,7 @@ def test_the_loose_passes_are_off_unless_asked_for():
 
 def test_a_name_split_differently_is_the_same_name_at_the_same_club():
     players = [us(1, "Jay Dasilva", "Coventry"), us(2, "Jay Dasilva", "Leeds")]
-    linked, left = link_people([person("a", "Jay Da Silva", "Coventry City")], players, loose=True)
+    linked, _left = link_people([person("a", "Jay Da Silva", "Coventry City")], players, loose=True)
     assert keys(linked) == {1: "a"}                                                                # the one at his club, not his namesake elsewhere
     assert link_people([person("a", "Jay Da Silva", "Chelsea")], players, loose=True)[0] == {}
 

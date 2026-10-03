@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Sequence
+from collections.abc import Sequence
+from typing import Any
 
 from app.data.models import Fixture, MatchPage, RosterEntry, Shot
 from app.stats import outcome_probs, poisson_binomial, safe_div
@@ -35,7 +36,8 @@ def _side_summary(shots: Sequence[Shot]) -> dict:
 
 
 def _timeline(shots: Sequence[Shot]) -> list[dict]:
-    total, points = 0.0, [{"minute": 0, "xg": 0.0, "goal": None}]
+    total = 0.0
+    points: list[dict[str, Any]] = [{"minute": 0, "xg": 0.0, "goal": None}]
     for s in sorted(shots, key=lambda s: (s.minute, s.id)):
         total += s.xg
         points.append(

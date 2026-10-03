@@ -21,7 +21,8 @@ import asyncio
 import logging
 import time
 from datetime import date
-from typing import Any, Callable, Iterable
+from typing import Any
+from collections.abc import Callable, Iterable
 
 import aiohttp
 
@@ -187,7 +188,7 @@ class RosterClient:
                         if response.status != 200:
                             raise UpstreamError(f"ESPN answered {response.status}", hint="Squad lists are unavailable right now; ages fall back to Wikidata.")
                         return await response.json(content_type=None)
-                except (aiohttp.ClientError, asyncio.TimeoutError, UpstreamError, ValueError) as exc:
+                except (TimeoutError, aiohttp.ClientError, UpstreamError, ValueError) as exc:
                     last = exc
             if attempt < self._retries:
                 await asyncio.sleep(self._backoff * (2 ** attempt))
@@ -227,7 +228,7 @@ class RosterClient:
                 try:
                     data = await self._get(f"/site/v2/sports/soccer/{code}/teams/{team['id']}/roster?season={season}")
                     return team, {"id": team["id"], "name": team["name"], "players": parse_athletes(data, season)}
-                except Exception as exc:  # one club's odd answer must not cost the league its other squads
+                except Exception as exc:  # noqa: BLE001 - one club's odd answer must not cost the league its other squads
                     log.warning("roster for %s (%s %s) failed: %s", team["name"], league, season, exc)
                     self.last_error = f"{team['name']} ({league} {season}): {str(exc)[:120]}"
                     return team, None

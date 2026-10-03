@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import Sequence
+from collections.abc import Sequence
 
 FAMILY_GROUP = {"GK": "GK", "D": "DEF", "M": "MID", "F": "ATT"}
 GROUP_FAMILY = {v: k for k, v in FAMILY_GROUP.items()}
@@ -63,7 +63,7 @@ class RoleModel:
     scale: list[float]
 
     @classmethod
-    def fit(cls, samples: Sequence[tuple[str, Sequence[float]]], min_per_family: int = 8) -> "RoleModel | None":
+    def fit(cls, samples: Sequence[tuple[str, Sequence[float]]], min_per_family: int = 8) -> RoleModel | None:
         """``samples``: (family, feature vector) for players with exactly one listed family."""
         by_family: dict[str, list[Sequence[float]]] = {}
         for family, vector in samples:

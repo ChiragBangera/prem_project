@@ -13,7 +13,8 @@ from __future__ import annotations
 
 import math
 from collections import defaultdict
-from typing import Iterable, Mapping
+from collections.abc import Iterable, Mapping
+from dataclasses import dataclass, fields
 
 from app.data.models import Fixture, MatchPage, Shot
 
@@ -52,8 +53,8 @@ def scorers(page: MatchPage) -> dict[str, list[dict]]:
                 out[side].append(_scorer(shot))
             elif shot.result == "OwnGoal":
                 out["a" if side == "h" else "h"].append(_scorer(shot))
-    for side in out:
-        out[side].sort(key=lambda g: (g["minute"], g["player"]))
+    for goals in out.values():
+        goals.sort(key=lambda g: (g["minute"], g["player"]))
     return out
 
 
@@ -100,15 +101,37 @@ def position_minutes(pages: Iterable[MatchPage]) -> dict[int, dict]:
 # ------------------------------------------------------------------ shot-level aggregates
 
 
+@dataclass(slots=True)
 class ShotTotals:
     """Sums over a group of shots (one player's, or one team's for or against). A plain accumulator."""
 
-    __slots__ = ("n", "goals", "xg", "sot", "blocked", "off", "post", "big", "big_goals", "pens", "pen_goals", "pen_xg", "sp_shots", "sp_xg", "sp_goals",
-                 "op_shots", "op_xg", "head", "head_xg", "head_goals", "dist", "box", "assisted", "fk", "fk_goals", "fk_xg", "xg_np")
-
-    def __init__(self) -> None:
-        for name in self.__slots__:
-            setattr(self, name, 0.0 if name in ("xg", "pen_xg", "sp_xg", "op_xg", "head_xg", "dist", "fk_xg", "xg_np") else 0)
+    n: int = 0
+    goals: int = 0
+    xg: float = 0.0
+    sot: int = 0
+    blocked: int = 0
+    off: int = 0
+    post: int = 0
+    big: int = 0
+    big_goals: int = 0
+    pens: int = 0
+    pen_goals: int = 0
+    pen_xg: float = 0.0
+    sp_shots: int = 0
+    sp_xg: float = 0.0
+    sp_goals: int = 0
+    op_shots: int = 0
+    op_xg: float = 0.0
+    head: int = 0
+    head_xg: float = 0.0
+    head_goals: int = 0
+    dist: float = 0.0
+    box: int = 0
+    assisted: int = 0
+    fk: int = 0
+    fk_goals: int = 0
+    fk_xg: float = 0.0
+    xg_np: float = 0.0
 
     def add(self, s: Shot) -> None:
         goal = s.result == "Goal"
@@ -148,7 +171,7 @@ class ShotTotals:
         self.assisted += bool(s.assisted_by)
 
     def as_dict(self) -> dict[str, float]:
-        return {k: round(getattr(self, k), 4) if isinstance(getattr(self, k), float) else getattr(self, k) for k in self.__slots__}
+        return {f.name: round(v, 4) if isinstance(v := getattr(self, f.name), float) else v for f in fields(self)}
 
 
 def player_shots(pages: Iterable[MatchPage]) -> dict[int, dict]:

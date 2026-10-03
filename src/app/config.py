@@ -63,7 +63,7 @@ class Settings:
         return self.data_dir / ("demo.sqlite" if self.demo else "prem.sqlite")
 
     @classmethod
-    def from_env(cls) -> "Settings":
+    def from_env(cls) -> Settings:
         demo, offline = _flag("PREM_DEMO"), _flag("PREM_OFFLINE")
         auto_events = os.getenv("PREM_AUTO_EVENTS")
         return cls(

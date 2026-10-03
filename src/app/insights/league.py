@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import math
-from typing import Sequence
+from collections.abc import Sequence
 
 from .core import (
     Insight, clamp_score, confidence_from_matches, ev, f1, f2, ordinal, plural, signed, team_link,

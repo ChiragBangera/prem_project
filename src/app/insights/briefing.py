@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import math
-from typing import Sequence
+from collections.abc import Sequence
 
 import numpy as np
 
@@ -30,7 +30,8 @@ def recent_matches(ls: LeagueSeason, limit: int = 10) -> list[dict]:
     rows = []
     for f in sorted(ls.played, key=lambda f: (f.dt, f.id), reverse=True)[:limit]:
         ph, pd, pa = result_probabilities(f.hxg or 0.0, f.axg or 0.0)
-        actual = "home" if f.hg > f.ag else "away" if f.ag > f.hg else "draw"
+        hg, ag = f.hg or 0, f.ag or 0
+        actual = "home" if hg > ag else "away" if ag > hg else "draw"
         p_actual = {"home": ph, "draw": pd, "away": pa}[actual]
         flag = None
         if actual != "draw" and p_actual < 0.22:

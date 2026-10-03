@@ -19,11 +19,11 @@ shown in a table is always the raw value; only the percentile uses the shrunk on
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
-from typing import Callable, Iterable, Union
+from collections.abc import Callable, Iterable
 
 import numpy as np
 
-Expr = Union[str, Callable[["Frame"], np.ndarray], None]
+Expr = str | Callable[["Frame"], np.ndarray] | None
 ROLES = ("ATT", "MID", "DEF", "GK")
 NAN = float("nan")
 

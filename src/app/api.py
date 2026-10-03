@@ -18,6 +18,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from app import __version__
 from app.config import Settings
@@ -57,21 +58,24 @@ class ETagMiddleware:
 
     SKIP = ("/api/data", "/api/health", "/api/search", "/api/shortlist", "/api/docs", "/api/openapi")
 
-    def __init__(self, app):
+    def __init__(self, app: ASGIApp) -> None:
         self.app = app
 
-    async def __call__(self, scope, receive, send):
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         path = scope.get("path", "")
         if scope["type"] != "http" or scope["method"] != "GET" or not path.startswith("/api/") or path.startswith(self.SKIP):
             return await self.app(scope, receive, send)
         wanted = next((v.decode() for k, v in scope["headers"] if k == b"if-none-match"), None)
-        started: dict | None = None
+        started: Message | None = None
         chunks: list[bytes] = []
 
-        async def capture(message):
+        async def capture(message: Message) -> None:
             nonlocal started
             if message["type"] == "http.response.start":
                 started = message
+                return
+            if started is None:                  # a body before a start message: not ours to judge, pass it on
+                await send(message)
                 return
             chunks.append(message.get("body", b""))
             if message.get("more_body"):

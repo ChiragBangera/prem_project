@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Sequence
+from collections.abc import Sequence
 
 from app.analytics.ages import sure_age
 from app.analytics.metrics import EVENT_BY_KEY, EVENT_PROFILE, METRIC_BY_KEY
@@ -136,8 +136,9 @@ def player_insights(row: dict, *, finishing: dict | None = None, career: Sequenc
             evidence=[ev("Goals", row["goals"]), ev("xG", f1(row["xg"])), ev("z", signed(row["g_xg_z"], 1))], entities=ent, link=link))
 
     # -- age in context
-    if sure_age(row) is not None and row.get("output") is not None and row.get("in_pool"):
-        age, out_idx = sure_age(row), row["output"]
+    age = sure_age(row)
+    if age is not None and row.get("output") is not None and row.get("in_pool"):
+        out_idx = row["output"]
         if age <= 21 and out_idx >= 60:
             out.append(Insight(
                 f"player.{row['id']}.young", "youth",
@@ -214,7 +215,7 @@ def scouting_highlights(rows: Sequence[dict], *, limit_each: int = 3) -> list[In
     def add(insight: Insight):
         out.append(insight)
 
-    young = sorted((r for r in pool if sure_age(r) is not None and sure_age(r) <= 21 and (r.get("output") or 0) >= 65), key=lambda r: -(r["output"] or 0))
+    young = sorted((r for r in pool if (age := sure_age(r)) is not None and age <= 21 and (r.get("output") or 0) >= 65), key=lambda r: -(r["output"] or 0))
     for r in young[:limit_each]:
         add(Insight(
             f"scout.young.{r['id']}", "youth",

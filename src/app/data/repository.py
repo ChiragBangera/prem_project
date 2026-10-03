@@ -17,11 +17,13 @@ network or the cache directly. The repository:
 from __future__ import annotations
 
 import asyncio
+import functools
 import time
 from collections import OrderedDict
 from dataclasses import dataclass
-from datetime import datetime, timezone
-from typing import Any, Awaitable, Callable, Generic, Protocol, TypeVar
+from datetime import datetime, UTC
+from typing import Any, Generic, Protocol, TypeVar
+from collections.abc import Awaitable, Callable
 
 from app.config import Settings
 from app.errors import AppError, DataUnavailable, NotFound, UpstreamError
@@ -81,7 +83,7 @@ class Fetched(Generic[T]):
 def _iso(stamp: float | None) -> str | None:
     if stamp is None:
         return None
-    return datetime.fromtimestamp(stamp, tz=timezone.utc).isoformat(timespec="seconds")
+    return datetime.fromtimestamp(stamp, tz=UTC).isoformat(timespec="seconds")
 
 
 @dataclass(slots=True)
@@ -268,7 +270,7 @@ class Repository:
         soonest = None
         for fixture in ls.fixtures:
             try:
-                kickoff = datetime.fromisoformat(fixture.dt).replace(tzinfo=timezone.utc).timestamp()
+                kickoff = datetime.fromisoformat(fixture.dt).replace(tzinfo=UTC).timestamp()
             except ValueError:
                 continue
             gap = abs(kickoff - now)
@@ -326,19 +328,19 @@ class Repository:
         if task is None:
             task = asyncio.create_task(self._fetch_and_store(kind, key, fetch, parse, is_complete, weight))
             self._inflight[(kind, key)] = task
-            task.add_done_callback(lambda t, k=(kind, key): self._finish(k, t))
+            task.add_done_callback(functools.partial(self._finish, (kind, key)))
 
         try:
             if entry is not None:
                 new_entry = await asyncio.wait_for(asyncio.shield(task), timeout=REFRESH_WAIT)
             else:
                 new_entry = await asyncio.shield(task)
-        except (asyncio.TimeoutError, AppError, ValueError) as exc:
+        except (TimeoutError, AppError, ValueError) as exc:
             if entry is not None:
                 reason = "Refresh is taking too long; showing cached data." if isinstance(exc, asyncio.TimeoutError) else str(exc)
                 return Fetched(entry.value, Meta(entry.source, entry.fetched_at, stale=True, error=reason))
             if isinstance(exc, AppError):
-                raise self._translate(exc, kind, key)
+                raise self._translate(exc, kind, key) from exc
             raise UpstreamError(f"Could not read the {kind} data for {key}: {exc}") from exc
         return Fetched(new_entry.value, Meta(new_entry.source, new_entry.fetched_at, complete=new_entry.complete))
 

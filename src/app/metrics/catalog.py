@@ -26,7 +26,7 @@ def _level(groups, metrics, views, lenses, profile=None) -> dict:
         "metrics": {m.key: m.public() for m in metrics},
         "order": [m.key for m in metrics],
         "views": [v.public() for v in views],
-        "lenses": [l.public() for l in lenses],
+        "lenses": [lens.public() for lens in lenses],
     }
     if profile is not None:
         out["profile"] = {name: {role: list(keys) for role, keys in table.items()} for name, table in profile.items()}

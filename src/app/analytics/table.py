@@ -6,7 +6,7 @@ reorder upstream cannot silently corrupt an answer.
 
 from __future__ import annotations
 
-from typing import Iterable, Sequence
+from collections.abc import Iterable, Sequence
 
 from app.data.models import LeagueSeason, Team, TeamMatch
 from app.stats import percentile_rank, safe_div
@@ -97,7 +97,7 @@ def compute_table(
     rows = []
     for team in ls.teams.values():
         matches = select_matches(team, venue=venue, last_n=last_n, date_from=date_from, date_to=date_to)
-        if matches or venue == "all" and not team.history:
+        if matches or (venue == "all" and not team.history):
             row = summarize(team, matches)
             row["trend_xgd"] = [round(v, 3) for v in rolling([m.xgd for m in team.history], 5) if v is not None]
             rows.append(row)
@@ -132,9 +132,9 @@ def league_context(ls: LeagueSeason, today: str | None = None) -> dict:
         "next_kickoff": next_dates[0] if next_dates else None,
         "goals_pg": safe_div(sum((f.hg or 0) + (f.ag or 0) for f in played), n),
         "xg_pg": safe_div(sum((f.hxg or 0) + (f.axg or 0) for f in played), n),
-        "home_win": safe_div(sum(1 for f in played if f.hg > f.ag), n),
-        "draw": safe_div(sum(1 for f in played if f.hg == f.ag), n),
-        "away_win": safe_div(sum(1 for f in played if f.hg < f.ag), n),
+        "home_win": safe_div(sum(1 for f in played if (f.hg or 0) > (f.ag or 0)), n),
+        "draw": safe_div(sum(1 for f in played if (f.hg or 0) == (f.ag or 0)), n),
+        "away_win": safe_div(sum(1 for f in played if (f.hg or 0) < (f.ag or 0)), n),
         "home_xg_edge": safe_div(sum((f.hxg or 0) - (f.axg or 0) for f in played), n),
         "complete": bool(ls.fixtures) and not ls.upcoming,
     }
@@ -168,8 +168,8 @@ def rank_trajectories(ls: LeagueSeason) -> dict:
         ]
         table.sort(key=lambda item: (-item[1][0], -item[1][1], -item[1][2], item[0]))
         position = {name: i for i, (name, _s) in enumerate(table, start=1)}
-        for name in ranks:
-            ranks[name].append(position.get(name))
+        for name, path in ranks.items():
+            path.append(position.get(name))
     return {
         "rounds": rounds,
         "rank": ranks,

@@ -14,6 +14,7 @@ bump the version, and the store rebuilds silver from bronze offline.
 
 from __future__ import annotations
 
+import math
 from typing import Any
 
 from . import schema as S
@@ -54,12 +55,12 @@ def _num(value: Any) -> float | None:
         v = float(value)
     except (TypeError, ValueError):
         return None
-    return v if v == v else None
+    return None if math.isnan(v) else v
 
 
 def _tenths(value: Any) -> int:
     v = _num(value)
-    return -1 if v is None else int(round(v * 10))
+    return -1 if v is None else round(v * 10)
 
 
 def _int(value: Any, default: int = 0) -> int:
@@ -167,7 +168,7 @@ def parse_match(raw: dict, *, league: str = "", season: int = 0, game_id: int = 
         cols["q0"][i], cols["q1"][i] = lo, hi
         cols["ln"][i] = _tenths(vals.get("Length"))
         ang = _num(vals.get("Angle"))
-        cols["an"][i] = -1 if ang is None else int(round(ang * 100))
+        cols["an"][i] = -1 if ang is None else round(ang * 100)
         cols["gy"][i] = _tenths(e.get("goalMouthY") if e.get("goalMouthY") is not None else vals.get("GoalMouthY"))
         cols["gz"][i] = _tenths(e.get("goalMouthZ") if e.get("goalMouthZ") is not None else vals.get("GoalMouthZ"))
         cols["bx"][i] = _tenths(e.get("blockedX") if e.get("blockedX") is not None else vals.get("BlockedX"))
@@ -231,7 +232,7 @@ def parse_match(raw: dict, *, league: str = "", season: int = 0, game_id: int = 
     for pid in sorted({cols["p"][i] for i in play if cols["p"][i]} - known):  # on the pitch but not in a lineup: keep him so nothing is anonymous
         team = next((cols["tm"][i] for i in play if cols["p"][i] == pid), 0)
         players.append({"id": pid, "name": names.get(pid, ""), "tm": team, "pos": "", "shirt": None, "age": None, "height": None, "weight": None,
-                        "start": pid not in on_at, "motm": False, "rating": None, "on": 0 if pid not in on_at else on_at[pid], "off": off_at.get(pid), "red": red_at.get(pid)})
+                        "start": pid not in on_at, "motm": False, "rating": None, "on": on_at.get(pid, 0), "off": off_at.get(pid), "red": red_at.get(pid)})
 
     ft, ht, et = _score(raw.get("ftScore") or raw.get("score")), _score(raw.get("htScore")), _score(raw.get("etScore"))
     referee = raw.get("referee") or {}
@@ -253,7 +254,7 @@ def parse_match(raw: dict, *, league: str = "", season: int = 0, game_id: int = 
 class Match:
     """A silver document with the small conveniences analytics need. Holds no copy: it reads the document's own arrays."""
 
-    __slots__ = ("doc", "ev", "n", "info", "teams", "players", "by_id", "league", "season", "game")
+    __slots__ = ("by_id", "doc", "ev", "game", "info", "league", "n", "players", "season", "teams")
 
     def __init__(self, doc: dict):
         self.doc = doc

@@ -49,7 +49,7 @@ def test_outcome_probs_are_a_distribution_and_ordered():
     weak = poisson_binomial([0.1, 0.05])
     h, d, a = outcome_probs(strong, weak)
     assert h + d + a == pytest.approx(1.0) and h > a
-    h2, d2, a2 = outcome_probs(weak, strong)
+    h2, _d2, a2 = outcome_probs(weak, strong)
     assert (h2, a2) == pytest.approx((a, h))
 
 
@@ -272,7 +272,6 @@ def test_similarity_and_player_detail_on_demo_data(demo_provider, demo_league):
     assert [t["similarity"] for t in twins] == sorted((t["similarity"] for t in twins), reverse=True)
     assert all(0 <= t["similarity"] <= 100 and t["avg_gap"] == pytest.approx(100 - t["similarity"], abs=0.11) for t in twins)
 
-    dob = next(iter(ds.rows))["dob"]
     young = similar_players(star, [{**r, "age": 21 if i % 2 else 33} for i, r in enumerate(ds.rows)], max_age=22)
     assert young and all(t["age"] == 21 for t in young)
 

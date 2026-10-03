@@ -14,7 +14,7 @@ touch the ball, since the data has no receiver).
 from __future__ import annotations
 
 from collections import defaultdict
-from typing import Iterable
+from collections.abc import Iterable
 
 from . import counters as C
 from . import schema as S

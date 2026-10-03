@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -11,6 +12,8 @@ from app.data.repository import Repository
 from app.data.rosters import RosterClient
 from app.errors import AppError
 from app.leagues import LEAGUES
+
+log = logging.getLogger("prem.jobs")
 
 
 @dataclass
@@ -42,10 +45,10 @@ class JobManager:
         self._on_change = on_change
 
     def start_sync(self, leagues: list[str], seasons: list[int], *, force: bool = False) -> Job:
-        unknown = [l for l in leagues if l not in LEAGUES]
+        unknown = [lg for lg in leagues if lg not in LEAGUES]
         if unknown:
             raise ValueError(f"Unknown league(s): {', '.join(unknown)}.")
-        targets = [(l, s) for l in leagues for s in sorted(seasons, reverse=True)]
+        targets = [(lg, s) for lg in leagues for s in sorted(seasons, reverse=True)]
         job = Job(uuid.uuid4().hex[:8], f"Sync {len(leagues)} league(s) × {len(seasons)} season(s)", len(targets))
         self.jobs[job.id] = job
         self._tasks[job.id] = asyncio.create_task(self._run(job, targets, force))
@@ -63,6 +66,7 @@ class JobManager:
                 job.failed += 1
                 job.log.append(f"{league} {season}: {exc.message}")
             except Exception as exc:  # pragma: no cover - defensive
+                log.exception("sync of %s %s failed unexpectedly", league, season)
                 job.failed += 1
                 job.log.append(f"{league} {season}: unexpected error {type(exc).__name__}")
             if self._on_change:
@@ -77,6 +81,7 @@ class JobManager:
         try:
             body = await self.rosters.ensure(league, season)
         except Exception as exc:  # pragma: no cover - defensive
+            log.exception("squad lists for %s %s failed unexpectedly", league, season)
             job.log.append(f"{league} {season}: squad lists failed ({type(exc).__name__})")
             return
         if body is None:

@@ -24,7 +24,7 @@ def league_2019(provider):
 
 
 def test_full_season_shape(league_2019):
-    raw, ls = league_2019
+    _raw, ls = league_2019
     assert not ls.warnings
     assert len(ls.teams) == 20 and len(ls.fixtures) == 380 and ls.n_played == 380
     assert all(len(t.history) == 38 for t in ls.teams.values())
@@ -140,7 +140,6 @@ def test_search_folds_accents(provider, league_2019):
     _, ls = league_2019
     accented = next((p.name for p in ls.players if any(ord(c) > 127 for c in p.name)), None)
     assert accented
-    plain = "".join(c for c in accented if ord(c) < 128)
     hits = asyncio.run(provider.search_players(accented.split()[0].lower()))
     assert hits and all("id" in h and "player" in h for h in hits)
 

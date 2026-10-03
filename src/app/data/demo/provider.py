@@ -161,15 +161,15 @@ class DemoProvider:
 
         dates = []
         for f in sorted(data.fixtures, key=lambda f: (f.dt, f.id)):
-            m = f.match
+            played = f.match
             dates.append(
                 {
                     "id": _s(f.id),
-                    "isResult": m is not None,
+                    "isResult": played is not None,
                     "h": {"id": _s(ids[f.home]), "title": f.home, "short_title": shorts[f.home]},
                     "a": {"id": _s(ids[f.away]), "title": f.away, "short_title": shorts[f.away]},
-                    "goals": {"h": _s(m.hg) if m else None, "a": _s(m.ag) if m else None},
-                    "xG": {"h": _s(m.hxg) if m else None, "a": _s(m.axg) if m else None},
+                    "goals": {"h": _s(played.hg) if played else None, "a": _s(played.ag) if played else None},
+                    "xG": {"h": _s(played.hxg) if played else None, "a": _s(played.axg) if played else None},
                     "datetime": f.dt,
                 }
             )
@@ -328,7 +328,9 @@ class DemoProvider:
                     "xGBuildup": _s(agg.xgbuildup),
                 }
             )
-            by_sit, by_zone, by_type = {}, {}, {}
+            by_sit: dict[str, dict[str, float]] = {}
+            by_zone: dict[str, dict[str, float]] = {}
+            by_type: dict[str, dict[str, float]] = {}
             for m in sorted(data.matches.values(), key=lambda m: m.dt):
                 for venue in ("h", "a"):
                     for s in m.shots[venue]:
@@ -350,7 +352,7 @@ class DemoProvider:
                 if c != "Sub":
                     minutes_by_code[c] = minutes_by_code.get(c, 0) + mins
 
-        favorite = max(minutes_by_code, key=minutes_by_code.get) if minutes_by_code else player.code()
+        favorite = max(minutes_by_code, key=minutes_by_code.__getitem__) if minutes_by_code else player.code()
         return {
             "player": {"favorite_position": favorite},
             "shots": shots,
@@ -413,7 +415,7 @@ class DemoProvider:
         needle = fold(query)
         out = []
         with self._lock:
-            for code, league in self._leagues.items():
+            for league in self._leagues.values():
                 if not league.rosters:
                     continue
                 latest = max(league.rosters)
