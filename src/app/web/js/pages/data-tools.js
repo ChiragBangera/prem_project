@@ -120,7 +120,7 @@ export function Birthdates({ status, meta }) {
           ${e.compared ? html`<div class="xsmall muted">Cross-check: Wikidata, sure of the club, was also found for <b class="num">${e.compared}</b> of them and gives another date for <b class="num">${e.disagree}</b>${e.blank ? ` (${e.blank} by more than a year, so ${e.blank === 1 ? "that age is" : "those ages are"} left blank)` : ""}.</div>` : null}
           ${e.disagree ? html`<details class="xsmall"><summary class="muted">Where the two sources differ</summary>
             <ul class="plain">${e.disagree_examples.map((x) => html`<li key=${x.name}>${x.name} <span class="muted">· ${x.team} · squad list ${x.squad_list}, Wikidata ${x.wikidata}${x.blank ? " · age left blank" : " · squad list used"}</span></li>`)}</ul>
-            <p class="muted">To settle one yourself, add the right date to <code>birthdates.json</code> (see the README).</p></details>` : null}
+            <p class="muted">To settle one yourself, add the right date to <code>birthdates.json</code> (see Ages in docs/data.md).</p></details>` : null}
           ${e.missing?.length ? html`<details class="xsmall"><summary class="muted">Regulars without an exact birthdate</summary>
             <ul class="plain">${e.missing.map((m) => html`<li key=${m.id}>${m.name} <span class="muted">· ${m.team} · ${m.minutes} min</span></li>`)}</ul></details>` : null}
         </div>`;
