@@ -20,6 +20,7 @@ What it did, what failed and when it will look again is kept in the store and sh
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import importlib.util
 import logging
 import os
@@ -47,6 +48,7 @@ BACKLOG_INTERVAL = 90.0        # look again this soon while there is still a bac
 BACKOFF_BASE, BACKOFF_MAX = 300.0, 6 * 3600.0
 EVENT_BATCH = 60               # matches per event-fetcher run
 EVENT_RECHECK = 3 * 3600.0     # a season the fetcher found nothing more to do for is not run again sooner than this
+STOP_WAIT = 5.0                # seconds the event fetcher gets to stop cleanly when the app stops, before it is killed
 
 def pretty(code: str, season: int) -> str:
     """"La Liga 2026/27": how a league season is named in anything a person reads (keys in the store stay ``La_liga:2026``)."""
@@ -136,8 +138,11 @@ class AutoSync:
         if self._proc is not None and self._proc.returncode is None:
             self._proc.terminate()
             try:
-                await asyncio.wait_for(self._proc.wait(), 10)
-            except (asyncio.TimeoutError, ProcessLookupError):
+                await asyncio.wait_for(self._proc.wait(), STOP_WAIT)
+            except asyncio.TimeoutError:
+                with contextlib.suppress(ProcessLookupError):
+                    self._proc.kill()          # it ignored the request: a stopped app must not leave a browser fetching in the background
+            except ProcessLookupError:
                 pass
 
     def wake(self) -> None:
