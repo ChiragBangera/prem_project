@@ -10,7 +10,22 @@ const STORE = "api";
 const VERSION = 1;
 const MAX_ENTRIES = 80;                 // oldest entries are dropped beyond this
 const MAX_BYTES = 12 * 1024 * 1024;     // an entry bigger than this (as JSON) is not stored
-export const CACHE_FORMAT = 3;          // bump when the shape of stored entries changes: older ones are ignored
+export const CACHE_FORMAT = 4;          // bump when the shape of stored entries changes: older ones are ignored
+
+// An answer is only worth showing from a stored copy if the same version of the app wrote it: a new release can change what an endpoint
+// returns, and a page built for the new shape must never be handed the old one. The version is asked of the server once; if it cannot
+// be learned, nothing is read from or written to the store.
+let versionPromise = null;
+function appVersion() {
+  if (!versionPromise) {
+    versionPromise = fetch("/api/health", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => String(j?.version || ""))
+      .catch(() => "")
+      .then((v) => { if (v) forgetOtherVersions(v); return v; });
+  }
+  return versionPromise;
+}
 
 let opening = null;
 
@@ -46,16 +61,34 @@ function run(mode, work) {
 
 /** The stored entry { data, at } for a key, or undefined. */
 export async function persistedGet(key) {
+  const app = await appVersion();
+  if (!app) return undefined;
   const entry = await run("readonly", (s) => s.get(key));
-  return entry && entry.format === CACHE_FORMAT ? entry : undefined;
+  return entry && entry.format === CACHE_FORMAT && entry.app === app ? entry : undefined;
 }
 
 export async function persistedSet(key, data) {
   let size = 0;
   try { size = JSON.stringify(data).length; } catch (_) { return; }
   if (size > MAX_BYTES) return;
-  await run("readwrite", (s) => s.put({ format: CACHE_FORMAT, data, at: Date.now(), size }, key));
+  const app = await appVersion();
+  if (!app) return;
+  await run("readwrite", (s) => s.put({ format: CACHE_FORMAT, app, data, at: Date.now(), size }, key));
   trim();
+}
+
+/** Drop whatever another version of the app (or an older storage format) left behind. */
+async function forgetOtherVersions(app) {
+  await run("readwrite", (s) => {
+    const req = s.openCursor();
+    req.onsuccess = () => {
+      const cursor = req.result;
+      if (!cursor) return;
+      if (cursor.value?.app !== app || cursor.value?.format !== CACHE_FORMAT) cursor.delete();
+      cursor.continue();
+    };
+    return null;
+  });
 }
 
 /** Forget every stored entry whose key starts with `prefix` (all of them without one). */

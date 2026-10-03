@@ -1,14 +1,22 @@
 // Hash router. The URL is the source of truth for page state, so views are linkable.
 import { useEffect, useState } from "./html.js";
 
-function parse() {
-  const raw = decodeURI(window.location.hash.slice(1) || "/");
-  const [pathPart, qs = ""] = raw.split("?");
-  const path = pathPart.startsWith("/") ? pathPart : "/" + pathPart;
+const attempt = (decode, text) => { try { return decode(text); } catch (_) { return text; } };
+
+/**
+ * The path and the query of a hash such as "#/scout?r=ATT". A malformed percent-escape (a link cut short in a chat, say) is left as
+ * it is instead of throwing, which would otherwise leave the whole app unable to start; the query is decoded once, by URLSearchParams.
+ */
+export function parseHash(hash) {
+  const raw = String(hash || "").replace(/^#/, "") || "/";
+  const cut = raw.indexOf("?");
+  const pathPart = attempt(decodeURI, cut < 0 ? raw : raw.slice(0, cut));
   const query = {};
-  new URLSearchParams(qs).forEach((v, k) => { query[k] = v; });
-  return { path, query };
+  new URLSearchParams(cut < 0 ? "" : raw.slice(cut + 1)).forEach((v, k) => { query[k] = v; });
+  return { path: pathPart.startsWith("/") ? pathPart : "/" + pathPart, query };
 }
+
+const parse = () => parseHash(window.location.hash);
 
 export function href(path, query) {
   const entries = Object.entries(query || {}).filter(([, v]) => v !== undefined && v !== null && v !== "");
@@ -43,7 +51,7 @@ export function match(compiled, path) {
     const m = r.pattern.exec(path);
     if (m) {
       const params = {};
-      r.keys.forEach((k, i) => { params[k] = decodeURIComponent(m[i + 1]); });
+      r.keys.forEach((k, i) => { params[k] = attempt(decodeURIComponent, m[i + 1]); });
       return { route: r, params };
     }
   }
