@@ -93,7 +93,10 @@ class Workbench:
                 )
         self.provider = provider
         override = os.getenv("PREM_TODAY")
-        self.today = today or (date.fromisoformat(override) if override else None) or getattr(provider, "today", None) or date.today()
+        # a date given by the caller, by PREM_TODAY or by the demo world is fixed; a real run follows the calendar, so a server left
+        # running for days moves on to the next matchday (and, in August, the next season) without being restarted
+        self._fixed_today: date | None = today or (date.fromisoformat(override) if override else None) or getattr(provider, "today", None)
+        self._memo_day: date | None = None
         self.repo = Repository(self.store, provider, self.settings)
         self.resolver = BirthdateResolver(self.store, self.settings)
         self.favorites = FavoriteIndex(self.store)
@@ -230,7 +233,19 @@ class Workbench:
     def favorite_of(self, pid: int) -> str | None:
         return self.favorites.get(pid)
 
+    @property
+    def today(self) -> date:
+        return self._fixed_today or date.today()
+
+    @today.setter
+    def today(self, value: date) -> None:
+        self._fixed_today = value
+
     async def _memo_async(self, key: tuple, version: Any, compute: Callable[[], Any], *, threaded: bool = True):
+        day = self.today
+        if day != self._memo_day:      # views that read the date (next fixtures, ages, the current season) are rebuilt once a day
+            self._memo.clear()
+            self._memo_day = day
         hit = self._memo.get(key)
         if hit is not None and hit[0] == version:
             return hit[1]
