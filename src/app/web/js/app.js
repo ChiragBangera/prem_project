@@ -187,7 +187,11 @@ export function App() {
 
   const found = match(routes, loc.path);
   const Page = found?.route.page;
-  const dataReady = catQ.data && metaQ.data;
+  // Pages read the metric catalog and the meta from the shared store, which is filled in an effect after the data arrives. A page must only
+  // be shown once the store itself holds them: judged on the answers alone, its first render could see an empty store, and a page with a
+  // stored copy of its own data (a repeat visit) would then try to draw itself without the catalog.
+  const stored = useStore(metaStore);
+  const dataReady = Boolean(stored.meta && stored.catalog);
   const bootError = (metaQ.error && !metaQ.data) || (catQ.error && !catQ.data);
 
   return html`<div class="app">
