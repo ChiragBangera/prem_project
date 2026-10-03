@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import logging
+import logging.handlers
 import os
+from pathlib import Path
 import sys
 import threading
 import time
@@ -27,6 +30,27 @@ def _apply_env(args: argparse.Namespace) -> None:
         os.environ["PREM_TODAY"] = args.today
 
 
+def configure_logging(data_dir: Path) -> Path | None:
+    """Keep what the server says (what the updater did, what failed, any unexpected error with its traceback) in ``<data dir>/logs/server.log``.
+
+    A server started in the background has no terminal, so a problem seen in the browser could otherwise not be traced. The file is rotated
+    (2 MB, three copies); if it cannot be written the server simply carries on without it.
+    """
+    try:
+        folder = data_dir / "logs"
+        folder.mkdir(parents=True, exist_ok=True)
+        handler = logging.handlers.RotatingFileHandler(folder / "server.log", maxBytes=2_000_000, backupCount=3, encoding="utf-8")
+    except OSError:
+        return None
+    handler.setLevel(logging.INFO)
+    handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
+    root = logging.getLogger()
+    if root.level in (logging.NOTSET, logging.WARNING):
+        root.setLevel(logging.INFO)
+    root.addHandler(handler)
+    return folder / "server.log"
+
+
 def cmd_serve(args: argparse.Namespace) -> int:
     import uvicorn
 
@@ -34,7 +58,8 @@ def cmd_serve(args: argparse.Namespace) -> int:
     settings = Settings.from_env()
     url = f"http://{args.host}:{args.port}/"
     mode = "DEMO data (synthetic)" if settings.demo else "offline cache" if settings.offline else "Understat (cached locally)"
-    print(f"\n  Prem Lab {__version__}\n  {url}\n  data: {mode}\n  cache: {settings.db_path}\n  Ctrl+C to stop\n")
+    log_file = configure_logging(settings.data_dir)
+    print(f"\n  Prem Lab {__version__}\n  {url}\n  data: {mode}\n  cache: {settings.db_path}\n  log: {log_file or 'not written'}\n  Ctrl+C to stop\n")
     if not args.no_open:
         threading.Thread(target=lambda: (time.sleep(0.8), webbrowser.open(url)), daemon=True).start()
     uvicorn.run("app.api:app", host=args.host, port=args.port, reload=args.reload, log_level="warning")
