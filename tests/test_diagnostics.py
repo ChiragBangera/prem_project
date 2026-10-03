@@ -27,7 +27,7 @@ class Garbled(Unreachable):
 async def test_unreachable_upstream_stops_at_the_first_step(tmp_path):
     wb = Workbench(Settings(data_dir=tmp_path, min_interval=0, offline=True), provider=Unreachable(), today=date(2027, 3, 10))
     try:
-        result = await wb.check_connection()
+        result = await wb.diagnostics.check()
     finally:
         await wb.close()
     assert not result["ok"]
@@ -41,7 +41,7 @@ async def test_unreachable_upstream_stops_at_the_first_step(tmp_path):
 async def test_a_changed_page_format_is_reported_as_such(tmp_path):
     wb = Workbench(Settings(data_dir=tmp_path, min_interval=0, offline=True), provider=Garbled(), today=date(2027, 3, 10))
     try:
-        result = await wb.check_connection()
+        result = await wb.diagnostics.check()
     finally:
         await wb.close()
     assert not result["ok"]

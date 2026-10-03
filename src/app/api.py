@@ -185,119 +185,119 @@ def create_app(settings: Settings | None = None, *, provider=None, today: date |
 
     @app.get("/api/briefing")
     async def briefing(request: Request, league: str = "EPL", season: str = "auto"):
-        return ok(await wb(request).briefing_view(league, season))
+        return ok(await wb(request).briefing.page(league, season))
 
     @app.get("/api/league")
     async def league(request: Request, league: str = "EPL", season: str = "auto", venue: str = "all", last: int | None = Query(None, ge=1, le=40),
                      date_from: str | None = None, date_to: str | None = None):
-        return ok(await wb(request).league_view(league, season, venue=venue, last=last, date_from=date_from, date_to=date_to))
+        return ok(await wb(request).league.page(league, season, venue=venue, last=last, date_from=date_from, date_to=date_to))
 
     @app.get("/api/team")
     async def team(request: Request, team: str, league: str = "EPL", season: str = "auto"):
-        return ok(await wb(request).team_view(league, season, team))
+        return ok(await wb(request).team.page(league, season, team))
 
     @app.get("/api/team/history")
     async def team_history(request: Request, team: str, league: str = "EPL", seasons: str = ""):
-        return ok(await wb(request).team_history_view(league, team, _ints(seasons)))
+        return ok(await wb(request).team.history(league, team, _ints(seasons)))
 
     @app.get("/api/team/chances")
     async def team_chances(request: Request, team: str, league: str = "EPL", season: str = "auto"):
-        return ok(await wb(request).team_chances_view(league, season, team))
+        return ok(await wb(request).team.chances(league, season, team))
 
     @app.get("/api/team/chances/league")
     async def team_chances_league(request: Request, team: str, league: str = "EPL", season: str = "auto"):
-        return ok(await wb(request).team_chances_league_view(league, season, team))
+        return ok(await wb(request).team.chances_league(league, season, team))
 
     @app.get("/api/dictionary")
     async def dictionary(request: Request):
-        return ok(wb(request).dictionary())
+        return ok(wb(request).dictionary.entries())
 
     @app.get("/api/dictionary/stats")
     async def dictionary_stats(request: Request, league: str = "EPL", season: str = "auto"):
-        return ok(await wb(request).dictionary_stats(league, season))
+        return ok(await wb(request).dictionary.stats(league, season))
 
     @app.get("/api/players")
     async def players(request: Request, leagues: str = "EPL", seasons: str = "auto", min_minutes: int = Query(1, ge=0, le=3000)):
-        return ok(await wb(request).players_view(_list(leagues), _list(seasons) or ["auto"], min_minutes=min_minutes))
+        return ok(await wb(request).scout.players(_list(leagues), _list(seasons) or ["auto"], min_minutes=min_minutes))
 
     @app.get("/api/teams")
     async def teams(request: Request, leagues: str = "EPL", seasons: str = "auto"):
-        return ok(await wb(request).teams_view(_list(leagues), _list(seasons) or ["auto"]))
+        return ok(await wb(request).scout.teams(_list(leagues), _list(seasons) or ["auto"]))
 
     @app.get("/api/maps/team")
     async def maps_team(request: Request, team: str, league: str = "EPL", season: str = "auto", venue: str = "all", last: int | None = Query(None, ge=1, le=60)):
-        return ok(await wb(request).team_maps_view(league, season, team, venue=venue, last=last))
+        return ok(await wb(request).team.maps(league, season, team, venue=venue, last=last))
 
     @app.get("/api/maps/player/{player_id}")
     async def maps_player(request: Request, player_id: int, league: str | None = None, season: str = "auto", last: int | None = Query(None, ge=1, le=60)):
-        return ok(await wb(request).player_maps_view(player_id, league, season, last=last))
+        return ok(await wb(request).player.maps(player_id, league, season, last=last))
 
     @app.get("/api/team/shots")
     async def team_shots(request: Request, team: str, league: str = "EPL", season: str = "auto", venue: str = "all", last: int | None = Query(None, ge=1, le=60)):
-        return ok(await wb(request).team_shots_view(league, season, team, venue=venue, last=last))
+        return ok(await wb(request).team.shots(league, season, team, venue=venue, last=last))
 
     @app.get("/api/team/matches")
     async def team_matches(request: Request, team: str, league: str = "EPL", season: str = "auto"):
-        return ok(await wb(request).team_matches_view(league, season, team))
+        return ok(await wb(request).team.matches(league, season, team))
 
     @app.get("/api/player/{player_id}")
     async def player(request: Request, player_id: int, league: str | None = None, season: str = "auto", seasons: str | None = None):
-        return ok(await wb(request).player_view(player_id, league, season, _ints(seasons) or None))
+        return ok(await wb(request).player.page(player_id, league, season, _ints(seasons) or None))
 
     @app.get("/api/player/{player_id}/similar")
     async def similar(request: Request, player_id: int, league: str = "EPL", seasons: str = "", max_age: int | None = None, min_age: int | None = None,
                       min_minutes: int | None = None, other_leagues: str = "", limit: int = Query(12, ge=1, le=30)):
         target_seasons = _ints(seasons)
         if not target_seasons:
-            resolved, _ = await wb(request).resolve_season(league, "auto")
+            resolved, _ = await wb(request).seasons.resolve(league, "auto")
             target_seasons = [resolved]
-        return ok(await wb(request).similar_view(player_id, league, target_seasons, max_age=max_age, min_age=min_age, min_minutes=min_minutes,
+        return ok(await wb(request).player.similar(player_id, league, target_seasons, max_age=max_age, min_age=min_age, min_minutes=min_minutes,
                                                  other_leagues=_list(other_leagues), limit=limit))
 
     @app.get("/api/compare/players")
     async def compare_players(request: Request, ids: str, league: str = "EPL", season: str = "auto"):
-        return ok(await wb(request).compare_players_view(_ints(ids), league, season))
+        return ok(await wb(request).compare.players(_ints(ids), league, season))
 
     @app.get("/api/compare/teams")
     async def compare_teams(request: Request, a: str, b: str, league: str = "EPL", season: str = "auto"):
-        return ok(await wb(request).compare_teams_view(league, season, a, b))
+        return ok(await wb(request).compare.teams(league, season, a, b))
 
     @app.get("/api/matches")
     async def matches(request: Request, league: str = "EPL", season: str = "auto"):
-        return ok(await wb(request).matches_view(league, season))
+        return ok(await wb(request).matches.season(league, season))
 
     @app.get("/api/match/{match_id}")
     async def match(request: Request, match_id: int, league: str = "EPL", season: str = "auto"):
-        return ok(await wb(request).match_view(match_id, league, season))
+        return ok(await wb(request).matches.report(match_id, league, season))
 
     @app.get("/api/search")
     async def search(request: Request, q: str = "", limit: int = Query(8, ge=1, le=20)):
-        return ok(await wb(request).search_view(q, limit))
+        return ok(await wb(request).search.query(q, limit))
 
     @app.get("/api/shortlist")
     async def shortlist(request: Request):
-        return ok({"items": wb(request).shortlist()})
+        return ok({"items": wb(request).shortlist.items()})
 
     @app.put("/api/shortlist/{player_id}")
     async def shortlist_put(request: Request, player_id: int, item: ShortlistItem):
         payload = {"id": player_id, **{k: v for k, v in item.model_dump(exclude_unset=True).items() if v is not None}}
-        return ok({"items": wb(request).shortlist_add(payload)})
+        return ok({"items": wb(request).shortlist.add(payload)})
 
     @app.delete("/api/shortlist/{player_id}")
     async def shortlist_delete(request: Request, player_id: int):
-        return ok({"items": wb(request).shortlist_remove(player_id)})
+        return ok({"items": wb(request).shortlist.remove(player_id)})
 
     @app.get("/api/data/status")
     async def data_status(request: Request):
-        return ok(await wb(request).data_status())
+        return ok(await wb(request).data.status())
 
     @app.post("/api/data/sync")
     async def data_sync(request: Request, body: SyncRequest):
-        return ok(wb(request).start_sync(body.leagues, body.seasons, body.force))
+        return ok(wb(request).data.start_sync(body.leagues, body.seasons, body.force))
 
     @app.post("/api/data/check")
     async def data_check(request: Request):
-        return ok(await wb(request).check_connection())
+        return ok(await wb(request).diagnostics.check())
 
     @app.get("/api/data/auto")
     async def data_auto(request: Request):
@@ -314,7 +314,7 @@ def create_app(settings: Settings | None = None, *, provider=None, today: date |
 
     @app.post("/api/data/reclaim")
     async def data_reclaim(request: Request):
-        return ok(await wb(request).reclaim_download_cache())
+        return ok(await wb(request).data.reclaim())
 
     @app.get("/api/data/jobs/{job_id}")
     async def job(request: Request, job_id: str):

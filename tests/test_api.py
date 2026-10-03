@@ -412,9 +412,9 @@ def test_your_own_birthdate_corrections_win(tmp_path):
     (tmp_path / "birthdates.json").write_text(json.dumps({"Sávio": "2004-04-10", "Pablo Ibáñez|Alaves": "1998-08-03", "Broken": "not a date"}))
     wb = Workbench(Settings(data_dir=tmp_path, demo=True, min_interval=0), today=date(2026, 10, 1))
     try:
-        assert wb.dob_info("Sávio", ["Manchester City"]) == ("2004-04-10", "manual")
-        assert wb.dob_info("Pablo Ibáñez", ["Alaves"]) == ("1998-08-03", "manual")  # name and club together
-        assert wb.dob_info("Pablo Ibáñez", ["Elche"])[1] != "manual"  # a different club is a different man
-        assert wb.dob_info("Broken", [])[1] != "manual"
+        assert wb.ages.dob_info("Sávio", ["Manchester City"]) == ("2004-04-10", "manual")
+        assert wb.ages.dob_info("Pablo Ibáñez", ["Alaves"]) == ("1998-08-03", "manual")  # name and club together
+        assert wb.ages.dob_info("Pablo Ibáñez", ["Elche"])[1] != "manual"  # a different club is a different man
+        assert wb.ages.dob_info("Broken", [])[1] != "manual"
     finally:
         asyncio.run(wb.close())

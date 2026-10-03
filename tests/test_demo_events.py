@@ -151,7 +151,7 @@ def test_the_feed_stores_matches_like_the_real_fetcher_and_never_repeats_itself(
                 assert status["running"] is False and status["done"] == 5 and status["total"] == 5 and status["finished"] >= status["started"]
             assert wb.events.pending_rebuild() == 0
             for code, season in feed.targets():                                  # the Understat-shaped match pages are stored too: scorers and shot locations
-                fetched = await wb._load(code, season)
+                fetched = await wb.seasons.load(code, season)
                 assert wb.matchsync.coverage(fetched.data)[0] == 5
             first = wb.events.match_ids("EPL", 2020)
             stored = wb.store.get("ws_raw", f"EPL:2020:{first[0]}")
@@ -211,12 +211,12 @@ def test_a_demo_database_made_by_an_older_world_is_started_afresh_and_keeps_the_
     first.store.put("match", "1", {"stale": True}, source="demo", complete=True)
     first.store.kv_set("demo:world", WORLD_VERSION - 1)                     # as an older version left it
     first.store.kv_set("events:run:EPL:2019", {"running": False})
-    first.shortlist_add({"id": 7, "name": "Kept"})
+    first.shortlist.add({"id": 7, "name": "Kept"})
     asyncio.run(first.close())
 
     again = Workbench(settings, today=TODAY)
     assert again.store.get("match", "1") is None and again.store.kv_get("events:run:EPL:2019") is None
-    assert again.store.kv_get("demo:world") == WORLD_VERSION and [i["id"] for i in again.shortlist()] == [7]
+    assert again.store.kv_get("demo:world") == WORLD_VERSION and [i["id"] for i in again.shortlist.items()] == [7]
     again.store.put("match", "2", {"fresh": True}, source="demo", complete=True)
     asyncio.run(again.close())
 

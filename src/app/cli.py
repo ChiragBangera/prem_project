@@ -117,7 +117,7 @@ def cmd_sync(args: argparse.Namespace) -> int:
     async def run() -> int:
         wb = Workbench()
         try:
-            job = wb.start_sync(leagues, seasons, force=args.force)
+            job = wb.data.start_sync(leagues, seasons, force=args.force)
             seen = 0
             while True:
                 state = wb.jobs.get(job["id"])
@@ -146,7 +146,7 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     async def run() -> dict:
         wb = Workbench()
         try:
-            return await wb.check_connection()
+            return await wb.diagnostics.check()
         finally:
             await wb.close()
 

@@ -87,9 +87,20 @@ Selection and counting, no models. From silver matches it returns small plain st
 - **Lenses** (`lenses.py`) are saved questions that are nothing but filter rules over metric values or percentiles, each with a plain explanation. **Views** (`views.py`) are the column presets. **Tags** (`tags.py`) are the profile labels: declared rules on role percentiles, with a "why" generated for each player who earns one.
 - **The catalog and the dictionary** (`catalog.py`, `dictionary.py`) are generated from the declarations: what the browser is told (metrics, groups, presets, lenses, tags, roles, positions) and what the Dictionary page prints. They cannot drift from the code because they *are* the code.
 
+## The workbench (`app/workbench`)
+
+`Workbench` (`core.py`) is the running app: it owns the store, the repository, the event store, the enrichment and update machinery and a memo of expensive results, and it starts and stops them. It holds no page logic itself. That lives in small parts, each a subclass of `Part` (`part.py`) that reaches the shared runtime through `wb`:
+
+- **Shared logic**, one module each: `seasons.py` (which league season a request means: `auto` is the newest with enough rounds played; the scope block every page starts with), `ages.py` (dates of birth in order of trust, and how well the sources agree), `links.py` (WhoScored's matches, clubs and players lined up with Understat's), `datasets.py` (the player and team datasets of some league seasons), `shortlist.py`, `diagnostics.py` (the connection check behind `prem doctor`) and `memo.py`.
+- **One module per page** in `pages/`: briefing, league, scout (the Scout and Teams explorers), player, team, compare, matches, search, dictionary and data. A page method takes what a route parsed and returns the payload the browser draws.
+
+`api.py` is a thin layer over these: a route parses its query, calls one page method (`wb.team.page(...)`) and returns the result; failures are `AppError`s, answered in one format. Everything the pages need is on `wb`, so a page can be tested without a server.
+
+**The memo.** An expensive result (a dataset, a team's maps, the match summaries) goes through `await wb.memo(key, version, compute)`. The value stored under `key` is returned if it was built for this exact `version`; otherwise it is computed once, in a worker thread, even when several requests ask at the same moment. A version is a tuple of tokens that change when any input does. The whole memo is dropped when the date changes, because some views read it.
+
 ## From dataset to screen
 
-`analytics/players.py` and `analytics/teams.py` gather the inputs (Understat's season table, the stored match pages, linked event totals), run the registry, rank, and return **every row** of the chosen league-seasons. `workbench.py` composes page-shaped views and memoises them against version tokens (league data, event versions, match-page epoch, squad-list version), so a result is rebuilt only when something it depends on changed.
+`analytics/players.py` and `analytics/teams.py` gather the inputs (Understat's season table, the stored match pages, linked event totals), run the registry, rank, and return **every row** of the chosen league-seasons. The workbench (below) composes page-shaped views and memoises them against version tokens (league data, event versions, match-page epoch, squad-list version), so a result is rebuilt only when something it depends on changed.
 
 `/api/players` and `/api/teams` return every row compactly as `{identity..., v: [values], p: [percentiles]}` with both arrays aligned to one `keys` list: about 800 KB for a league-season, once. **Filtering, sorting, Top N and the map all happen in the browser** on that payload (`web/js/lib/filters.js`, pure and unit tested), so they respond instantly and a new column never needs a request.
 
@@ -146,6 +157,7 @@ While the app runs, a **cycle** happens every 15 minutes (90 seconds while there
 - **A lens.** One `Lens(...)` in `metrics/lenses.py`: rules on metric values or percentiles, and a plain explanation. A test checks that every rule names a real metric.
 - **A profile tag.** One `Tag(...)` in `metrics/tags.py`: the role, the rules, the metric that ranks it among a player's tags, and the evidence shown in its "why". It appears in the Profile filter and the dictionary.
 - **A pitch-map layer.** Collect it in `events/maps.py` (silver in, small plain structure out), then add a tab in `web/js/ui/maplab.js` and a drawing in `web/js/charts/pitchmaps.js`. Maps read silver, so no new request is ever needed.
+- **A page.** A module in `workbench/pages/` with a class that extends `Part`, created in `workbench/core.py`, a thin route in `api.py`, and a page in `web/js/pages`. Logic that several pages need goes next to the core (`seasons.py`, `ages.py`, `links.py`, `datasets.py`), not in a page.
 - **A new event qualifier.** Add it to `events/schema.py`, bump `SILVER_VERSION`; the store rebuilds silver from the stored raw pages.
 
 ## Tests
@@ -158,7 +170,7 @@ While the app runs, a **cycle** happens every 15 minutes (90 seconds while there
 | Event pipeline: raw, silver, gold, store and rebuilds, fetching, linking, maps | `test_events_store`, `test_events_counters`, `test_events_fetch`, `test_events_dataset`, `test_events_api`, `test_events_cli`, `test_maps` |
 | Metrics: registry consistency, arithmetic, tags, lenses, views, dictionary | `test_metrics_registry`, `test_tags` |
 | Datasets and analytics: players, teams, insights, diagnostics | `test_players_analytics`, `test_teams_dataset`, `test_analytics_core`, `test_insights`, `test_diagnostics` |
-| Updater and demo world | `test_autosync`, `test_demo_world`, `test_demo_events` |
+| Updater, stopping the app, and the demo world | `test_autosync`, `test_cli_stop`, `test_workbench_today`, `test_demo_world`, `test_demo_events` |
 | HTTP API end to end on the demo world | `test_api`, `test_birthdates_api` |
 | Browser helpers: filters, formatting, charts, router, match cards; every module's imports and names | `tests/js/*.test.mjs` |
 | The real UI in headless Chromium (demo world) | `npm run e2e` (`tools/e2e.mjs`) |

@@ -27,7 +27,7 @@ class Clock:
 
 def make(tmp_path, monkeypatch, **kwargs) -> Workbench:
     monkeypatch.delenv("PREM_TODAY", raising=False)
-    monkeypatch.setattr("app.workbench.date", Clock)
+    monkeypatch.setattr("app.workbench.core.date", Clock)
     return Workbench(Settings(data_dir=tmp_path, min_interval=0), provider=FakeProvider(), **kwargs)
 
 
@@ -82,10 +82,10 @@ async def test_views_that_read_the_date_are_rebuilt_when_the_day_changes(tmp_pat
 
     try:
         Clock.now = date(2026, 10, 2)
-        assert await wb._memo_async(("view",), 1, compute) == 1
-        assert await wb._memo_async(("view",), 1, compute) == 1                              # the same day: served from memory
+        assert await wb.memo(("view",), 1, compute) == 1
+        assert await wb.memo(("view",), 1, compute) == 1                              # the same day: served from memory
         Clock.now = date(2026, 10, 3)
-        assert await wb._memo_async(("view",), 1, compute) == 2                              # the next day: built again, for the new date
+        assert await wb.memo(("view",), 1, compute) == 2                              # the next day: built again, for the new date
         assert built == [date(2026, 10, 2), date(2026, 10, 3)]
     finally:
         Clock.now = date(2026, 10, 2)
