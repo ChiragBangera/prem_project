@@ -22,5 +22,6 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
     CMD python -c "import os, urllib.request; urllib.request.urlopen('http://127.0.0.1:' + os.getenv('PORT', '8000') + '/api/health', timeout=3)"
 
-# The app binds to all interfaces inside the container; publish the port only where you want it reachable.
+# Inside the container the app listens on every interface, which is how a published port reaches it. It has NO LOGIN: publish the port only where
+# you want it reachable, e.g. `docker run -p 127.0.0.1:8000:8000 ...` keeps it to this computer; `-p 8000:8000` opens it to the whole network.
 CMD ["sh", "-c", "uvicorn app.api:app --host 0.0.0.0 --port ${PORT}"]
