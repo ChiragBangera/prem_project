@@ -84,6 +84,8 @@ Just want to look around first? `uv run prem serve --demo` serves a synthetic wo
 | `prem rebuild` | Bring every derived event layer up to date with the current definitions, from the stored pages, with no network |
 | `prem clear --yes` | Delete stored league, match and player data (your shortlist stays; event data stays unless you add `--events`) |
 
+The server writes what it does and any error, with its traceback, to `<data dir>/logs/server.log` (rotated; the event fetcher keeps its own logs in the same folder), so a problem seen in the browser can be traced even when the server was started in the background.
+
 ### Configuration
 
 | Variable | Meaning |
