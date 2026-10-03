@@ -10,7 +10,8 @@ from __future__ import annotations
 
 import html as _html
 import math
-from typing import Any, Iterable
+from typing import Any
+from collections.abc import Iterable
 
 from .models import (
     CareerSeason,
@@ -40,7 +41,7 @@ def num(value: Any, default: float = 0.0) -> float:
 
 
 def integer(value: Any, default: int = 0) -> int:
-    return int(round(num(value, default)))
+    return round(num(value, default))
 
 
 def maybe_num(value: Any) -> float | None:
@@ -59,6 +60,11 @@ def text(value: Any, default: str = "") -> str:
         return default
     out = str(value)
     return (_html.unescape(out) if "&" in out else out).strip()
+
+
+def mapping(value: Any) -> dict:
+    """``value`` if it is an object, otherwise an empty one: a field that came back null, as a list or as text reads as "nothing there"."""
+    return value if isinstance(value, dict) else {}
 
 
 def rows(value: Any) -> list[dict]:
@@ -129,7 +135,7 @@ def _fixtures(raw: Any, warnings: list[str]) -> list[Fixture]:
 def _teams(raw: Any, fixtures: list[Fixture], warnings: list[str]) -> dict[str, Team]:
     by_key: dict[tuple[str, str], Fixture] = {}
     for fixture in fixtures:
-        for team, opponent in ((fixture.home, fixture.away), (fixture.away, fixture.home)):
+        for team, _opponent in ((fixture.home, fixture.away), (fixture.away, fixture.home)):
             by_key[(team, fixture.dt)] = fixture
             by_key.setdefault((team, fixture.date), fixture)  # date-only fallback
 
@@ -150,10 +156,10 @@ def _teams(raw: Any, fixtures: list[Fixture], warnings: list[str]) -> dict[str, 
             if match is None:
                 warnings.append(f"Skipped an unreadable match row for {name}.")
                 continue
-            fixture = by_key.get((name, match.dt)) or by_key.get((name, match.date))
-            if fixture is not None:
-                match.opponent = fixture.away if fixture.home == name else fixture.home
-                match.match_id = fixture.id
+            found = by_key.get((name, match.dt)) or by_key.get((name, match.date))
+            if found is not None:
+                match.opponent = found.away if found.home == name else found.home
+                match.match_id = found.id
             history.append(match)
         history.sort(key=lambda m: (m.dt, m.venue))
         for index, match in enumerate(history, start=1):
@@ -304,7 +310,7 @@ def normalize_player_page(raw: dict, player_id: int) -> PlayerPage:
     info = info if isinstance(info, dict) else {}
 
     shots = sorted((_shot(r) for r in rows(raw.get("shots"))), key=lambda s: (s.date, s.minute))
-    groups = raw.get("groups") if isinstance(raw.get("groups"), dict) else {}
+    groups = mapping(raw.get("groups"))
     career = sorted((_career_row(r) for r in rows(groups.get("season"))), key=lambda c: c.season)
 
     splits: dict[int, dict[str, list[SplitRow]]] = {}
@@ -347,8 +353,8 @@ def normalize_player_page(raw: dict, player_id: int) -> PlayerPage:
 def normalize_match_page(raw: dict, match_id: int) -> MatchPage:
     if not isinstance(raw, dict):
         raise ValueError("Match payload is not an object.")
-    shots_raw = raw.get("shots") if isinstance(raw.get("shots"), dict) else {}
-    rosters_raw = raw.get("rosters") if isinstance(raw.get("rosters"), dict) else {}
+    shots_raw = mapping(raw.get("shots"))
+    rosters_raw = mapping(raw.get("rosters"))
     shots = {
         side: sorted((_shot(r) for r in rows(shots_raw.get(side))), key=lambda s: s.minute) for side in ("h", "a")
     }
@@ -385,7 +391,7 @@ def normalize_match_page(raw: dict, match_id: int) -> MatchPage:
 
 
 def _stat_row(name: str, value: dict) -> dict:
-    against = value.get("against") if isinstance(value.get("against"), dict) else {}
+    against = mapping(value.get("against"))
     return {
         "name": str(value.get("stat") or name),
         "time": integer(value.get("time")) if value.get("time") is not None else None,
@@ -403,7 +409,7 @@ def _stat_row(name: str, value: dict) -> dict:
 def normalize_team_page(raw: dict, team: str, season: int) -> TeamPage:
     if not isinstance(raw, dict):
         raise ValueError("Team payload is not an object.")
-    statistics = raw.get("statistics") if isinstance(raw.get("statistics"), dict) else {}
+    statistics = mapping(raw.get("statistics"))
     groups: dict[str, list[dict]] = {}
     for group, entries in statistics.items():
         if not isinstance(entries, dict):

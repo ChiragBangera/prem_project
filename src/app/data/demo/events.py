@@ -16,6 +16,7 @@ import math
 import random
 import zlib
 from datetime import date
+from typing import Any
 
 from app.events import schema as S
 
@@ -67,6 +68,12 @@ def _poisson(rng: random.Random, lam: float) -> int:
         k += 1
 
 
+def _horizontal(player: Player) -> float:
+    """Where a player stands across the pitch in the lineup, on the 0-10 scale of a formation slot."""
+    y = ZONE[player.role][2]
+    return y / 10 if y else (8.4 if player.side == "L" else 1.6)
+
+
 def _clip(v: float, lo: float = 0.5, hi: float = 99.5) -> float:
     return max(lo, min(hi, v))
 
@@ -110,7 +117,7 @@ class _Match:
         }
         if player is not None:
             e["playerId"] = WS_PLAYER + player.id
-        if x is not None:
+        if x is not None and y is not None:
             e["x"], e["y"] = round(_clip(x), 1), round(_clip(y), 1)
         if end is not None:
             e["endX"], e["endY"] = round(_clip(end[0]), 1), round(_clip(end[1]), 1)
@@ -120,11 +127,12 @@ class _Match:
 
     def spot(self, player: Player, shift: float = 0.0) -> tuple[float, float]:
         mx, sx, my, sy = ZONE[player.role]
+        line: float
         if my is None:
-            my = 84 if player.side == "L" else 16
+            line = 84 if player.side == "L" else 16
         else:
-            my += _lane(player.id) * LANE[player.role]       # two centre-backs or three midfielders do not all stand on the same line
-        return _clip(self.rng.gauss(mx + shift, sx), 1, 99), _clip(self.rng.gauss(my, sy), 1, 99)
+            line = my + _lane(player.id) * LANE[player.role]       # two centre-backs or three midfielders do not all stand on the same line
+        return _clip(self.rng.gauss(mx + shift, sx), 1, 99), _clip(self.rng.gauss(line, sy), 1, 99)
 
     # ------------------------------------------------------------------ passes
 
@@ -228,7 +236,6 @@ class _Match:
     def set_pieces(self, venue: str) -> None:
         rng = self.rng
         xg = self.m.hxg if venue == "h" else self.m.axg
-        takers = [a for a in self.apps[venue] if a.player.role != "GK"]
         for _ in range(max(0, int(rng.gauss(2.0 + 2.6 * xg, 1.4)))):                       # corners
             minute = rng.randint(2, self.full_time - 2)
             on = [a for a in self._on(venue, minute) if a.player.role != "GK"]
@@ -337,10 +344,10 @@ class _Match:
                              "id": 900000 + period, "minute": minute, "second": 0, "expandedMinute": minute, "period": {"displayName": PERIOD[period], "value": period}, "isTouch": False, "qualifiers": []})
         half = {v: sum(1 for s in m.shots[v] if s.result == "Goal" and s.minute <= 45) + sum(1 for og in m.own if og.venue != v and og.minute <= 45) for v in ("h", "a")}
         ht = f"{half['h']} : {half['a']}"
-        best = {}
-        sides = {}
+        best: dict[tuple[str, int], float] = {}
+        sides: dict[str, list[dict[str, Any]]] = {}
         for venue in ("h", "a"):
-            players = []
+            players: list[dict[str, Any]] = []
             for a in self.apps[venue]:
                 p = a.player
                 goals = sum(1 for s in m.shots[venue] if s.shooter.id == p.id and s.result == "Goal")
@@ -354,7 +361,7 @@ class _Match:
                     "stats": {"ratings": {"90": rating}}, "field": "home" if venue == "h" else "away",
                 })
             sides[venue] = players
-        top = max(best, key=best.get)
+        top = max(best, key=best.__getitem__)
         for venue, players in sides.items():
             for pl in players:
                 if (venue, pl["playerId"] - WS_PLAYER) == top:
@@ -371,7 +378,7 @@ class _Match:
                 "formations": [{
                     "formationName": shape, "startMinuteExpanded": 0, "endMinuteExpanded": self.full_time, "formationSlots": list(range(1, len(starters) + 1)),
                     "playerIds": [WS_PLAYER + a.player.id for a in starters],
-                    "formationPositions": [{"horizontal": round(ZONE[a.player.role][2] / 10 if ZONE[a.player.role][2] else (8.4 if a.player.side == "L" else 1.6), 1), "vertical": round(ZONE[a.player.role][0] / 10, 1)} for a in starters],
+                    "formationPositions": [{"horizontal": round(_horizontal(a.player), 1), "vertical": round(ZONE[a.player.role][0] / 10, 1)} for a in starters],
                     "captainPlayerId": WS_PLAYER + starters[0].player.id if starters else None,
                 }],
                 "_quality": club.quality,

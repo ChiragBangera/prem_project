@@ -27,7 +27,8 @@ import os
 import sys
 import time
 from collections import deque
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any
+from collections.abc import Callable
 
 from app.errors import AppError
 from app.events import raw as R
@@ -64,7 +65,7 @@ DEFAULT_PREFS: dict[str, Any] = {
 
 
 class AutoSync:
-    def __init__(self, wb: "Workbench", *, clock: Callable[[], float] = time.time, spawn: Callable[..., Any] | None = None):
+    def __init__(self, wb: Workbench, *, clock: Callable[[], float] = time.time, spawn: Callable[..., Any] | None = None):
         self.wb = wb
         self.settings = wb.settings
         self._clock = clock
@@ -75,6 +76,7 @@ class AutoSync:
         self._stop = False
         self._proc: Any = None
         self._proc_label: str | None = None
+        self._reapers: set[asyncio.Task] = set()      # tasks that wait for the fetcher to end; kept so they are not collected mid-wait
         self._log: deque[dict] = deque(maxlen=40)
         self.running = False
         self.next_at: float | None = None
@@ -95,7 +97,7 @@ class AutoSync:
         merged = {**current, **{k: v for k, v in patch.items() if k in ("enabled", "seasons_back") and v is not None}}
         if isinstance(patch.get("events"), dict):
             events = {**current["events"], **{k: v for k, v in patch["events"].items() if k in ("enabled", "leagues", "seasons_back")}}
-            events["leagues"] = [l for l in events["leagues"] if l in LEAGUES] or list(LEAGUES)
+            events["leagues"] = [lg for lg in events["leagues"] if lg in LEAGUES] or list(LEAGUES)
             events["seasons_back"] = max(0, min(int(events.get("seasons_back") or 0), 3))
             merged["events"] = events
         merged["seasons_back"] = max(0, min(int(merged["seasons_back"]), 4))
@@ -139,7 +141,7 @@ class AutoSync:
             self._proc.terminate()
             try:
                 await asyncio.wait_for(self._proc.wait(), STOP_WAIT)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 with contextlib.suppress(ProcessLookupError):
                     self._proc.kill()          # it ignored the request: a stopped app must not leave a browser fetching in the background
             except ProcessLookupError:
@@ -167,10 +169,8 @@ class AutoSync:
                 delay = min(self.settings.auto_interval * 2 ** failures, 2 * 3600)
             self.next_at = self._clock() + delay
             self._wake.clear()
-            try:
+            with contextlib.suppress(TimeoutError):
                 await asyncio.wait_for(self._wake.wait(), timeout=delay)
-            except asyncio.TimeoutError:
-                pass
 
     # ------------------------------------------------------------------ one cycle
 
@@ -232,6 +232,7 @@ class AutoSync:
                 result["rebuilt"] = rebuilt["rebuilt"]
                 self._note("info", f"rebuilt derived event data for {rebuilt['rebuilt']} matches")
         except Exception as exc:  # pragma: no cover - defensive
+            log.exception("housekeeping failed")
             result["errors"].append(f"housekeeping: {type(exc).__name__}")
 
     async def _league_season(self, code: str, season: int, result: dict, deadline: float) -> None:
@@ -264,6 +265,7 @@ class AutoSync:
             if run["fetched"]:
                 self._note("info", f"{pretty(code, season)}: fetched {run['fetched']} match pages")
         except Exception as exc:  # pragma: no cover - defensive
+            log.exception("match pages for %s failed unexpectedly", pretty(code, season))
             result["errors"].append(f"{pretty(code, season)}: {type(exc).__name__}")
         if not self.settings.demo:
             self.wb.enricher.schedule_rosters([(code, season)])
@@ -306,10 +308,14 @@ class AutoSync:
         cmd = [sys.executable, "-m", "app.cli", "events", "sync", "--league", code, "--seasons", str(season), "--limit", str(EVENT_BATCH), "--data-dir", str(self.settings.data_dir)]
         logs = self.settings.data_dir / "logs"
         logs.mkdir(parents=True, exist_ok=True)
+        handle = None
         try:
-            handle = open(logs / f"events-{code}-{season}.log", "ab")
+            handle = await asyncio.to_thread(open, logs / f"events-{code}-{season}.log", "ab")  # the fetcher writes to it until it ends; _reap closes it
             self._proc = await self._spawn(*cmd, stdout=handle, stderr=handle, env={**os.environ, "PREM_DATA_DIR": str(self.settings.data_dir)})
         except Exception as exc:
+            log.exception("could not start the event fetcher for %s", label)
+            if handle is not None:
+                handle.close()
             self._fail(f"events:{code}:{season}", f"{type(exc).__name__}: {exc}")
             result["errors"].append(f"could not start the event fetcher: {type(exc).__name__}")
             return
@@ -317,7 +323,9 @@ class AutoSync:
         self.store.kv_set(EVENT_RUN_PREFIX + f"{code}:{season}", {"played": played, "at": self._clock()})
         result["events"]["started"] = label
         self._note("info", f"started the event fetcher for {label} ({played - len(self.wb.events.match_ids(code, season))} matches missing)")
-        asyncio.create_task(self._reap(self._proc, handle, f"{code}:{season}"))
+        reaper = asyncio.create_task(self._reap(self._proc, handle, f"{code}:{season}"))
+        self._reapers.add(reaper)
+        reaper.add_done_callback(self._reapers.discard)
 
     @staticmethod
     def _named(key: str) -> str:

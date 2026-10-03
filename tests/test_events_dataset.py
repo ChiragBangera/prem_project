@@ -19,9 +19,9 @@ TODAY = date(2020, 6, 1)
 def totals_for(pid: int, minutes: float = 1800.0) -> dict:
     """Synthetic event counts that grow with the id, so rankings are predictable: a higher id duels more and wins more."""
     scale = 1 + pid % 7
-    t = {k: 0 for k in COUNTS}
+    t = dict.fromkeys(COUNTS, 0)
     t.update(passes=600 * scale // 4, pass_ok=420 * scale // 4, fwd=150 * scale // 4, prog=20 * scale, tackles=10 * scale, challenges=20, aer=30,
-             aer_won=10 + scale * 2, aer_def=20, aer_def_won=5 + scale * 2, **{"int": 8 * scale, "rec": 30 * scale})
+             aer_won=10 + scale * 2, aer_def=20, aer_def_won=5 + scale * 2, int=8 * scale, rec=30 * scale)
     return {**t, "id": pid, "name": f"P{pid}", "teams": {"X": minutes}, "min": minutes, "matches": 20, "starts": 20}
 
 

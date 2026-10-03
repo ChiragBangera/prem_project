@@ -13,7 +13,7 @@ analytics output; they never fetch. Two rules keep them honest:
 from __future__ import annotations
 
 from dataclasses import dataclass, field, asdict
-from typing import Iterable, Sequence
+from collections.abc import Iterable, Sequence
 
 TONES = ("positive", "negative", "warning", "neutral", "info")
 
@@ -113,7 +113,9 @@ def rank(insights: Iterable[Insight], limit: int | None = None, per_kind: int | 
             capped.append(insight)
         ordered = capped
     if diversify:
-        firsts, rest, kinds = [], [], set()
+        firsts: list[Insight] = []
+        rest: list[Insight] = []
+        kinds: set[str] = set()
         for insight in ordered:
             (rest if insight.kind in kinds else firsts).append(insight)
             kinds.add(insight.kind)

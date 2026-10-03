@@ -22,7 +22,7 @@ async def serve(app: web.Application) -> TestServer:
 
 
 def client_for(server: TestServer, **kwargs) -> UnderstatClient:
-    defaults = dict(min_interval=0, retries=2, backoff_base=0.001, timeout=2)
+    defaults = {"min_interval": 0, "retries": 2, "backoff_base": 0.001, "timeout": 2}
     return UnderstatClient(base_url=str(server.make_url("")), **{**defaults, **kwargs})
 
 

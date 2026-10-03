@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import contextlib
 import logging
 import logging.handlers
 import os
@@ -13,7 +14,7 @@ import sys
 import threading
 import time
 import webbrowser
-from typing import Callable
+from collections.abc import Callable
 
 from app import __version__
 from app.config import Settings
@@ -84,6 +85,11 @@ def _stoppable_server(config):
     return Server(config)
 
 
+def _open_when_up(url: str) -> None:
+    time.sleep(0.8)
+    webbrowser.open(url)
+
+
 def cmd_serve(args: argparse.Namespace) -> int:
     import uvicorn
 
@@ -94,16 +100,14 @@ def cmd_serve(args: argparse.Namespace) -> int:
     log_file = configure_logging(settings.data_dir)
     print(f"\n  Prem Lab {__version__}\n  {url}\n  data: {mode}\n  cache: {settings.db_path}\n  log: {log_file or 'not written'}\n  Ctrl+C to stop\n")
     if not args.no_open:
-        threading.Thread(target=lambda: (time.sleep(0.8), webbrowser.open(url)), daemon=True).start()
+        threading.Thread(target=_open_when_up, args=(url,), daemon=True).start()
     options = {"host": args.host, "port": args.port, "log_level": "warning", "timeout_graceful_shutdown": 5}   # 5 s for requests under way when it is stopped
     if args.reload:                                                  # a development aid, run by uvicorn's own supervisor
         uvicorn.run("app.api:app", reload=True, **options)
         return 0
     server = _stoppable_server(uvicorn.Config("app.api:app", **options))
-    try:
+    with contextlib.suppress(KeyboardInterrupt):                     # a second Ctrl+C while it is stopping
         server.run()
-    except KeyboardInterrupt:                                        # a second Ctrl+C while it is stopping
-        pass
     return 0 if server.started else 3                                # 3 is what uvicorn itself exits with when it cannot start (the port is taken, say)
 
 
@@ -111,7 +115,7 @@ def cmd_sync(args: argparse.Namespace) -> int:
     _apply_env(args)
     from app.workbench import Workbench
 
-    leagues = [l.strip() for l in args.leagues.split(",") if l.strip()]
+    leagues = [name.strip() for name in args.leagues.split(",") if name.strip()]
     seasons = [int(s) for s in args.seasons.split(",") if s.strip()] if args.seasons else [current_season()]
 
     async def run() -> int:
@@ -121,6 +125,8 @@ def cmd_sync(args: argparse.Namespace) -> int:
             seen = 0
             while True:
                 state = wb.jobs.get(job["id"])
+                if state is None:        # cannot happen: the job was created a line ago, and finished jobs are kept
+                    raise RuntimeError("the sync job was lost")
                 for line in state.log[seen:]:
                     print(" ", line)
                 seen = len(state.log)
@@ -303,7 +309,7 @@ def cmd_events_status(args: argparse.Namespace) -> int:
 
 
 def cmd_events(args: argparse.Namespace) -> int:
-    handler = {"sync": cmd_events_sync, "status": cmd_events_status, "import": cmd_events_import, "reclaim": cmd_events_reclaim}.get(getattr(args, "events_command", None))
+    handler = {"sync": cmd_events_sync, "status": cmd_events_status, "import": cmd_events_import, "reclaim": cmd_events_reclaim}.get(getattr(args, "events_command", ""))
     if handler is None:
         print("Use `prem events sync` to fetch event data, `prem events status` to see what is stored, or `prem events import` to adopt pages already downloaded.")
         return 1

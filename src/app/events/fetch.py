@@ -16,7 +16,7 @@ import os
 import shutil
 import time
 from pathlib import Path
-from typing import Callable
+from collections.abc import Callable
 
 from . import raw as R
 from .store import EventStore
@@ -127,7 +127,7 @@ def sync_season(
                 log(f"  [{i}/{len(todo)}] {label}: stored")
             except KeyboardInterrupt:
                 raise
-            except Exception as exc:  # one bad match must not stop the run; a wall of them means we are blocked
+            except Exception as exc:  # noqa: BLE001 - one bad match must not stop the run (it is counted and logged below); a wall of them means we are blocked
                 failed, consecutive = failed + 1, consecutive + 1
                 events.set_status(league, season, last_error=f"{label}: {str(exc)[:160]}")
                 log(f"  [{i}/{len(todo)}] {label}: FAILED ({str(exc)[:100]})")

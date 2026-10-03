@@ -21,7 +21,6 @@ def match_insights(report: dict) -> list[Insight]:
         winner = home if winner_side == "home" else away
         loser = away if winner_side == "home" else home
         if p_actual < 0.25:
-            other = "away" if winner_side == "home" else "home"
             fav = home if dv["home"] > dv["away"] else away
             out.append(Insight(
                 f"match.{fx['id']}.against", "match",

@@ -126,7 +126,7 @@ class UnderstatClient:
                             )
                         else:
                             return _parse_json(await resp.text(), path)
-            except asyncio.TimeoutError as exc:
+            except TimeoutError as exc:
                 last_error = UpstreamTimeout(f"Understat did not answer {path} in time.")
                 last_error.__cause__ = exc
             except aiohttp.ClientError as exc:

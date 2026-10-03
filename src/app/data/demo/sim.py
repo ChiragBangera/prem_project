@@ -319,7 +319,8 @@ def _simulate_match(rng, data: SeasonData, fixture: FixtureSim, mu_h: float, mu_
         for _ in range(rng.choice([3, 3, 4, 5])):
             if not bench_pool:
                 break
-            outgoing = rng.choice([a for a in apps if a.end == 999 and a.player.role != "GK" and a.start == 0] or [None])
+            candidates: list[Appearance | None] = [a for a in apps if a.end == 999 and a.player.role != "GK" and a.start == 0]
+            outgoing = rng.choice(candidates or [None])      # (a draw even when there is nobody: the world's random stream stays as it was)
             if outgoing is None:
                 break
             same_role = [p for p in bench_pool if p.role == outgoing.player.role]
@@ -373,7 +374,7 @@ def _simulate_match(rng, data: SeasonData, fixture: FixtureSim, mu_h: float, mu_
     ph, pd, pa = outcome_probs(poisson_binomial(s.xg for s in shots["h"]), poisson_binomial(s.xg for s in shots["a"]))
     ppda = {}
     deep = {}
-    for venue, (team, opp, _mu) in sides.items():
+    for venue, (team, _opp, _mu) in sides.items():
         other = "a" if venue == "h" else "h"
         att = max(90.0, rng.gauss(265, 42))
         ppda[venue] = (att, max(6.0, att / max(5.5, clubs[team].ppda * math.exp(rng.gauss(0, 0.16)))))

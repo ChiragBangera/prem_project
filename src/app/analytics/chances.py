@@ -236,7 +236,7 @@ def league_baseline(prepared_by_team: dict[str, list[dict]]) -> dict[tuple[str, 
 def compare_to_league(team: str, prepared: list[dict], baseline: dict) -> dict[str, dict[str, dict[str, dict]]]:
     """{group: {row: {metric: {avg, rank, of, z}}}} for one team. Rank 1 is best (or highest for identity metrics)."""
     out: dict[str, dict[str, dict[str, dict]]] = {}
-    for (group, name), row in _table(prepared).items():
+    for group, name in _table(prepared):
         for metric, (_label, better) in METRICS.items():
             values = baseline.get((group, name, metric))
             if not values or team not in values or len(values) < MIN_LEAGUE_TEAMS:
@@ -278,7 +278,7 @@ def _fmt(metric: str, value: float, unit: str) -> str:
 
 
 def _league_insight(team: str, group: dict, row: dict, metric: str, stat: dict) -> Insight | None:
-    label, better = METRICS[metric]
+    _label, better = METRICS[metric]
     key = group["key"]
     if key == "result" and metric != "share_for":
         return None  # a league rank of "xG of blocked shots" says little; only the share of xG per outcome does

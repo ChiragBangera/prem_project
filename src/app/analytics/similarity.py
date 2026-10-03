@@ -9,7 +9,7 @@ with a gap of 8 is, on average, within 8 percentile points on every metric.
 from __future__ import annotations
 
 import math
-from typing import Sequence
+from collections.abc import Sequence
 
 from .ages import sure_age
 from .metrics import METRIC_BY_KEY, PROFILE_METRICS
@@ -32,7 +32,7 @@ def similar_players(
     same_group: bool = True,
 ) -> list[dict]:
     group = target.get("group")
-    keys = [k for k in PROFILE_METRICS.get(group, ()) if k != "yellow90" and k in target.get("pct", {})]
+    keys = [k for k in PROFILE_METRICS.get(group or "", ()) if k != "yellow90" and k in target.get("pct", {})]
     if not keys:
         return []
     minutes_floor = min_minutes if min_minutes is not None else 0
@@ -70,7 +70,7 @@ def similar_players(
                 "similarity": round(max(0.0, 100.0 - avg_gap), 1),
                 "avg_gap": round(avg_gap, 1),
                 "shared_strengths": [_label(k) for k in strong_together[:3]],
-                "biggest_difference": _label(max(gaps, key=gaps.get)) if gaps else None,
+                "biggest_difference": _label(max(gaps, key=gaps.__getitem__)) if gaps else None,
             }
         )
     out.sort(key=lambda r: (-r["similarity"], -r["minutes"]))

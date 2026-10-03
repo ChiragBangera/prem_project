@@ -153,7 +153,7 @@ def test_a_big_backlog_is_worked_off_over_several_cycles_within_a_time_budget(tm
 
 def test_the_event_fetcher_starts_only_when_enabled_available_and_something_is_missing(tmp_path, monkeypatch):
     async def go():
-        wb, provider = make(tmp_path)
+        wb, _provider = make(tmp_path)
         spawned = []
 
         async def spawn(*cmd, **kw):
@@ -173,7 +173,7 @@ def test_the_event_fetcher_starts_only_when_enabled_available_and_something_is_m
             assert cmd[cmd.index("--limit") + 1] == str(EVENT_BATCH) and cmd[cmd.index("--data-dir") + 1] == str(tmp_path)
             await asyncio.sleep(0)                                                       # let the reaper notice the process ended
             await asyncio.sleep(0)
-            again = await wb.auto.run_once()
+            await wb.auto.run_once()
             assert len(spawned) == 1                                                     # looked at exactly 3 finished matches already, within the recheck window: not run again
             wb.auto._clock = lambda: wb.store.kv_get("autosync:events:EPL:2026")["at"] + EVENT_RECHECK + 5
             await wb.auto.run_once()
@@ -186,7 +186,7 @@ def test_the_event_fetcher_starts_only_when_enabled_available_and_something_is_m
 
 def test_no_event_fetcher_without_the_optional_dependencies_and_a_failed_one_backs_off(tmp_path, monkeypatch):
     async def go():
-        wb, provider = make(tmp_path)
+        wb, _provider = make(tmp_path)
         spawned = []
 
         async def spawn(*cmd, **kw):

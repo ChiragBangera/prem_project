@@ -191,7 +191,7 @@ def _assign_dead_ball_takers(league: League, team: str, ids: list[int]) -> None:
 
 def build_initial_rosters(league: League, season: int) -> None:
     rosters: dict[str, list[int]] = {}
-    for name, _short, tier in CLUBS[league.code]:
+    for name, _short, _tier in CLUBS[league.code]:
         ids = []
         for role, count in ROSTER_TEMPLATE.items():
             for _ in range(count):

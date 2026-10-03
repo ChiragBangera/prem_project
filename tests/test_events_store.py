@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import time
-from datetime import date
 
 import pytest
 
@@ -182,7 +181,7 @@ def test_a_match_names_cannot_place_is_placed_by_date_and_score_only_when_exactl
     events.ingest("EPL", 2025, 1, raw_doc(home="Zorb FC", away="Quux Town", score="3 : 2", day="2025-08-16"))
     events.ingest("EPL", 2025, 2, raw_doc(home="Zorb FC", away="Quux Town", score="1 : 0", day="2025-08-16"))
     fixtures = [fixture(10, "2025-08-16", "Alpha", "Beta", 3, 2), fixture(11, "2025-08-16", "Gamma", "Delta", 1, 0), fixture(12, "2025-08-16", "Epsilon", "Zeta", 1, 0)]
-    links, teams, unlinked = link_fixtures(events.season("EPL", 2025), fixtures)
+    links, _teams, unlinked = link_fixtures(events.season("EPL", 2025), fixtures)
     assert links[1].id == 10 and 2 not in links and [m["game"] for m in unlinked] == [2]         # two fixtures share 1-0 that day: refuse to guess
 
 

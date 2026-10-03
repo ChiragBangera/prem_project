@@ -57,7 +57,7 @@ def test_clear_keeps_event_data_unless_asked(tmp_path, capsys):
 
 
 def test_sync_reports_a_missing_optional_dependency_cleanly(tmp_path, capsys, monkeypatch):
-    import app.events.fetch as fetch
+    from app.events import fetch
 
     monkeypatch.setattr(fetch, "find_browser", lambda: "/usr/bin/true")
     monkeypatch.setitem(__import__("sys").modules, "soccerdata", None)               # importing it now raises ImportError

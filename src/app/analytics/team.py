@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Sequence
+from collections.abc import Sequence
+from typing import Any
 
 from app.data.models import LeagueSeason, Team, TeamMatch
 from app.errors import NotFound
@@ -134,7 +135,7 @@ def team_profile(ls: LeagueSeason, name: str, *, eras: Sequence[dict] = ()) -> d
     vs_weak = [m for m in history if m.opponent and strength.get(m.opponent, 0) < median]
     half = len(history) // 2
 
-    remaining = []
+    remaining: list[dict[str, Any]] = []
     for f in ls.upcoming:
         if team.name not in (f.home, f.away):
             continue

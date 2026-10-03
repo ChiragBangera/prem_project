@@ -42,7 +42,7 @@ def test_health_meta_and_catalog(client):
     assert get(client, "/api/health").json()["status"] == "ok"
     meta = get(client, "/api/meta").json()
     assert meta["mode"]["demo"] and meta["mode"]["source"] == "demo" and meta["today"] == "2021-01-15"
-    assert [l["code"] for l in meta["leagues"]] == ["EPL", "La_liga", "Bundesliga", "Serie_A", "Ligue_1"]
+    assert [lg["code"] for lg in meta["leagues"]] == ["EPL", "La_liga", "Bundesliga", "Serie_A", "Ligue_1"]
     assert meta["seasons"][0] == {"season": 2020, "label": "2020/21"} and meta["defaults"]["season"] == "auto"
     catalog = get(client, "/api/catalog").json()
     metric = catalog["player"]["metrics"]["npxg90"]
@@ -58,8 +58,8 @@ def test_health_meta_and_catalog(client):
     for level in ("player", "team"):
         known = set(catalog[level]["metrics"])
         assert all(m in known for v in catalog[level]["views"] for m in v["metrics"])
-        assert all(r["metric"] in known for l in catalog[level]["lenses"] for r in l["rules"])
-        assert all(l["explain"] and l["rules"] for l in catalog[level]["lenses"])
+        assert all(r["metric"] in known for lens in catalog[level]["lenses"] for r in lens["rules"])
+        assert all(lens["explain"] and lens["rules"] for lens in catalog[level]["lenses"])
 
 
 def test_unknown_routes_and_bad_params_use_the_error_format(client):
@@ -208,7 +208,7 @@ def test_multi_season_and_multi_league_dataset(client):
     two = get(client, "/api/players", leagues="EPL", seasons="2019,2020").json()
     assert two["scope"]["seasons"] == [2019, 2020]
     both = get(client, "/api/players", leagues="EPL,La_liga", seasons="2019").json()
-    assert set(r["league"] for r in both["rows"]) == {"EPL", "La_liga"} and len(both["rows"]) > 900
+    assert {r["league"] for r in both["rows"]} == {"EPL", "La_liga"} and len(both["rows"]) > 900
 
 
 def test_player_detail_similar_and_shortlist_flag(client):
@@ -324,7 +324,7 @@ def test_maps_say_so_when_there_is_no_event_data_instead_of_drawing_nothing(clie
     player = get(client, f"/api/maps/player/{ds['rows'][0]['id']}", league="EPL", season="2019").json()
     assert player["available"] is False
     shots = get(client, "/api/team/shots", team="Arsenal", league="EPL", season="2019").json()
-    assert shots["coverage"][1] == 380 and shots["for"] == [] or shots["matches"] >= 0
+    assert (shots["coverage"][1] == 380 and shots["for"] == []) or shots["matches"] >= 0
 
 
 def test_unchanged_answers_are_revalidated_with_a_304(client):
@@ -347,7 +347,6 @@ def test_search_players_and_teams(client):
     assert teams and teams[0]["name"] == "Arsenal"
     rows = get(client, "/api/players", leagues="EPL", seasons="2020").json()["rows"]
     accented = next(r for r in rows if any(ord(c) > 127 for c in r["name"]))
-    plain = "".join(c for c in accented["name"].split()[-1].lower() if ord(c) < 128)
     found = get(client, "/api/search", q=accented["name"].split()[-1][:5]).json()["players"]
     assert any(p["id"] == accented["id"] for p in found)
     exact = get(client, "/api/search", q=accented["name"].lower()).json()["players"]
@@ -369,7 +368,7 @@ def test_shortlist_roundtrip_and_flag(client):
 
 def test_data_status_and_sync_job(client):
     status = get(client, "/api/data/status").json()
-    assert status["mode"]["demo"] and status["store"]["total_items"] > 0 and any(l["league"] == "EPL" for l in status["leagues"])
+    assert status["mode"]["demo"] and status["store"]["total_items"] > 0 and any(lg["league"] == "EPL" for lg in status["leagues"])
     assert status["matrix"] and {"league", "season", "pages", "events", "played"} <= set(status["matrix"][0]) and status["auto"]["prefs"]["enabled"] is True
     job = client.post("/api/data/sync", json={"leagues": ["EPL", "Ligue_1"], "seasons": [2019, 2020]}).json()
     assert job["total"] == 4 and job["state"] in ("running", "finished")

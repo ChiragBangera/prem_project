@@ -12,7 +12,7 @@ import urllib.request
 
 import pytest
 
-import app.cli as cli
+from app import cli
 
 posix = pytest.mark.skipif(sys.platform == "win32", reason="relies on POSIX signals")
 
@@ -31,7 +31,7 @@ def test_the_countdown_exits_the_process_unless_it_is_cancelled(capsys):
 @posix
 def test_the_event_fetcher_treats_the_updaters_terminate_as_ctrl_c(tmp_path, monkeypatch):
     """The updater stops the fetcher with SIGTERM when the app stops; the fetcher must see it as the Ctrl+C it is built to survive."""
-    import app.events.fetch as fetch
+    from app.events import fetch
 
     monkeypatch.setenv("PREM_DATA_DIR", str(tmp_path))
     monkeypatch.chdir(tmp_path)
@@ -100,7 +100,7 @@ def stop_with_ctrl_c(proc: subprocess.Popen, within: float) -> str:
         return proc.communicate(timeout=within)[0]
     except subprocess.TimeoutExpired:
         proc.kill()
-        raise AssertionError(f"still running {within:.0f} s after Ctrl+C:\n{proc.communicate()[0]}")
+        raise AssertionError(f"still running {within:.0f} s after Ctrl+C:\n{proc.communicate()[0]}") from None
 
 
 @posix
@@ -124,7 +124,7 @@ def test_a_server_that_cannot_start_ends_with_an_error_instead_of_waiting(tmp_pa
     taken.listen()
     try:
         port = taken.getsockname()[1]
-        done = subprocess.run([sys.executable, "-c", DRIVER, str(port), str(tmp_path), "30", "idle"], capture_output=True, text=True, timeout=40)
+        done = subprocess.run([sys.executable, "-c", DRIVER, str(port), str(tmp_path), "30", "idle"], capture_output=True, text=True, timeout=40, check=False)
     finally:
         taken.close()
     assert done.returncode != 0

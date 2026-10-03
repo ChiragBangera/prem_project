@@ -169,7 +169,7 @@ def _where_used(key: str, level: str) -> dict:
         profile += [f"All-data score ({r})" for r, keys in P.PROFILE_FULL.items() if key in keys]
     return {
         "views": [v.label for v in views if key in v.metrics],
-        "lenses": [l.label for l in lenses if any(r.metric == key for r in l.rules)],
+        "lenses": [lens.label for lens in lenses if any(r.metric == key for r in lens.rules)],
         "scores": profile,
     }
 
@@ -188,9 +188,9 @@ def build_dictionary() -> dict:
         "counters": [{"key": k, "meaning": v, "team_only": k in C.TEAM_ONLY} for k, v in C.COUNTERS.items()],
         "events": [{"name": name, "id": code, "meaning": EVENT_TYPE_DOC.get(name, "")} for name, code in sorted(ES.EVENT.items(), key=lambda kv: kv[1])],
         "qualifiers": [{"name": name, "meaning": QUALIFIER_DOC.get(name, "")} for name in ES.FLAGS if name in QUALIFIER_DOC],
-        "concepts": [{"group": g["group"], "entries": [{"key": k, "term": t, "short": s, "long": l} for k, t, s, l in g["entries"]]} for g in CONCEPTS],
+        "concepts": [{"group": g["group"], "entries": [{"key": k, "term": t, "short": s, "long": long} for k, t, s, long in g["entries"]]} for g in CONCEPTS],
         "roles": ROLE_LABELS,
         "tags": TG.public(lambda k: player_short.get(k, k)),
-        "lenses": [l.public() for l in (*PLAYER_LENSES, *TEAM_LENSES)],
+        "lenses": [lens.public() for lens in (*PLAYER_LENSES, *TEAM_LENSES)],
         "views": [v.public() for v in (*PLAYER_VIEWS, *TEAM_VIEWS)],
     }

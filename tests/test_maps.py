@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import itertools
+
 from app.events import maps as M
 
 from .events_kit import AWAY, end, ev, player, silver
@@ -92,7 +94,7 @@ def test_carries_come_from_the_gaps_between_a_players_touches_and_flag_progressi
 def test_thinning_is_even_deterministic_and_never_exceeds_the_cap():
     items = list(range(1000))
     a, b = M.thin(items, 100), M.thin(items, 100)
-    assert a == b and len(a) == 100 and a[0] == 0 and a[-1] >= 980 and all(x < y for x, y in zip(a, a[1:]))
+    assert a == b and len(a) == 100 and a[0] == 0 and a[-1] >= 980 and all(x < y for x, y in itertools.pairwise(a))
     assert M.thin(items[:5], 100) == items[:5]
 
 

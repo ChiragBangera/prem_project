@@ -14,10 +14,11 @@ Wikidata about the same unknown name on every page load.
 from __future__ import annotations
 
 import asyncio
+import logging
 import re
 import time
 from datetime import date
-from typing import Iterable
+from collections.abc import Iterable
 
 import aiohttp
 
@@ -25,6 +26,8 @@ from app.config import Settings
 from app.leagues import fold
 
 from .store import Store
+
+log = logging.getLogger("prem.wikidata")
 
 QLEVER = "https://qlever.cs.uni-freiburg.de/api/wikidata"
 WDQS = "https://query.wikidata.org/sparql"
@@ -252,9 +255,10 @@ class BirthdateResolver:
                 if leftovers:
                     try:
                         found.update(await self._query(leftovers, "skos:altLabel"))
-                    except Exception:  # alt-label pass is best effort
-                        pass
-            except Exception:
+                    except Exception as exc:  # noqa: BLE001 - the alt-label pass is best effort: the names it would have found stay blank
+                        log.debug("Wikidata alt-label pass failed: %s", exc)
+            except Exception as exc:  # noqa: BLE001 - any failure of the main query means "not now": pause, and ask again later
+                log.warning("Wikidata lookup failed, pausing for %.0f s: %s", COOLDOWN, exc)
                 self._cooldown_until = self._clock() + COOLDOWN
                 return
             stamp = self._clock()
@@ -283,7 +287,7 @@ class BirthdateResolver:
                         response.raise_for_status()
                         payload = await response.json(content_type=None)
                     return self._parse(payload)
-                except Exception as exc:  # try the next endpoint
+                except Exception as exc:  # noqa: BLE001 - whatever went wrong with this endpoint (network, status, bad JSON), try the next; the last error is raised
                     last_error = exc
             assert last_error is not None
             raise last_error

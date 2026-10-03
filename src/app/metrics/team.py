@@ -28,10 +28,10 @@ GROUPS: tuple[Group, ...] = (
     Group("squad", "Squad", "Who plays: age and how many players the manager has used.", level="team"),
 )
 
-U = dict(source="understat", needs="base", level="team")
-S = dict(source="understat", needs="shots", level="team")
-W = dict(source="whoscored", needs="events", level="team")
-BOTH = dict(source="both", needs="events", level="team")
+U = {"source": "understat", "needs": "base", "level": "team"}
+S = {"source": "understat", "needs": "shots", "level": "team"}
+W = {"source": "whoscored", "needs": "events", "level": "team"}
+BOTH = {"source": "both", "needs": "events", "level": "team"}
 
 
 def pg(key, label, short, group, num, *, decimals=2, hib=True, per="matches", formula, inputs, what, read="", caveat="", src=U, unit="pergame", **kw):

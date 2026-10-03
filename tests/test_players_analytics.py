@@ -56,7 +56,7 @@ def test_role_model_assigns_profile_to_the_closer_family():
     model = RoleModel.fit(samples)
     assert model.classify(["F", "M"], [0.5, 3.2, 0.07])[0] == "F"
     assert model.classify(["F", "M"], [0.09, 0.9, 0.22])[0] == "M"
-    family, confidence = model.classify(["F", "M"], [0.5, 3.2, 0.07])
+    _family, confidence = model.classify(["F", "M"], [0.5, 3.2, 0.07])
     assert confidence > 0.3
     assert RoleModel.fit(samples[:3]) is None  # too little to trust
 
@@ -189,11 +189,11 @@ def test_demo_league_dataset_is_sane(demo_league):
     ds = build_dataset([demo_league], today=date(2020, 6, 1))
     assert len(ds.rows) == len(demo_league.players) and ds.role_model_ok
     assert 700 <= ds.pool_minutes <= 900
-    groups = {g: n for g, n in ds.group_sizes.items()}
+    groups = dict(ds.group_sizes)
     assert groups["ATT"] > 30 and groups["MID"] > 40 and groups["DEF"] > 60 and groups["GK"] >= 15
     starters = [r for r in ds.rows if r["in_pool"] and r["group"] != "GK"]
     for r in starters:
-        assert 0 <= min(r["pct"].values()) and max(r["pct"].values()) <= 100
+        assert min(r["pct"].values()) >= 0 and max(r["pct"].values()) <= 100
         assert r["output"] is not None
     # top output attackers really are the most productive by npxG+xA per 90
     attackers = sorted((r for r in starters if r["group"] == "ATT"), key=lambda r: -r["output"])

@@ -34,9 +34,9 @@ def events_for(names, matches=6, scale=1.0):
     """What the store's season roll-up gives for a team: counters for and against, in the shape ``TeamInput.events`` takes."""
     out = {}
     for k, name in enumerate(names):
-        counters = {key: 0 for key in C.COUNTERS}
+        counters = dict.fromkeys(C.COUNTERS, 0)
         counters.update({"passes": 500 * matches * scale + 10 * k, "pass_ok": 400 * matches * scale + 10 * k, "tackles": 18 * matches, "touches": 600 * matches})
-        against = {key: 0 for key in C.COUNTERS}
+        against = dict.fromkeys(C.COUNTERS, 0)
         against.update({"passes": 400 * matches, "pass_ok": 300 * matches, "tackles": 15 * matches, "touches": 500 * matches})
         out[name] = {"c": counters, "a": against, "matches": matches, "formations": {"4-3-3": matches}, "managers": {f"Boss {k}": matches}}
     return out
@@ -63,7 +63,7 @@ def test_percentiles_compare_a_team_only_with_its_own_league_and_season():
     for league in ("EPL", "La_liga"):
         for key in ("gf", "ga", "xg_pg"):
             pcts = sorted(r["pct"][key] for r in ds.rows if r["league"] == league)
-            assert pcts[0] < 50 < pcts[-1] or len(set(r["values"][key] for r in ds.rows if r["league"] == league)) == 1       # each league spreads over its own range
+            assert pcts[0] < 50 < pcts[-1] or len({r["values"][key] for r in ds.rows if r["league"] == league}) == 1       # each league spreads over its own range
     a, b = row(ds, "Alpha FC"), row(ds, "Beta United")
     assert (a["values"]["ga"] < b["values"]["ga"]) == (a["pct"]["ga"] > b["pct"]["ga"])                  # fewer conceded reads as better: a higher percentile
 

@@ -22,7 +22,7 @@ def shot(minute, xg, result, side, player="P", pid=1, x=0.9, y=0.5, situation="O
 
 
 def roster(pid, name, pos, minutes, side="h", **kw):
-    base = dict(player_id=pid, player=name, position=pos, minutes=minutes, goals=0, own_goals=0, shots=0, xg=0.0, key_passes=0, assists=0, xa=0.0, xgchain=0.0, xgbuildup=0.0, yellow=0, red=0, venue=side)
+    base = {"player_id": pid, "player": name, "position": pos, "minutes": minutes, "goals": 0, "own_goals": 0, "shots": 0, "xg": 0.0, "key_passes": 0, "assists": 0, "xa": 0.0, "xgchain": 0.0, "xgbuildup": 0.0, "yellow": 0, "red": 0, "venue": side}
     base.update(kw)
     return RosterEntry(**base)
 

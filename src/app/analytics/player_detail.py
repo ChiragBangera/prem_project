@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import math
 from datetime import date
-from typing import Sequence
+from collections.abc import Sequence
 
 from app.data.models import CareerSeason, PlayerPage, Shot
 from app.stats import per90, safe_div, shot_luck

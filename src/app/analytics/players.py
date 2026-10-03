@@ -20,7 +20,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass, field
 from datetime import date
-from typing import Callable, Sequence
+from collections.abc import Callable, Sequence
 
 import numpy as np
 
@@ -112,7 +112,7 @@ def merge_players(inputs: Sequence[SeasonInput]) -> list[Merged]:
         for p in ls.players:
             m = merged.get(p.id)
             if m is None:
-                m = merged[p.id] = Merged(p.id, p.name, list(p.teams), ls.league, [ls.season], p.position, shots={k: 0.0 for k in SHOT_FIELDS})
+                m = merged[p.id] = Merged(p.id, p.name, list(p.teams), ls.league, [ls.season], p.position, shots=dict.fromkeys(SHOT_FIELDS, 0.0))
             else:
                 m.teams, m.league, m.position = list(p.teams), ls.league, p.position
                 if ls.season not in m.seasons:
@@ -255,6 +255,7 @@ def build_dataset(
         modal_src = m.pos_min if sum(m.pos_min.values()) >= MIN_POSITION_MINUTES else ({k: float(v) for k, v in m.ev_starts.items() if k != "Sub"} if sum(m.ev_starts.values()) >= 5 else {})
         modal = _modal({k: v for k, v in modal_src.items() if k in ES.POSITION_CODE})
         families, _sub = families_of(m.position)
+        pos2: str | None
         if modal:
             pos2 = ES.POSITION_CODE[modal]
             group_of.append((ES.POSITION_GROUP[pos2], "minutes", 1.0))
@@ -378,7 +379,7 @@ def build_dataset(
             "mins_per_app": round(float(frame["mins_per_app"][i])), "minutes_share": round(float(frame["minutes_share"][i]), 3),
             "pct": {k: v for k, v in pc.items() if not is_ev(k)}, "rank": {k: v for k, v in rk.items() if not is_ev(k)}, "pool_n": group_sizes.get(g, 0),
             "evpct": {k: v for k, v in pc.items() if is_ev(k)}, "evrank": {k: v for k, v in rk.items() if is_ev(k)},
-            "ev_minutes": int(round(ev_min[i])) if ev_present[i] else 0, "ev_matches": m.ev_matches if ev_present[i] else 0,
+            "ev_minutes": round(ev_min[i]) if ev_present[i] else 0, "ev_matches": m.ev_matches if ev_present[i] else 0,
             "ev_in_pool": bool(ev_in_pool[i]), "ev_pool_n": pools[g].get("tackles90", pools[g].get("passes90", 0)), "ev_pool_minutes": ev_pool_min,
             "output": None if not np.isfinite(output[i]) else round(float(output[i]), 1),
             "score_full": None if not np.isfinite(score_full[i]) else round(float(score_full[i]), 1),

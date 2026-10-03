@@ -112,8 +112,8 @@ def test_a_page_downloaded_but_never_stored_is_adopted_not_fetched_again(events,
     folder.mkdir(parents=True)
     (folder / "100.json").write_text((first.data_dir / "events" / "ENG-Premier League_2526" / "100.json").read_text())
     reader = reader_for(tmp_path, 2)
-    status, lines = run(events, reader, tmp_path)
-    assert reader.event_calls == [101] and events.match_ids("EPL", 2025) == [100, 101] and any("Adopted 1" in l for l in lines)
+    _status, lines = run(events, reader, tmp_path)
+    assert reader.event_calls == [101] and events.match_ids("EPL", 2025) == [100, 101] and any("Adopted 1" in line for line in lines)
 
 
 def test_limit_caps_a_run_and_one_failure_does_not_stop_it(events, tmp_path):

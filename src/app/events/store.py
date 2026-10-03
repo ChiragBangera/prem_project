@@ -17,7 +17,7 @@ from __future__ import annotations
 import threading
 import time
 from collections import defaultdict
-from typing import Callable
+from collections.abc import Callable
 
 from app.data.store import Store
 
@@ -118,49 +118,49 @@ class EventStore:
 
     def pending_rebuild(self, league: str | None = None, season: int | None = None) -> int:
         """How many stored matches have no silver/gold made by the current code. Cheap when nothing changed (one key read)."""
-        wanted = {(l, s) for l, s, _n in self.seasons() if (league is None or l == league) and (season is None or s == season)}
+        wanted = {(lg, s) for lg, s, _n in self.seasons() if (league is None or lg == league) and (season is None or s == season)}
         if not wanted:
             return 0
         marked = self.store.kv_get(DERIVED_MARK) == self._derived_versions()
         missing = 0
-        for l, s in wanted:
-            have_s = {k for k, _t in self.store.keys_prefix(SV.SILVER_KIND, f"{l}:{s}:")}
-            have_g = {k for k, _t in self.store.keys_prefix(C.GOLD_KIND, f"{l}:{s}:")}
-            for gid in self.raw.ids(l, s):
-                k = _key(l, s, gid)
+        for lg, s in wanted:
+            have_s = {k for k, _t in self.store.keys_prefix(SV.SILVER_KIND, f"{lg}:{s}:")}
+            have_g = {k for k, _t in self.store.keys_prefix(C.GOLD_KIND, f"{lg}:{s}:")}
+            for gid in self.raw.ids(lg, s):
+                k = _key(lg, s, gid)
                 if k not in have_s or k not in have_g:
                     missing += 1
         if missing == 0 and not marked:
-            return sum(len(self.raw.ids(l, s)) for l, s in wanted)  # same keys, older code: all of them are out of date
+            return sum(len(self.raw.ids(lg, s)) for lg, s in wanted)  # same keys, older code: all of them are out of date
         return missing
 
     def ensure_current(self, league: str | None = None, season: int | None = None, *, progress: Callable[[int, int], None] | None = None,
                        stop: Callable[[], bool] | None = None) -> dict:
         """Bring silver and gold up to the current code for every stored match. Returns ``{"rebuilt", "skipped", "failed", "total"}``."""
-        wanted = sorted((l, s) for l, s, _n in self.seasons() if (league is None or l == league) and (season is None or s == season))
+        wanted = sorted((lg, s) for lg, s, _n in self.seasons() if (league is None or lg == league) and (season is None or s == season))
         marked = self.store.kv_get(DERIVED_MARK) == self._derived_versions()
         todo: list[tuple[str, int, int]] = []
         skipped = 0
-        for l, s in wanted:
-            have_s = {k for k, _t in self.store.keys_prefix(SV.SILVER_KIND, f"{l}:{s}:")}
-            have_g = {k for k, _t in self.store.keys_prefix(C.GOLD_KIND, f"{l}:{s}:")}
-            for gid in self.raw.ids(l, s):
-                k = _key(l, s, gid)
+        for lg, s in wanted:
+            have_s = {k for k, _t in self.store.keys_prefix(SV.SILVER_KIND, f"{lg}:{s}:")}
+            have_g = {k for k, _t in self.store.keys_prefix(C.GOLD_KIND, f"{lg}:{s}:")}
+            for gid in self.raw.ids(lg, s):
+                k = _key(lg, s, gid)
                 if marked and k in have_s and k in have_g:
                     skipped += 1
                 else:
-                    todo.append((l, s, gid))
+                    todo.append((lg, s, gid))
         rebuilt = failed = 0
-        for n, (l, s, gid) in enumerate(todo, start=1):
+        for n, (lg, s, gid) in enumerate(todo, start=1):
             if stop is not None and stop():
                 break
-            if self.derive(l, s, gid):
+            if self.derive(lg, s, gid):
                 rebuilt += 1
             else:
                 failed += 1
             if progress is not None and (n % 25 == 0 or n == len(todo)):
                 progress(n, len(todo))
-        if league is None and season is None and not failed and rebuilt + skipped == sum(len(self.raw.ids(l, s)) for l, s in wanted):
+        if league is None and season is None and not failed and rebuilt + skipped == sum(len(self.raw.ids(lg, s)) for lg, s in wanted):
             self.store.kv_set(DERIVED_MARK, self._derived_versions())
         self._agg.clear()
         return {"rebuilt": rebuilt, "skipped": skipped, "failed": failed, "total": len(todo) + skipped}

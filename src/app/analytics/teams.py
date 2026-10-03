@@ -13,7 +13,7 @@ The same ideas as :mod:`app.analytics.players`, one level up:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Callable, Sequence
+from collections.abc import Callable, Sequence
 
 import numpy as np
 
@@ -70,7 +70,6 @@ def build_team_dataset(inputs: Sequence[TeamInput]) -> TeamDataset:
     hist = [_history_sums(inp.ls, name) for inp, name in entries]
     for key in hist[0] if hist else ():
         frame.set(key, [h[key] for h in hist])
-    prefixed = lambda src, side, k: NAN if src is None else (src.get(side) or {}).get(k, 0)  # noqa: E731
     for k in SHOT_FIELDS:
         frame.set(f"s_{k}", [NAN if (inp.shots is None or name not in inp.shots) else inp.shots[name]["for"].get(k, 0) for inp, name in entries])
         frame.set(f"sa_{k}", [NAN if (inp.shots is None or name not in inp.shots) else inp.shots[name]["against"].get(k, 0) for inp, name in entries])
@@ -114,7 +113,7 @@ def build_team_dataset(inputs: Sequence[TeamInput]) -> TeamDataset:
             "team": name, "short": team.short, "league": ls.league, "season": ls.season, "key": f"{ls.league}:{ls.season}:{name}",
             "rank": table.get("rank"), "rank_xpts": table.get("rank_xpts"), "form": table.get("form", []), "trend_xgd": table.get("trend_xgd", []),
             "matches": int(hist[i]["matches"]), "ev_matches": int(e["matches"]) if e else 0, "shots_ok": inp.shots is not None and name in (inp.shots or {}),
-            "formation": next(iter(formations), None), "manager": max(managers, key=managers.get) if managers else None,
+            "formation": next(iter(formations), None), "manager": max(managers, key=managers.__getitem__) if managers else None,
             "in_pool": bool(in_pool[i]),
             "values": {k: round(float(a[i]), 4) for k, a in values.items() if np.isfinite(a[i])},
             "pct": {k: round(float(a[i]), 1) for k, a in pct.items() if np.isfinite(a[i])},

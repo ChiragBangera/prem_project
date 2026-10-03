@@ -80,7 +80,7 @@ def test_every_goal_in_the_score_has_a_scorer_in_the_match_page(world):
     from app.analytics.matchsum import scorers
     from app.data.normalize import normalize_match_page
 
-    provider, data, matches = world
+    provider, _data, matches = world
     for m in matches:
         page = normalize_match_page(asyncio.run(provider.match(m.id)), m.id)
         listed = scorers(page)

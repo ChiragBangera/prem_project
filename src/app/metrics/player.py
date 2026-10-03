@@ -33,10 +33,10 @@ GROUPS: tuple[Group, ...] = (
     Group("scores", "Role scores", "One-number summaries of a player's percentiles for his role."),
 )
 
-U = dict(source="understat", needs="base")     # Understat's league table
-S = dict(source="understat", needs="shots")    # Understat's match pages (shot by shot)
-W = dict(source="whoscored", needs="events")   # WhoScored event data
-BOTH = dict(source="both", needs="events")
+U = {"source": "understat", "needs": "base"}     # Understat's league table
+S = {"source": "understat", "needs": "shots"}    # Understat's match pages (shot by shot)
+W = {"source": "whoscored", "needs": "events"}   # WhoScored event data
+BOTH = {"source": "both", "needs": "events"}
 
 PLAYER_METRICS: tuple[Metric, ...] = (
     # ------------------------------------------------------------------ availability

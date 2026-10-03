@@ -25,7 +25,8 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 from functools import lru_cache
-from typing import Any, Iterable, Sequence
+from typing import Any
+from collections.abc import Iterable, Sequence
 
 from app.data.wikidata import same_club
 from app.leagues import fold
@@ -65,7 +66,7 @@ def _plain(text: str) -> str:
     return re.sub(r"[^a-z0-9]+", " ", fold(text)).strip()
 
 
-_CLUB_CANON = {name: sorted(group)[0] for group in CLUB_GROUPS for name in group}
+_CLUB_CANON = {name: min(group) for group in CLUB_GROUPS for name in group}
 
 
 def canonical_club(name: str) -> str:

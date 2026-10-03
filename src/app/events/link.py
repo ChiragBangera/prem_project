@@ -6,7 +6,7 @@ and whose weight is those minutes, so a clash between two people for one Underst
 
 from __future__ import annotations
 
-from typing import Iterable
+from collections.abc import Iterable
 
 from app.data.models import PlayerSeason
 from app.data.people import Person, link_people, name_words, plays_for as _plays_for  # noqa: F401  (re-exported for callers and tests)
@@ -30,7 +30,7 @@ def link_season(totals: dict[int, dict], players: Iterable[PlayerSeason]) -> tup
 # ---------------------------------------------------------------------- matches, teams and the players name matching misses
 
 from datetime import date as _date  # noqa: E402
-from typing import Mapping  # noqa: E402
+from collections.abc import Mapping  # noqa: E402
 
 from app.data.models import Fixture, MatchPage  # noqa: E402
 from app.leagues import fold  # noqa: E402
@@ -83,7 +83,7 @@ def link_fixtures(rollup: dict, fixtures: Iterable[Fixture]) -> tuple[dict[int, 
             for ws, us in ((m["home"], f.home), (m["away"], f.away)):
                 votes.setdefault(ws, {}).setdefault(us, 0)
                 votes[ws][us] += 1
-    teams = {ws: max(v, key=v.get) for ws, v in votes.items()}
+    teams = {ws: max(v, key=v.__getitem__) for ws, v in votes.items()}
     unlinked = [m for m in matches if m["game"] not in links]
     return links, teams, unlinked
 
@@ -112,7 +112,9 @@ def link_by_lineups(
         seen = 0
         for game, club, minutes, started in w.get("log", []):
             fixture = game_fixture.get(game)
-            page = pages.get(fixture.id) if fixture is not None else None
+            if fixture is None:
+                continue
+            page = pages.get(fixture.id)
             if page is None or minutes <= 0:
                 continue
             side = "h" if teams.get(club) == fixture.home else "a" if teams.get(club) == fixture.away else None
@@ -124,7 +126,7 @@ def link_by_lineups(
                     tally[r.player_id] = tally.get(r.player_id, 0) + 1
         if not tally:
             continue
-        best = max(tally, key=tally.get)
+        best = max(tally, key=tally.__getitem__)
         ranked = sorted(tally.values(), reverse=True)
         clear_winner = len(ranked) == 1 or ranked[0] > ranked[1]
         if clear_winner and ranked[0] >= 3 and ranked[0] >= 0.7 * seen:
