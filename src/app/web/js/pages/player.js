@@ -16,6 +16,7 @@ import { GoalsDistribution } from "../charts/dist.js";
 import { MiniBars } from "../charts/mini.js";
 import { rememberVisit } from "../ui/palette.js";
 import { MapLab } from "../ui/maplab.js";
+import { PlayerTrend } from "./player-trend.js";
 import { readBar } from "../lib/percentile.js";
 
 function Avatar({ name, size = 52 }) {
@@ -50,7 +51,7 @@ function BarKey({ who, pool }) {
 }
 
 /** Every metric the app computes for him, grouped by kind, each ranked among role peers. Searchable, and blank metrics can be hidden. */
-function AllMetrics({ blocks, group, catalog, pool }) {
+function AllMetrics({ blocks, group, catalog, pool, onTrend }) {
   const [q, setQ] = useState("");
   const [onlyData, setOnlyData] = useState(true);
   const needle = fold(q);
@@ -63,7 +64,7 @@ function AllMetrics({ blocks, group, catalog, pool }) {
     <div class="table-wrap"><table class="data dense metric-table">
       <thead><tr><th>Metric</th><th class="num">Value</th><th class="bar-col"><span>Where he stands among the ${pool.n} ${group}s</span><span class="scale-cap" aria-hidden="true"><em>lowest</em><em>typical</em><em>best</em></span></th><th class="num">Rank</th></tr></thead>
       <tbody>
-        ${shown.map((b) => html`<${BlockRows} key=${b.category} block=${b} catalog=${catalog} who=${group + "s"} />`)}
+        ${shown.map((b) => html`<${BlockRows} key=${b.category} block=${b} catalog=${catalog} who=${group + "s"} onTrend=${onTrend} />`)}
         ${!shown.length ? html`<tr><td colspan="4" class="muted" style=${{ textAlign: "center", height: "72px" }}>No metric matches “${q}”.</td></tr>` : null}
       </tbody>
     </table></div>
@@ -71,7 +72,7 @@ function AllMetrics({ blocks, group, catalog, pool }) {
   </${Card}>`;
 }
 
-function BlockRows({ block, catalog, who }) {
+function BlockRows({ block, catalog, who, onTrend }) {
   return html`<tr class="group-row"><th colspan="4" title=${block.blurb}>${block.category}</th></tr>
     ${block.items.map((it) => {
       const def = catalog?.player?.metrics?.[it.key] || it;
@@ -79,7 +80,8 @@ function BlockRows({ block, catalog, who }) {
       const reading = readBar(it, who);
       const bar = neutral ? "Style, not quality: the grey bar only shows where he sits on the scale." : reading;
       return html`<tr key=${it.key}>
-        <td><span class="row" style=${{ gap: "6px" }}>${it.label}${it.needs === "events" ? html` <span class="badge outline" title="Needs event data">events</span>` : null}${it.hib === false ? html` <span class="badge outline" title="Less is better here: the bar is flipped, so a long bar means he does this less than most">less is better</span>` : null}<${Info} text=${html`<div><b>${it.label}</b><br />${it.what}<br /><span class="muted">${it.read}</span><br /><span class="muted xsmall">${it.formula}</span>${reading ? html`<div class="tip-reading"><b>Where he stands</b><br />${reading}</div>` : null}</div>`} /></span></td>
+        <td><span class="row" style=${{ gap: "6px" }}>${it.label}${it.needs === "events" ? html` <span class="badge outline" title="Needs event data">events</span>` : null}${it.hib === false ? html` <span class="badge outline" title="Less is better here: the bar is flipped, so a long bar means he does this less than most">less is better</span>` : null}<${Info} text=${html`<div><b>${it.label}</b><br />${it.what}<br /><span class="muted">${it.read}</span><br /><span class="muted xsmall">${it.formula}</span>${reading ? html`<div class="tip-reading"><b>Where he stands</b><br />${reading}</div>` : null}</div>`} />
+          ${onTrend && def.per_match !== false && it.value != null ? html`<button type="button" class="trend-link" title="See how this changed match by match" aria-label=${`${it.label}: match by match`} onClick=${() => onTrend(it.key)}><${Icon} name="trendUp" size="sm" /></button>` : null}</span></td>
         <td class="num">${fmtMetric(def, it.value)}</td>
         <td style=${{ width: "34%" }}>${it.pct == null ? html`<span class="muted">${it.value == null ? "no data" : "not ranked"}</span>` : html`<span class="row" style=${{ gap: "10px" }} title=${bar}><span class="bar-inline ticked" style=${{ flex: 1 }}><i style=${{ width: it.pct + "%", background: neutral ? "var(--ink-3)" : undefined }}></i></span><b class="num" style=${{ minWidth: "26px", textAlign: "right" }}>${Math.round(it.pct)}</b></span>`}</td>
         <td class="num muted">${it.rank && !neutral ? `${it.rank} of ${it.pool_n}` : "–"}</td>
@@ -315,7 +317,7 @@ function PlayerView({ d, id, tab, span, setSpan }) {
   const dScope = d.scope;
   useEffect(() => { rememberVisit({ kind: "player", href: playerHref(id, { league: dScope.league, season: dScope.seasons?.length === 1 ? dScope.seasons[0] : scope.season }), label: p.name, sub: `${p.team} · ${detail.group_label}` }); }, [id]);
 
-  const tabs = [{ value: "profile", label: "Profile" }, { value: "maps", label: "Maps" }, { value: "matches", label: "Match log" }, { value: "finishing", label: "Finishing and shots", count: (detail.shots || []).length }, { value: "seasons", label: "Seasons", count: detail.career.length }, { value: "similar", label: "Similar players" }];
+  const tabs = [{ value: "profile", label: "Profile" }, { value: "trend", label: "Match trend" }, { value: "maps", label: "Maps" }, { value: "matches", label: "Match log" }, { value: "finishing", label: "Finishing and shots", count: (detail.shots || []).length }, { value: "seasons", label: "Seasons", count: detail.career.length }, { value: "similar", label: "Similar players" }];
   const mapSeason = dScope.seasons?.length === 1 ? dScope.seasons[0] : scope.season;
   const teamLinks = (p.teams || [p.team]).map((tm, i) => html`${i ? " / " : ""}<a class="link" href=${teamHref(tm)} key=${tm}>${tm}</a>`);
   return html`
@@ -347,8 +349,9 @@ function PlayerView({ d, id, tab, span, setSpan }) {
         <${RoleFacts} d=${detail} ctx=${metaState.catalog} />
       </div>
       <${EventNote} ev=${detail.events} />
-      ${detail.blocks.length ? html`<${AllMetrics} blocks=${detail.blocks} group=${detail.group_label.toLowerCase()} catalog=${metaState.catalog} pool=${{ n: p.pool_n, minutes: dScope.pool_minutes, league: dScope.league_name }} />` : null}
+      ${detail.blocks.length ? html`<${AllMetrics} blocks=${detail.blocks} group=${detail.group_label.toLowerCase()} catalog=${metaState.catalog} pool=${{ n: p.pool_n, minutes: dScope.pool_minutes, league: dScope.league_name }} onTrend=${(k) => setQuery({ tab: "trend", tm: k })} />` : null}
     </div>` : null}
+    ${tab === "trend" ? html`<${PlayerTrend} id=${id} league=${dScope.league} defaultSeason=${mapSeason} career=${detail.career} group=${p.group} groupLabel=${detail.group_label} catalog=${metaState.catalog} />` : null}
     ${tab === "maps" ? html`<${PlayerMaps} id=${id} league=${dScope.league} season=${mapSeason} />` : null}
     ${tab === "matches" ? html`<${PlayerMatches} id=${id} league=${dScope.league} season=${mapSeason} />` : null}
     ${tab === "finishing" ? html`<${Finishing} d=${detail} />` : null}
@@ -368,7 +371,7 @@ export default function Player({ params }) {
   const seasons = span > 1 && resolved ? Array.from({ length: span }, (_, i) => resolved - i) : undefined;
   const q = useApi(`/api/player/${id}`, { league, season: seasons ? undefined : season, seasons });
   useEffect(() => { const s = q.data?.scope?.seasons; if (s?.length === 1) setResolved(s[0]); }, [q.data?.scope?.seasons?.join()]);
-  const tab = ["maps", "matches", "finishing", "seasons", "similar"].includes(query.tab) ? query.tab : "profile";
+  const tab = ["trend", "maps", "matches", "finishing", "seasons", "similar"].includes(query.tab) ? query.tab : "profile";
   useDocumentTitle(q.data?.detail?.player?.name || "Player");
   return html`<${Async} q=${q}>${(d) => html`<${PlayerView} d=${d} id=${id} tab=${tab} span=${span} setSpan=${(v) => setQuery({ span: v === "1" ? null : v })} />`}</${Async}>`;
 }
