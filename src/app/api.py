@@ -248,6 +248,10 @@ def create_app(settings: Settings | None = None, *, provider=None, today: date |
     async def player(request: Request, player_id: int, league: str | None = None, season: str = "auto", seasons: str | None = None):
         return ok(await wb(request).player.page(player_id, league, season, _ints(seasons) or None))
 
+    @app.get("/api/player/{player_id}/trend")
+    async def player_trend(request: Request, player_id: int, league: str | None = None, season: str = "auto"):
+        return ok(await wb(request).player.trend(player_id, league, season))
+
     @app.get("/api/player/{player_id}/similar")
     async def similar(request: Request, player_id: int, league: str = "EPL", seasons: str = "", max_age: int | None = None, min_age: int | None = None,
                       min_minutes: int | None = None, other_leagues: str = "", limit: int = Query(12, ge=1, le=30)):
