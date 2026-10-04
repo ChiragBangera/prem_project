@@ -225,7 +225,6 @@ table.data td .cell-player .name .badge { margin-left: 6px; vertical-align: 1px;
 .bar-inline.ticked::after { content: ""; position: absolute; left: 50%; top: 0; bottom: 0; width: 1px; background: var(--ink); opacity: 0.5; }
 .metric-table .bar-inline { height: 8px; border-radius: 4px; }
 .metric-table th.bar-col { white-space: normal; text-transform: none; letter-spacing: 0; min-width: 240px; }
-.metric-table th.bar-col > span:first-child { display: block; margin-bottom: 3px; }
 .metric-table th.bar-col .scale-cap { margin-right: 36px; }
 .bar-key { display: grid; grid-template-columns: minmax(180px, 240px) minmax(0, 1fr); gap: 16px 28px; align-items: start; padding: 14px 20px 16px; border-bottom: 1px solid var(--line); background: var(--surface-2); }
 .bk-demo { display: flex; flex-direction: column; gap: 6px; padding-top: 2px; }
@@ -235,6 +234,12 @@ table.data td .cell-player .name .badge { margin-left: 6px; vertical-align: 1px;
 .bk-text { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 5px; font-size: var(--fs-sm); color: var(--ink-2); line-height: 1.45; text-wrap: pretty; }
 .bk-text b { color: var(--ink); font-weight: 650; }
 .tip-reading { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line); }
+.th-sort { display: inline-flex; align-items: center; font: inherit; color: inherit; text-transform: inherit; letter-spacing: inherit; text-align: inherit; cursor: pointer; border-radius: var(--r-xs); padding: 2px 4px; margin: -2px -4px; }
+.th-sort:focus-visible { outline: 2px solid var(--accent); }
+.metric-kind { margin-top: 1px; line-height: 1.2; }
+.sort-note { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 14px; padding: 10px 20px; border-bottom: 1px solid var(--line); background: var(--surface-2); color: var(--ink-2); }
+.sort-note b { color: var(--ink); font-weight: 650; }
+.sort-note .link { margin-left: auto; font-weight: 600; }
 .trend-link { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 6px; color: var(--ink-3); }
 .trend-link:hover, .trend-link:focus-visible { color: var(--accent-strong); background: var(--accent-wash); }
 @media (max-width: 720px) { .bar-key { grid-template-columns: minmax(0, 1fr); } }

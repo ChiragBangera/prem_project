@@ -414,6 +414,60 @@ await check("a metric in the profile table opens its match-by-match trend", asyn
   expect(page.url().includes("tab=trend") && page.url().includes("tm=npxg90"), "the link should open that metric's trend: " + page.url());
   expect((await page.locator("h2.card-title", { hasText: "Non-penalty xG per 90" }).count()) >= 1, "the chart should be about that metric");
 });
+await check("the Every metric table sorts by every column, flat or inside each kind, and clears", async () => {
+  await go("/player/100844");
+  const table = () => page.locator(".metric-table tbody tr:not(.group-row)").evaluateAll((trs) => trs.map((tr) => {
+    const cells = tr.querySelectorAll("td");
+    const pct = Number(cells[2].querySelector("b.num")?.innerText);
+    return { name: cells[0].querySelector(".row").firstChild.textContent.trim(), pct, style: Boolean(cells[2].querySelector(".bar-inline i[style*='--ink-3']")), rank: Number((/^(\d+) of/.exec(cells[3].innerText) || [])[1]) };
+  }));
+  const groups = () => page.locator(".metric-table .group-row").count();
+  const header = (text) => page.locator(".metric-table thead th", { hasText: text });
+  const initial = await table();
+  expect((await groups()) >= 5, "the table starts grouped by kind");
+
+  await header("Where he stands").click();                                             // percentile: best first, the whole table at once
+  await page.waitForFunction(() => document.querySelectorAll(".metric-table .group-row").length === 0, null, { timeout: 5000 });
+  let rows = await table();
+  const ranked = rows.filter((r) => !r.style && Number.isFinite(r.pct));
+  expect(ranked.length > 40 && ranked.every((r, i) => i === 0 || ranked[i - 1].pct >= r.pct), "percentile should run from the highest down");
+  const firstStyle = rows.findIndex((r) => r.style);
+  expect(firstStyle >= ranked.length - 1 && rows.slice(firstStyle).every((r) => r.style || !Number.isFinite(r.pct)), "style metrics come after every ranked metric");
+  expect((await header("Where he stands").getAttribute("aria-sort")) === "descending" && /percentile, highest first/.test(await page.locator(".sort-note").innerText()), "the heading and the note say how it is sorted");
+
+  await header("Where he stands").click();                                             // the same heading again: lowest first, style metrics still last
+  rows = await table();
+  const low = rows.filter((r) => !r.style && Number.isFinite(r.pct));
+  expect(low.every((r, i) => i === 0 || low[i - 1].pct <= r.pct) && rows.findIndex((r) => r.style) >= low.length - 1, "turned round, the style metrics stay at the end");
+
+  await header("Rank").click();                                                        // rank: best (1) first
+  rows = await table();
+  const placed = rows.filter((r) => !r.style && Number.isFinite(r.rank));
+  expect(placed.length > 40 && placed.every((r, i) => i === 0 || placed[i - 1].rank <= r.rank) && placed[0].rank <= 3, "rank should run from the best down");
+
+  await header("Metric").click();                                                      // name: A to Z, by the browser's own collation
+  const named = await page.locator(".metric-table tbody tr:not(.group-row)").evaluateAll((trs) => {
+    const names = trs.map((tr) => tr.querySelector("td .row").firstChild.textContent.trim());
+    return { names, sorted: [...names].sort((a, b) => a.localeCompare(b, "en", { sensitivity: "base", numeric: true })) };
+  });
+  expect(JSON.stringify(named.names) === JSON.stringify(named.sorted), "names should be in alphabetical order");
+
+  await page.locator("label.switch", { hasText: "Group by kind" }).locator("input").check();       // the kinds come back and each is sorted inside itself
+  expect((await groups()) >= 5 && (await header("Metric").getAttribute("aria-sort")) === "ascending", "grouped again, still sorted by name");
+  const inGroups = await page.locator(".metric-table tbody").evaluate((body) => {
+    const out = []; let current = null;
+    for (const tr of body.querySelectorAll("tr")) {
+      if (tr.classList.contains("group-row")) { current = []; out.push(current); } else if (current) current.push(tr.querySelector("td .row").firstChild.textContent.trim());
+    }
+    return out.map((names) => JSON.stringify(names) === JSON.stringify([...names].sort((a, b) => a.localeCompare(b, "en", { sensitivity: "base", numeric: true }))));
+  });
+  expect(inGroups.length >= 5 && inGroups.every(Boolean), "each kind should be sorted inside itself");
+
+  await page.locator(".sort-note .link").click();                                      // clear: the table as it was
+  await page.waitForFunction(() => !document.querySelector(".sort-note") && !document.querySelector(".metric-table thead th[aria-sort]"), null, { timeout: 5000 });
+  const again = await table();
+  expect((await groups()) >= 5 && JSON.stringify(again.map((r) => r.name)) === JSON.stringify(initial.map((r) => r.name)), "clearing the sort should restore the original order and the groups");
+});
 await check("match trend: a season with nothing stored says so instead of drawing nothing", async () => {
   await go("/player/100844?tab=trend&ts=2024");
   await page.waitForFunction(() => /Nothing to draw yet/.test(document.querySelector("main").innerText), null, { timeout: 15000 });
