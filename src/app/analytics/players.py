@@ -171,7 +171,7 @@ def _age_on(dob: str | None, reference: date) -> int | None:
     return reference.year - born.year - ((reference.month, reference.day) < (born.month, born.day))
 
 
-def _applies(metric: Metric, group: str) -> bool:
+def applies(metric: Metric, group: str) -> bool:
     """Whether a metric means anything for a role group (a goalkeeper has no shot quality; an outfield player has no save percentage)."""
     if group not in metric.roles:
         return False
@@ -183,6 +183,40 @@ def _modal(pos_min: dict[str, float]) -> str | None:
 
 
 # ---------------------------------------------------------------------- build
+
+
+def raw_frame(merged: Sequence[Merged]) -> Frame:
+    """The counters of every row as named arrays, plus the few quantities derived from them directly: what every metric of the registry is computed over.
+
+    A row is whatever the caller adds up: a player's season (the scouting dataset), or, for the match-by-match trend, one match, the matches so far, or a
+    stretch of them. A source a row does not have (``shots`` or ``ev`` left as ``None``) reads as unknown, never as zero.
+    """
+    n = len(merged)
+    frame = Frame(n)
+    arr = lambda f: np.array([f(m) for m in merged], dtype=float)  # noqa: E731
+    for key in ("games", "minutes", "goals", "npg", "assists", "shots", "key_passes", "yellow", "red", "xg", "npxg", "xa", "xgchain", "xgbuildup"):
+        frame.set(key, arr(lambda m, k=key: m.c.get(k, 0)))
+    frame.set("available", arr(lambda m: m.available))
+    minutes = frame["minutes"]
+    frame.set("npxg_xa", frame["npxg"] + frame["xa"])
+    frame.set("g_xg", frame["goals"] - frame["xg"])
+    frame.set("npg_npxg", frame["npg"] - frame["npxg"])
+    frame.set("a_xa", frame["assists"] - frame["xa"])
+    with np.errstate(divide="ignore", invalid="ignore"):
+        shots, xg = frame["shots"], frame["xg"]
+        p = np.where(shots > 0, xg / shots, 0.0)
+        sd = np.sqrt(shots * p * (1 - p))
+        z = np.where((shots > 0) & (xg > 0) & (xg < shots) & (sd > 0), (frame["goals"] - xg) / sd, 0.0)
+    frame.set("g_xg_z", z)
+    frame.set("starts", arr(lambda m: NAN if m.starts is None else m.starts))
+    for k in SHOT_FIELDS:
+        frame.set(f"s_{k}", arr(lambda m, k=k: NAN if m.shots is None else m.shots[k]))
+    for k in C.COUNTERS:
+        frame.set(f"w_{k}", arr(lambda m, k=k: NAN if m.ev is None else m.ev.get(k, 0)))
+    frame.set("w_matches", arr(lambda m: NAN if m.ev is None else m.ev_matches))
+    frame.set("mins_per_app", np.where(frame["games"] > 0, minutes / np.where(frame["games"] > 0, frame["games"], 1), 0.0))
+    frame.set("minutes_share", np.clip(np.where(frame["available"] > 0, minutes / np.where(frame["available"] > 0, frame["available"], 1), 0.0), 0.0, 1.0))
+    return frame
 
 
 def build_dataset(
@@ -212,29 +246,9 @@ def build_dataset(
                 m.ev_matches = t.get("matches", 0)
 
     # ---- raw frame: Understat counters, then shot-level sums, then events
-    frame = Frame(n)
-    arr = lambda f: np.array([f(m) for m in merged], dtype=float)  # noqa: E731
-    for key in ("games", "minutes", "goals", "npg", "assists", "shots", "key_passes", "yellow", "red", "xg", "npxg", "xa", "xgchain", "xgbuildup"):
-        frame.set(key, arr(lambda m, k=key: m.c.get(k, 0)))
-    frame.set("available", arr(lambda m: m.available))
+    frame = raw_frame(merged)
     minutes = frame["minutes"]
-    frame.set("npxg_xa", frame["npxg"] + frame["xa"])
-    frame.set("g_xg", frame["goals"] - frame["xg"])
-    frame.set("npg_npxg", frame["npg"] - frame["npxg"])
-    frame.set("a_xa", frame["assists"] - frame["xa"])
-    with np.errstate(divide="ignore", invalid="ignore"):
-        shots, xg = frame["shots"], frame["xg"]
-        p = np.where(shots > 0, xg / shots, 0.0)
-        sd = np.sqrt(shots * p * (1 - p))
-        z = np.where((shots > 0) & (xg > 0) & (xg < shots) & (sd > 0), (frame["goals"] - xg) / sd, 0.0)
-    frame.set("g_xg_z", z)
-    frame.set("starts", arr(lambda m: NAN if m.starts is None else m.starts))
-    for k in SHOT_FIELDS:
-        frame.set(f"s_{k}", arr(lambda m, k=k: NAN if m.shots is None else m.shots[k]))
     ev_present = np.array([m.ev is not None for m in merged])
-    for k in C.COUNTERS:
-        frame.set(f"w_{k}", arr(lambda m, k=k: NAN if m.ev is None else m.ev.get(k, 0)))
-    frame.set("w_matches", arr(lambda m: NAN if m.ev is None else m.ev_matches))
     ev_min = frame["w_min"]
 
     # ---- roles
@@ -287,8 +301,6 @@ def build_dataset(
         bases.append(basis)
         ages.append(_age_on(dob, reference))
     frame.set("age", [NAN if a is None else a for a in ages])
-    frame.set("mins_per_app", np.where(frame["games"] > 0, minutes / np.where(frame["games"] > 0, frame["games"], 1), 0.0))
-    frame.set("minutes_share", np.clip(np.where(frame["available"] > 0, minutes / np.where(frame["available"] > 0, frame["available"], 1), 0.0), 0.0, 1.0))
 
     # ---- pools
     in_pool = minutes >= pool_min
@@ -305,13 +317,13 @@ def build_dataset(
     pools: dict[str, dict[str, int]] = {g: {} for g in GROUP_ORDER}
     for metric in PLAYER_METRICS:
         value, num, den = metric.compute(frame)
-        applies = np.array([_applies(metric, g) for g in group])
-        value = np.where(applies, value, NAN)   # a goalkeeper has no shot quality and an outfielder has no save percentage: blank, not zero
+        applicable = np.array([applies(metric, g) for g in group])
+        value = np.where(applicable, value, NAN)   # a goalkeeper has no shot quality and an outfielder has no save percentage: blank, not zero
         values[metric.key] = value
         pool_mask = ev_in_pool if metric.needs == "events" else in_pool
         p_arr, r_arr = np.full(n, NAN), np.full(n, NAN)
         for g in GROUP_ORDER:
-            if not _applies(metric, g):
+            if not applies(metric, g):
                 continue
             members = group == g
             pool = members & pool_mask & np.isfinite(value)
