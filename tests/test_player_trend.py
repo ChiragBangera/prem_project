@@ -6,13 +6,21 @@ the last point of every season-to-date line is the number on his profile.
 
 from __future__ import annotations
 
+import time
+from datetime import date
+
 import pytest
+from starlette.testclient import TestClient
+
 from app.analytics.player_trend import build_trend, his_matches, opponent_context, role_reference, tier_bounds
 from app.analytics.players import applies
+from app.api import create_app
+from app.config import Settings
 from app.data.models import MatchPage, RosterEntry
 from app.data.normalize import normalize_league
 from app.metrics.player import PLAYER_METRICS
 from app.metrics.registry import SEASON_LONG
+from app.sync.demofeed import DemoEventFeed
 
 from .conftest import raw_league
 
@@ -190,3 +198,94 @@ def test_the_role_band_is_the_middle_half_of_the_peers_who_played_enough():
     assert ref["shots90"] == {"n": 10, "p25": 3.25, "p50": 5.5, "p75": 7.75, "p90": 9.1}          # not the cameo men, not the other roles, not the blanks
     assert "kp90" not in ref                                                                     # nobody has a value
     assert role_reference(rows, "MID", ["shots90"], minimum=11) == {}                            # too few peers to call anything typical
+
+
+# ---------------------------------------------------------------------- the demo world, through the route
+
+
+@pytest.fixture(scope="module")
+def world(tmp_path_factory):
+    """The demo world's current EPL season with every match page and its synthetic events stored, behind the real app."""
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(DemoEventFeed, "targets", lambda self: [("EPL", 2020)])
+        app = create_app(Settings(data_dir=tmp_path_factory.mktemp("trend"), demo=True, demo_events=True, min_interval=0), today=date(2021, 1, 15))
+        with TestClient(app) as client:
+            deadline = time.time() + 180
+            while time.time() < deadline:
+                rows = [e for e in client.get("/api/data/status").json()["events"] if e["league"] == "EPL" and e["season"] == 2020]
+                if rows and rows[0]["status"] and not rows[0]["status"]["running"] and rows[0]["status"].get("finished"):
+                    break
+                time.sleep(0.5)
+            else:
+                raise AssertionError("the demo feed did not finish the EPL season in time")
+            yield client
+
+
+def scout(client) -> dict:
+    """Scout rows once background role learning has finished (the first request legitimately moves roles and percentiles once)."""
+    for _ in range(80):
+        body = client.get("/api/players", params={"leagues": "EPL", "seasons": "2020", "min_minutes": 1}).json()
+        if not body["enrichment"]["roles"]["running"] and not body["enrichment"]["ages"]["running"]:
+            return client.get("/api/players", params={"leagues": "EPL", "seasons": "2020", "min_minutes": 1}).json()
+        time.sleep(0.25)
+    raise AssertionError("enrichment did not finish")
+
+
+def trend(client, player_id: int, **params):
+    return client.get(f"/api/player/{player_id}/trend", params={"league": "EPL", "season": "2020", **params})
+
+
+def test_the_last_point_of_every_season_line_is_the_number_on_his_profile(world):
+    body = scout(world)
+    keys = body["keys"]
+    regulars = [r for r in body["rows"] if r["ev_minutes"] and r["v"][keys.index("minutes")] > 900]
+    picked = {}
+    for r in sorted(regulars, key=lambda r: -r["v"][keys.index("minutes")]):
+        picked.setdefault(r["group"], r)
+    assert {"ATT", "MID", "DEF", "GK"} <= set(picked)                                          # every role is checked, goalkeepers too
+    checked = 0
+    for group, r in picked.items():
+        got = trend(world, r["id"]).json()
+        assert got["available"] and got["player"]["group"] == group and got["scope"]["season"] == 2020
+        for key in got["keys"]:
+            profile, last = r["v"][keys.index(key)], got["series"][key]["c"][-1]
+            assert (profile is None) == (last is None), (group, key, profile, last)
+            if profile is not None:
+                assert last == pytest.approx(profile, abs=0.006, rel=0.002), (group, key)
+                checked += 1
+    assert checked > 150
+
+
+def test_the_payload_is_complete_and_aligned(world):
+    body = scout(world)
+    keys = body["keys"]
+    r = max((r for r in body["rows"] if r["group"] == "MID" and r["ev_minutes"]), key=lambda r: r["v"][keys.index("minutes")])
+    got = trend(world, r["id"]).json()
+    n = len(got["matches"])
+    assert n >= 10 and got["coverage"]["pages"] == got["coverage"]["matches"] == n and got["coverage"]["events"] > 0.8 * got["coverage"]["played"]
+    assert got["player"]["games"] == got["coverage"]["played"] and got["player"]["minutes"] == sum(m["minutes"] for m in got["matches"])   # every appearance on his profile is drawn
+    assert all(len(s[k]) == n for s in got["series"].values() for k in ("m", "c", "r"))        # every line has a point for every match
+    assert [m["i"] for m in got["matches"]] == list(range(n)) and [m["date"] for m in got["matches"]] == sorted(m["date"] for m in got["matches"])
+    assert all(m["opp_ctx"]["tier"] in ("top", "mid", "bottom") for m in got["matches"]) and got["window"] == 5
+    assert got["player"]["group_label"] and got["player"]["pool_n"] > 20 and got["reference"]["npxg90"]["p25"] < got["reference"]["npxg90"]["p75"]
+    for kind, parts in got["splits"].items():
+        played = sum(m["played"] for m in got["matches"])
+        assert sum(p["matches"] for p in parts.values()) == played, kind                          # every match he played is in exactly one tier and one venue
+
+
+def test_the_route_refuses_what_it_cannot_draw(world):
+    missing = trend(world, 1)
+    assert missing.status_code == 404 and missing.json()["error"] == "not_found" and "has no minutes" in missing.json()["message"] and missing.json()["hint"]
+    first = scout(world)["rows"][0]["id"]
+    assert trend(world, first, league="Nowhere").status_code == 422                          # an unknown league is a bad request, not a 500
+    assert trend(world, first, season="1999").status_code in (404, 422)                       # nor is a season outside what the app knows
+
+
+def test_before_any_match_page_is_stored_the_route_says_so_instead_of_drawing_nothing(tmp_path):
+    app = create_app(Settings(data_dir=tmp_path, demo=True, min_interval=0), today=date(2021, 1, 15))          # no feed: the Understat season exists, its matches do not
+    with TestClient(app) as c:
+        rows = c.get("/api/players", params={"leagues": "EPL", "seasons": "2020", "min_minutes": 1}).json()["rows"]
+        got = c.get(f"/api/player/{rows[0]['id']}/trend", params={"league": "EPL", "season": "2020"})
+        assert got.status_code == 200
+        body = got.json()
+        assert body["available"] is False and body["matches"] == [] and "Data page" in body["reason"] and body["player"]["name"] == rows[0]["name"]

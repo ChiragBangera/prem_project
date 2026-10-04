@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 from app.analytics.player_detail import player_detail
+from app.analytics.player_trend import build_trend, role_reference
 from app.analytics.similarity import similar_players
 from app.analytics.team import squad_rows
 from app.errors import AppError, NotFound
 from app.events import maps as event_maps
 from app.insights.core import dicts, rank
+from app.analytics.metrics import GROUP_LABELS
 from app.insights.player import player_insights
 from app.leagues import DEFAULT_LEAGUE, FIRST_SEASON, LEAGUES, season_label
 from app.workbench.pages.mapdata import map_payload
@@ -141,3 +143,49 @@ class PlayerPage(Part):
 
         out = await wb.memo(key, version, compute)
         return {"scope": {"league": code, "season": resolved, "label": season_label(resolved), "note": note}, "player_id": player_id, **out}
+
+    async def trend(self, player_id: int, league: str | None, season) -> dict:
+        """One season of his, match by match: every metric for each match alone, as it stood after each match and over his last few appearances,
+        with the opponent behind each number. Built from the stored match pages (and the event data, where there is some): nothing is fetched."""
+        wb = self.wb
+        code = wb.seasons.league_code(league) if league else (await self.locate(player_id)) or DEFAULT_LEAGUE
+        resolved, note = await wb.seasons.resolve(code, season)
+        ds, fetched = await wb.datasets.players([(code, resolved)])
+        row = next((r for r in ds.rows if r["id"] == player_id), None)
+        if row is None:
+            raise NotFound(f"Player {player_id} has no minutes in {code} for {season_label(resolved)}.", hint="Pick another season, or another league if he moved.")
+        ls = fetched[0].data
+        key = ("player-trend", code, resolved, player_id)
+        version = (wb.seasons.version((code, resolved)), self.events.version(code, resolved), self.repo.epochs.get("match", 0))
+
+        def compute():
+            pages = wb.matchbook.pages(ls)
+            info = wb.links.for_season(ls, pages)
+            out = build_trend(player_id, ls, pages, group=row["group"], name=row["name"], team=row["team"], event_counters=self._event_reader(info, player_id, code, resolved))
+            if out["available"]:
+                out["reference"] = role_reference(ds.rows, row["group"], out["keys"])
+            return out
+
+        out = await wb.memo(key, version, compute)
+        return {
+            "scope": {"league": code, "league_name": LEAGUES[code].name, "season": resolved, "label": season_label(resolved), "note": note},
+            "player": {"id": player_id, "name": row["name"], "team": row["team"], "group": row["group"], "group_label": GROUP_LABELS.get(row["group"], row["group"]),
+                       "pool_n": ds.group_sizes.get(row["group"], 0), "pool_minutes": ds.pool_minutes, "games": row["games"], "minutes": row["minutes"]},
+            "meta": fetched[0].meta.to_dict(), **out,
+        }
+
+    def _event_reader(self, info: dict | None, player_id: int, league: str, season: int):
+        """``fixture id -> his event counters in that match``; ``None`` where the match has no event data, or he could not be matched to it."""
+        if info is None:
+            return None
+        games = {fixture.id: game for game, fixture in info["fixtures"].items()}
+        wid = info["players"].get(player_id)
+
+        def read(fixture_id: int) -> dict | None:
+            game = games.get(fixture_id)
+            gold = self.events.gold(league, season, game) if game is not None and wid is not None else None
+            if gold is None:
+                return None
+            return next((r["c"] for r in gold["players"] if r["id"] == wid), None)
+
+        return read
