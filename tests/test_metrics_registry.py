@@ -11,7 +11,7 @@ from app.events import counters as C
 from app.metrics import player as P
 from app.metrics import team as T
 from app.metrics.lenses import PLAYER_LENSES, TEAM_LENSES
-from app.metrics.registry import Frame, counter, percentile_of, rate, ratio, shrunk
+from app.metrics.registry import SEASON_LONG, Frame, counter, percentile_of, rate, ratio, shrunk
 from app.metrics.views import PLAYER_VIEWS, TEAM_VIEWS
 
 PLAYER = (*P.PLAYER_METRICS, *P.SCORE_METRICS)
@@ -144,3 +144,9 @@ def test_the_public_form_carries_no_functions():
     json.dumps({m.key: m.public() for m in PLAYER})
     json.dumps({m.key: m.public() for m in T.TEAM_METRICS})
     assert not any(isinstance(v, float) and math.isnan(v) for m in PLAYER for v in m.public().values() if isinstance(v, float))
+
+
+def test_the_metrics_that_mean_nothing_for_one_match_are_flagged_for_the_browser():
+    assert {m.key for m in PLAYER} >= SEASON_LONG                                                    # every name is a metric that exists
+    assert {m.key for m in PLAYER if not m.public()["per_match"]} == SEASON_LONG
+    assert all(m.public()["per_match"] for m in T.TEAM_METRICS)                                      # the flag is about players: a team has no such metric

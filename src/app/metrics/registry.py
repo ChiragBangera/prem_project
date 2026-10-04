@@ -72,6 +72,10 @@ def safe_div(num: np.ndarray, den: np.ndarray) -> np.ndarray:
 #: Metrics that are a difference (above or below an expectation): the browser prints their sign and colours them by it.
 SIGNED = frozenset({"g_xg", "npg_npxg", "g_xg_z", "a_xa", "gdon90", "gd", "pts_xpts", "xgd_pg", "npxgd_pg", "g_xg_pg", "xga_ga_pg"})
 
+#: Metrics that describe a whole season (an age, a z-score of every shot, a share of the team's minutes) or only count matches (appearances, starts):
+#: they mean nothing for one match, so the match-by-match trend leaves them out.
+SEASON_LONG = frozenset({"age", "g_xg_z", "minutes_share", "mins_per_app", "games", "starts"})
+
 
 @dataclass(frozen=True)
 class Metric:
@@ -109,6 +113,7 @@ class Metric:
         d["roles"] = list(self.roles)
         d["tags"] = list(self.tags)
         d["signed"] = self.key in SIGNED
+        d["per_match"] = self.key not in SEASON_LONG
         return d
 
     def compute(self, f: Frame) -> tuple[np.ndarray, np.ndarray | None, np.ndarray | None]:
