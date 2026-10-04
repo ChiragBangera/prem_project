@@ -214,6 +214,28 @@ table.data td .cell-player .name .badge { margin-left: 6px; vertical-align: 1px;
 .strong-tag { height: auto; padding: 4px 10px; color: var(--ink); font-weight: 600; white-space: normal; }
 .strong-tag .muted { font-weight: 400; }
 .metric-table td, .metric-table th { white-space: nowrap; }
+
+/* ---- how to read the percentile bars ---- */
+.scale-cap { position: relative; display: block; height: 12px; font-size: 10px; line-height: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-3); }
+.scale-cap em { position: absolute; top: 0; font-style: normal; white-space: nowrap; }
+.scale-cap em:nth-child(1) { left: 0; }
+.scale-cap em:nth-child(2) { left: 50%; transform: translateX(-50%); }
+.scale-cap em:nth-child(3) { right: 0; }
+.pbar-axis { margin: -2px 0 -4px; }
+.bar-inline.ticked::after { content: ""; position: absolute; left: 50%; top: 0; bottom: 0; width: 1px; background: var(--ink); opacity: 0.5; }
+.metric-table .bar-inline { height: 8px; border-radius: 4px; }
+.metric-table th.bar-col { white-space: normal; text-transform: none; letter-spacing: 0; min-width: 240px; }
+.metric-table th.bar-col > span:first-child { display: block; margin-bottom: 3px; }
+.metric-table th.bar-col .scale-cap { margin-right: 36px; }
+.bar-key { display: grid; grid-template-columns: minmax(180px, 240px) minmax(0, 1fr); gap: 16px 28px; align-items: start; padding: 14px 20px 16px; border-bottom: 1px solid var(--line); background: var(--surface-2); }
+.bk-demo { display: flex; flex-direction: column; gap: 6px; padding-top: 2px; }
+.bk-demo .bar-inline { height: 10px; border-radius: 5px; }
+.bk-say { font-size: var(--fs-xs); color: var(--ink-2); }
+.bk-say b { color: var(--ink); }
+.bk-text { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 5px; font-size: var(--fs-sm); color: var(--ink-2); line-height: 1.45; text-wrap: pretty; }
+.bk-text b { color: var(--ink); font-weight: 650; }
+.tip-reading { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line); }
+@media (max-width: 720px) { .bar-key { grid-template-columns: minmax(0, 1fr); } }
 .similar-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 380px), 1fr)); }
 .similar { display: grid; grid-template-columns: 74px minmax(0, 1fr); gap: 14px; padding: 14px; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--surface); transition: border-color var(--dur), background var(--dur); }
 .similar:hover { border-color: var(--line-2); background: var(--surface-2); }

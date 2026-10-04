@@ -12,7 +12,7 @@ Every page opens with findings, then the evidence.
 - **Scout**: find players by what they do (below).
 - **Teams**: the same explorer for teams: every team measure, ranked within its own league and season.
 - **Team page**: **Overview** (every match as chances against results, what is next, how they play), **Players** (the squad, with per-player metrics), **Style & maps** (a style profile and pitch maps), **Chances** (where chances come from and where they are allowed, one chart with toggles), **Matches** (match by match, and whether having the ball helps) and **History** (seasons side by side).
-- **Player page**: Profile against role peers (every metric is searchable), pitch **Maps**, a **Match log**, **Finishing and shots** (an exact "how unusual is his finishing" distribution and a shot map), **Seasons** and statistically **Similar players**.
+- **Player page**: Profile against role peers (every metric is searchable; the bars say who he is compared with and what a full bar, an empty bar and the tick mean), pitch **Maps**, a **Match log**, **Finishing and shots** (an exact "how unusual is his finishing" distribution and a shot map), **Seasons** and statistically **Similar players**.
 - **Compare**: players (a percentile dot plot with the differences spelled out) or two teams (numbers, style, trend, meetings).
 - **Shortlist**: players you track, live numbers and your own notes.
 - **Dictionary**: every raw field and every derived number: what it is, its formula, where it comes from, what it needs, how to read it, and what a typical value looks like. Plus every event type and qualifier, every profile tag and lens in words.
