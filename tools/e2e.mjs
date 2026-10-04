@@ -360,6 +360,65 @@ await check("the percentile bars say who he is compared with and what a bar mean
   expect(/better than \d+ of every 100/.test(card), "the card should say what a number means: " + card.slice(0, 200));
 });
 
+console.log("Player: match trend");
+await check("match trend: the chart, the lines, and the opponent behind each match", async () => {
+  await go("/player/100844?tab=trend");
+  await page.waitForSelector(".trend-chart svg");
+  expect((await page.locator(".trend-chart .mark").count()) >= 20, "a mark for each match he played");
+  expect((await page.locator(".trend-chart .trend-line").count()) === 2, "the season line and the form line");
+  expect((await page.locator(".trend-chart .slot-label").count()) >= 25, "every match should be labelled with its opponent");
+  await page.locator(".trend-chart rect.hit").nth(7).hover();
+  await page.waitForFunction(() => /by expected points/.test(document.querySelector(".tooltip.on")?.innerText || ""), null, { timeout: 5000 });
+  const tip = await page.locator(".tooltip.on").innerText();
+  expect(/Matchweek \d+/.test(tip) && /Season so far/.test(tip) && /(top|middle|bottom)-third side/.test(tip), "the tooltip should name the match, the season figure and how strong the opponent was: " + tip.slice(0, 220));
+  const reads = await page.locator(".reads .read").allInnerTexts();
+  expect(reads.length >= 2, "what stands out should say something: " + reads.join(" | "));
+  expect((await page.locator("table.splits tbody tr").count()) >= 7, "who he played: three tiers, home and away");
+  expect((await page.locator("table.data:not(.splits) tbody tr").count()) >= 25, "every match should be listed");
+});
+await check("match trend: metric, quick picks, colouring, season and the match report", async () => {
+  await go("/player/100844?tab=trend");
+  await page.waitForSelector(".trend-chart svg");
+  await page.locator("main select[aria-label='Metric']").selectOption("pass_acc");
+  await page.waitForFunction(() => [...document.querySelectorAll("h2.card-title")].some((h) => h.innerText.includes("Pass accuracy")), null, { timeout: 10000 });
+  expect((await page.locator(".trend-chart .mark.dot").count()) >= 10, "a share is drawn as dots, not as bars from zero");
+  expect(page.url().includes("tm=pass_acc"), "the metric should be in the address: " + page.url());
+  await page.locator(".quick .chip").first().click();
+  await page.waitForFunction(() => document.querySelector(".quick .chip")?.getAttribute("aria-pressed") === "true", null, { timeout: 5000 });
+  expect((await page.locator(".trend-chart rect.mark").count()) >= 10, "a rate is drawn as bars");
+  await page.locator(".segmented button", { hasText: "Home or away" }).click();
+  await page.waitForFunction(() => /Venue/.test(document.querySelector(".trend-legend")?.innerText || ""), null, { timeout: 5000 });
+  await page.locator("main select[aria-label='Season']").selectOption("2025");
+  await page.waitForFunction(() => document.querySelector("main").innerText.includes("through the 2025/26 season"), null, { timeout: 15000 });
+  expect((await page.locator(".trend-chart .slot-label").count()) >= 36, "last season has its own matches");
+  await page.locator(".trend-chart rect.hit.go").nth(3).click();
+  await page.waitForFunction(() => location.hash.startsWith("#/match/"), null, { timeout: 5000 });
+});
+await check("match trend: arrow keys walk the matches and show each one", async () => {
+  await go("/player/100844?tab=trend");
+  await page.waitForSelector(".trend-chart svg");
+  await page.locator(".trend-scroll").focus();
+  await page.keyboard.press("ArrowLeft");
+  await page.waitForFunction(() => /Matchweek/.test(document.querySelector(".tooltip.on")?.innerText || ""), null, { timeout: 5000 });
+  const last = await page.locator(".tooltip.on").innerText();
+  await page.keyboard.press("ArrowLeft");
+  await page.waitForTimeout(200);
+  expect((await page.locator(".tooltip.on").innerText()) !== last, "the left arrow should move to the previous match");
+});
+await check("a metric in the profile table opens its match-by-match trend", async () => {
+  await go("/player/100844");
+  const skipped = page.locator(".metric-table tr", { hasText: "Appearances" }).first();
+  expect((await skipped.locator(".trend-link").count()) === 0, "a season-long metric has no match-by-match view");
+  await page.locator(".metric-table tr", { hasText: "Non-penalty xG per 90" }).first().locator(".trend-link").click();
+  await page.waitForSelector(".trend-chart svg");
+  expect(page.url().includes("tab=trend") && page.url().includes("tm=npxg90"), "the link should open that metric's trend: " + page.url());
+  expect((await page.locator("h2.card-title", { hasText: "Non-penalty xG per 90" }).count()) >= 1, "the chart should be about that metric");
+});
+await check("match trend: a season with nothing stored says so instead of drawing nothing", async () => {
+  await go("/player/100844?tab=trend&ts=2024");
+  await page.waitForFunction(() => /Nothing to draw yet/.test(document.querySelector("main").innerText), null, { timeout: 15000 });
+  expect((await page.locator("main select[aria-label='Season']").count()) === 1, "the season choice must stay, so there is a way back");
+});
 await check("shortlist: star, note, persist, remove", async () => {
   await go("/player/100844");
   const star = page.locator(".page-actions .star");
@@ -480,7 +539,7 @@ const AUDIT = () => {
   if (document.querySelectorAll("h1").length !== 1) bad.push("the page should have exactly one h1");
   return bad;
 };
-for (const route of ["/", "/league", "/matches", "/scout", "/teams", "/team/Arsenal", "/team/Arsenal?tab=maps", "/player/100844", "/compare?mode=teams&a=Everton&b=Arsenal", "/dictionary", "/guide", "/data", "/shortlist"]) {
+for (const route of ["/", "/league", "/matches", "/scout", "/teams", "/team/Arsenal", "/team/Arsenal?tab=maps", "/player/100844", "/player/100844?tab=trend", "/compare?mode=teams&a=Everton&b=Arsenal", "/dictionary", "/guide", "/data", "/shortlist"]) {
   await check(`controls are labelled and headings are in order: ${route}`, async () => {
     await go(route);
     const bad = await page.evaluate(AUDIT);
@@ -490,7 +549,7 @@ for (const route of ["/", "/league", "/matches", "/scout", "/teams", "/team/Arse
 
 console.log("Phone layout");
 await fresh({ width: 390, height: 844 });
-for (const route of ["/", "/league", "/matches", "/scout", "/scout?view=map", "/teams", "/team/Everton", "/team/Everton?tab=maps", "/player/100844", "/match/10260292", "/dictionary", "/data"]) {
+for (const route of ["/", "/league", "/matches", "/scout", "/scout?view=map", "/teams", "/team/Everton", "/team/Everton?tab=maps", "/player/100844", "/player/100844?tab=trend", "/match/10260292", "/dictionary", "/data"]) {
   await check(`no horizontal scroll at 390px: ${route}`, async () => {
     await go(route);
     const over = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
