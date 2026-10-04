@@ -342,13 +342,24 @@ await check("profile, every-metric search, maps, match log, finishing, similar p
   await settled();
   expect((await page.locator(".similar").count()) >= 4, "similar players missing");
 });
-await check("the (i) beside a metric shows what the metric is", async () => {
+await check("the (i) beside a metric explains it and reads where he stands", async () => {
   await go("/player/100844");
   await page.locator(".metric-table .info").first().hover();
-  await page.waitForFunction(() => (document.querySelector(".tooltip.on")?.innerText || "").length > 60, null, { timeout: 5000 });
+  await page.waitForFunction(() => (document.querySelector(".tooltip.on")?.innerText || "").length > 80, null, { timeout: 5000 });
   const tip = await page.locator(".tooltip.on").innerText();
-  expect(/Minutes/.test(tip) && tip.split("\n").length >= 3, "the tooltip should explain the metric: " + tip.slice(0, 160));
+  expect(/Minutes/.test(tip) && /Where he stands/.test(tip) && /Better than \d+ of every 100 attackers/.test(tip), "the tooltip should explain the metric and read the bar: " + tip.slice(0, 160));
 });
+await check("the percentile bars say who he is compared with and what a bar means", async () => {
+  await go("/player/100844");
+  const key = await page.locator(".bar-key").innerText();
+  expect(/the \d+ attackers in the Premier League who have played at least \d+ minutes/.test(key), "who he is compared with: " + key.slice(0, 200));
+  expect(/full bar is the best of them/.test(key) && /Grey bars/.test(key) && /flipped/.test(key), "what the bar means: " + key.slice(0, 300));
+  expect((await page.locator(".metric-table th.bar-col").innerText()).includes("Where he stands among the"), "the column should say who the bar compares him with");
+  expect((await page.locator(".pbars .pbar-axis").count()) === 1, "the profile card should carry the scale (lowest, typical, best)");
+  const card = await page.locator(".card", { hasText: "Against attackers" }).first().innerText();
+  expect(/better than \d+ of every 100/.test(card), "the card should say what a number means: " + card.slice(0, 200));
+});
+
 await check("shortlist: star, note, persist, remove", async () => {
   await go("/player/100844");
   const star = page.locator(".page-actions .star");

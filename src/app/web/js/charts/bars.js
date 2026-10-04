@@ -25,9 +25,10 @@ export function DivergingBars({ rows, format = (v) => signed(v, 1), max, leftLab
   </div>`;
 }
 
-/** Role-peer percentile rows: filled bar, median tick, percentile and raw value. */
-export function PercentileBars({ items, onHover }) {
+/** Role-peer percentile rows: filled bar, median tick, percentile and raw value. `axis` adds the scale (lowest, typical, best) above the bars. */
+export function PercentileBars({ items, onHover, axis }) {
   return html`<div class="pbars" role="list">
+    ${axis ? html`<div class="pbar pbar-axis" aria-hidden="true"><span></span><span class="scale-cap"><em>lowest</em><em>typical</em><em>best</em></span><span></span><span></span></div>` : null}
     ${items.map((it) => html`<div class="pbar" role="listitem" key=${it.key} onMouseMove=${(e) => it.tip && tooltip.move(e, it.tip)} onMouseLeave=${tooltip.hide}>
       <span class="lab">${it.label}</span>
       <span class="track" aria-hidden="true"><i class="fill" style=${{ width: Math.max(1.5, it.pct ?? 0) + "%", background: seqColor(0.3 + 0.62 * ((it.pct ?? 0) / 100)) }}></i><i class="median"></i></span>

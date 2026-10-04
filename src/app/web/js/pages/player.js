@@ -16,6 +16,7 @@ import { GoalsDistribution } from "../charts/dist.js";
 import { MiniBars } from "../charts/mini.js";
 import { rememberVisit } from "../ui/palette.js";
 import { MapLab } from "../ui/maplab.js";
+import { readBar } from "../lib/percentile.js";
 
 function Avatar({ name, size = 52 }) {
   return html`<span class="avatar" style=${{ "--h": hueOf(name), width: size + "px", height: size + "px", fontSize: size * 0.36 + "px" }} aria-hidden="true">${initials(name)}</span>`;
@@ -28,20 +29,41 @@ function findMetric(blocks, key) {
 
 // ------------------------------------------------------------------ profile
 
+/**
+ * How to read the percentile bars, once, above the table: who he is compared with, what a full bar, an empty bar and the tick mean, what the number and
+ * the rank say, and the two exceptions (metrics where less is better, and style metrics where neither is).
+ */
+function BarKey({ who, pool }) {
+  return html`<div class="bar-key">
+    <div class="bk-demo" aria-hidden="true">
+      <span class="scale-cap"><em>lowest</em><em>typical</em><em>best</em></span>
+      <span class="bar-inline ticked"><i style=${{ width: "78%" }}></i></span>
+      <span class="bk-say"><b>78</b> means better than 78 of every 100</span>
+    </div>
+    <ul class="bk-text">
+      <li><b>Who he is compared with:</b> the ${pool.n} ${who} in the ${pool.league} who have played at least ${pool.minutes} minutes. A full bar is the best of them on that metric, an empty bar the lowest, and the tick the typical one (the median).</li>
+      <li><b>The number</b> is how many of every 100 of them he beats. <b>Rank</b> is his place among them (a smaller group for the metrics that need event data).</li>
+      <li><b>Longer is always better</b>, so for fouls and errors the bar is flipped: long means few. <b>Grey bars</b> describe style rather than quality, like age or how many shots a player takes, so neither long nor short is better.</li>
+      <li>Rankings use small-sample-adjusted rates: a figure from few minutes is pulled toward the average, so a short cameo cannot top the list.</li>
+    </ul>
+  </div>`;
+}
+
 /** Every metric the app computes for him, grouped by kind, each ranked among role peers. Searchable, and blank metrics can be hidden. */
-function AllMetrics({ blocks, group, catalog }) {
+function AllMetrics({ blocks, group, catalog, pool }) {
   const [q, setQ] = useState("");
   const [onlyData, setOnlyData] = useState(true);
   const needle = fold(q);
   const shown = blocks.map((b) => ({ ...b, items: b.items.filter((it) => (!onlyData || it.value != null) && (!needle || fold(`${it.label} ${it.short} ${it.what}`).includes(needle))) })).filter((b) => b.items.length);
   const count = shown.reduce((n, b) => n + b.items.length, 0);
   const total = blocks.reduce((n, b) => n + b.items.length, 0);
-  return html`<${Card} flush title="Every metric" sub=${`Each row is ranked among ${group}s with enough minutes. The bar is the percentile; hover a metric for what it means and how it is made.`}
+  return html`<${Card} flush title="Every metric" sub=${`How he compares with the ${pool.n} ${group}s in the ${pool.league} who have played at least ${pool.minutes} minutes. Hover the (i) beside a metric for what it means, how it is made and where he stands.`}
     actions=${html`<div class="row wrap" style=${{ gap: "10px" }}><${SearchBox} value=${q} onInput=${setQ} placeholder="Find a metric" width="200px" /><${Switch} checked=${onlyData} onChange=${setOnlyData}>Only those with a value</${Switch}></div>`}>
+    <${BarKey} who=${group + "s"} pool=${pool} />
     <div class="table-wrap"><table class="data dense metric-table">
-      <thead><tr><th>Metric</th><th class="num">Value</th><th>Percentile among ${group}s</th><th class="num">Rank</th></tr></thead>
+      <thead><tr><th>Metric</th><th class="num">Value</th><th class="bar-col"><span>Where he stands among the ${pool.n} ${group}s</span><span class="scale-cap" aria-hidden="true"><em>lowest</em><em>typical</em><em>best</em></span></th><th class="num">Rank</th></tr></thead>
       <tbody>
-        ${shown.map((b) => html`<${BlockRows} key=${b.category} block=${b} catalog=${catalog} />`)}
+        ${shown.map((b) => html`<${BlockRows} key=${b.category} block=${b} catalog=${catalog} who=${group + "s"} />`)}
         ${!shown.length ? html`<tr><td colspan="4" class="muted" style=${{ textAlign: "center", height: "72px" }}>No metric matches “${q}”.</td></tr>` : null}
       </tbody>
     </table></div>
@@ -49,15 +71,17 @@ function AllMetrics({ blocks, group, catalog }) {
   </${Card}>`;
 }
 
-function BlockRows({ block, catalog }) {
+function BlockRows({ block, catalog, who }) {
   return html`<tr class="group-row"><th colspan="4" title=${block.blurb}>${block.category}</th></tr>
     ${block.items.map((it) => {
       const def = catalog?.player?.metrics?.[it.key] || it;
       const neutral = it.hib === null;
+      const reading = readBar(it, who);
+      const bar = neutral ? "Style, not quality: the grey bar only shows where he sits on the scale." : reading;
       return html`<tr key=${it.key}>
-        <td><span class="row" style=${{ gap: "6px" }}>${it.label}${it.needs === "events" ? html` <span class="badge outline" title="Needs event data">events</span>` : null}<${Info} text=${html`<div><b>${it.label}</b><br />${it.what}<br /><span class="muted">${it.read}</span><br /><span class="muted xsmall">${it.formula}</span></div>`} /></span></td>
+        <td><span class="row" style=${{ gap: "6px" }}>${it.label}${it.needs === "events" ? html` <span class="badge outline" title="Needs event data">events</span>` : null}${it.hib === false ? html` <span class="badge outline" title="Less is better here: the bar is flipped, so a long bar means he does this less than most">less is better</span>` : null}<${Info} text=${html`<div><b>${it.label}</b><br />${it.what}<br /><span class="muted">${it.read}</span><br /><span class="muted xsmall">${it.formula}</span>${reading ? html`<div class="tip-reading"><b>Where he stands</b><br />${reading}</div>` : null}</div>`} /></span></td>
         <td class="num">${fmtMetric(def, it.value)}</td>
-        <td style=${{ width: "34%" }}>${it.pct == null ? html`<span class="muted">${it.value == null ? "no data" : "not ranked"}</span>` : html`<span class="row" style=${{ gap: "10px" }}><span class="bar-inline" style=${{ flex: 1 }}><i style=${{ width: it.pct + "%", background: neutral ? "var(--ink-3)" : undefined }}></i></span><b class="num" style=${{ minWidth: "26px", textAlign: "right" }}>${Math.round(it.pct)}</b></span>`}</td>
+        <td style=${{ width: "34%" }}>${it.pct == null ? html`<span class="muted">${it.value == null ? "no data" : "not ranked"}</span>` : html`<span class="row" style=${{ gap: "10px" }} title=${bar}><span class="bar-inline ticked" style=${{ flex: 1 }}><i style=${{ width: it.pct + "%", background: neutral ? "var(--ink-3)" : undefined }}></i></span><b class="num" style=${{ minWidth: "26px", textAlign: "right" }}>${Math.round(it.pct)}</b></span>`}</td>
         <td class="num muted">${it.rank && !neutral ? `${it.rank} of ${it.pool_n}` : "–"}</td>
       </tr>`;
     })}`;
@@ -316,14 +340,14 @@ function PlayerView({ d, id, tab, span, setSpan }) {
 
     ${tab === "profile" ? html`<div class="stack">
       <div class="grid cols-wide-narrow top">
-        <${Card} title=${`Against ${detail.group_label.toLowerCase()}s with enough minutes`} sub=${`Percentile among ${p.pool_n} peers. The tick marks the median. Rankings use small-sample-adjusted rates.`}>
-          ${profile.length ? html`<${PercentileBars} items=${profile.map((x) => ({ key: x.key, label: x.short, pct: x.pct, raw: metricValue(x, x.value),
-            tip: html`<${Tip} title=${x.label} sub=${`${detail.group_label}s with enough minutes`} rows=${[{ label: "Value", value: metricValue(x, x.value) }, { label: "Percentile", value: x.pct == null ? "–" : Math.round(x.pct) }, { label: "Rank", value: x.rank ? `${x.rank} of ${p.pool_n}` : "–" }]} />` }))} />` : html`<${EmptyState} compact title="Not ranked" text="Goalkeepers and players under the minute threshold are not ranked." />`}
+        <${Card} title=${`Against ${detail.group_label.toLowerCase()}s with enough minutes`} sub=${`Compared with the ${p.pool_n} ${detail.group_label.toLowerCase()}s in the ${dScope.league_name} who have played at least ${dScope.pool_minutes} minutes. A full bar is the best of them, the tick the typical one; “72” means better than 72 of every 100.`}>
+          ${profile.length ? html`<${PercentileBars} axis items=${profile.map((x) => ({ key: x.key, label: x.short, pct: x.pct, raw: metricValue(x, x.value),
+            tip: html`<${Tip} title=${x.label} sub=${readBar(x, `${detail.group_label.toLowerCase()}s`) || `${detail.group_label}s with enough minutes`} rows=${[{ label: "Value", value: metricValue(x, x.value) }, { label: "Percentile", value: x.pct == null ? "–" : Math.round(x.pct) }, { label: "Rank", value: x.rank ? `${x.rank} of ${p.pool_n}` : "–" }]} />` }))} />` : html`<${EmptyState} compact title="Not ranked" text="Goalkeepers and players under the minute threshold are not ranked." />`}
         </${Card}>
         <${RoleFacts} d=${detail} ctx=${metaState.catalog} />
       </div>
       <${EventNote} ev=${detail.events} />
-      ${detail.blocks.length ? html`<${AllMetrics} blocks=${detail.blocks} group=${detail.group_label.toLowerCase()} catalog=${metaState.catalog} />` : null}
+      ${detail.blocks.length ? html`<${AllMetrics} blocks=${detail.blocks} group=${detail.group_label.toLowerCase()} catalog=${metaState.catalog} pool=${{ n: p.pool_n, minutes: dScope.pool_minutes, league: dScope.league_name }} />` : null}
     </div>` : null}
     ${tab === "maps" ? html`<${PlayerMaps} id=${id} league=${dScope.league} season=${mapSeason} />` : null}
     ${tab === "matches" ? html`<${PlayerMatches} id=${id} league=${dScope.league} season=${mapSeason} />` : null}

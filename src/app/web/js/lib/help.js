@@ -9,9 +9,9 @@ const SHOT_MAP = {
 };
 
 const PERCENTILES = {
-  what: "Each bar is a percentile: the share of comparable players (same role, enough minutes) he is above. The tick marks the median.",
-  good: "Longer bars. 50 is average, 90 means better than 90% of peers. Every bar reads 'higher is better', including defensive ones.",
-  bad: "Short bars are weaker than most peers. Small-sample players are flagged, since a few minutes can swing any rate.",
+  what: "Each bar places him among comparable players (same role, enough minutes): a full bar is the best of them, an empty bar the lowest, and the tick the typical one (the median). The number is how many of every 100 of them he beats.",
+  good: "Longer bars. 50 is typical, 90 means better than 90 of every 100. For things like fouls and errors the bar is flipped, so a longer bar is still better.",
+  bad: "Short bars are weaker than most peers. Grey bars describe style, not quality, so neither long nor short is better. A few minutes can swing any rate, so small samples are flagged.",
 };
 
 const TEAM_PERCENTILES = {
