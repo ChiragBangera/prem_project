@@ -61,10 +61,13 @@ export function Delta({ value, digits = 1, suffix = "", inverse = false, class: 
   return html`<span class=${cls("delta-val", flat ? "" : up ? "pos" : "neg", klass)}>${signed(value, digits)}${suffix}</span>`;
 }
 
-/** (i) button. `text` is a string, or { what, good, bad } from lib/help.js. Opens on hover, focus or tap. */
+/** True for ready-made content (an html`` template, or a list of them) as opposed to the { what, good, bad } help object. */
+export const isContent = (v) => Array.isArray(v) || (typeof v === "object" && v !== null && "props" in v);
+
+/** (i) button. `text` is a string, ready-made content (an html`` template), or { what, good, bad } from lib/help.js. Opens on hover, focus or tap. */
 export function Info({ text, label = "About this" }) {
   const ref = useRef(null);
-  const body = typeof text === "string" || !text
+  const body = typeof text === "string" || !text || isContent(text)
     ? text
     : html`<div class="help-body">
         ${text.what ? html`<p>${text.what}</p>` : null}

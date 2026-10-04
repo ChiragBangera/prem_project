@@ -342,6 +342,13 @@ await check("profile, every-metric search, maps, match log, finishing, similar p
   await settled();
   expect((await page.locator(".similar").count()) >= 4, "similar players missing");
 });
+await check("the (i) beside a metric shows what the metric is", async () => {
+  await go("/player/100844");
+  await page.locator(".metric-table .info").first().hover();
+  await page.waitForFunction(() => (document.querySelector(".tooltip.on")?.innerText || "").length > 60, null, { timeout: 5000 });
+  const tip = await page.locator(".tooltip.on").innerText();
+  expect(/Minutes/.test(tip) && tip.split("\n").length >= 3, "the tooltip should explain the metric: " + tip.slice(0, 160));
+});
 await check("shortlist: star, note, persist, remove", async () => {
   await go("/player/100844");
   const star = page.locator(".page-actions .star");
