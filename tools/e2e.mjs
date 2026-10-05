@@ -6,7 +6,8 @@
 //
 // Every check drives the real UI in headless Chromium. Exit code 1 if any check fails. The demo world fills in its own match pages and
 // event data in the background (a few minutes); the script waits for the Premier League's current season before it checks anything
-// that needs them. Pass --chromium /path/to/chrome to use a browser Playwright did not install.
+// that needs them. Pass --chromium /path/to/chrome to use a browser Playwright did not install, and --only "some words" to run just the checks
+// whose name contains them.
 import { createRequire } from "node:module";
 
 const args = Object.fromEntries(process.argv.slice(2).reduce((acc, a, i, all) => (a.startsWith("--") ? [...acc, [a.slice(2), all[i + 1]]] : acc), []));
@@ -37,6 +38,15 @@ const settled = async () => {
   await page.waitForTimeout(250);
 };
 const go = async (hash) => { await page.keyboard.press("Escape"); await page.goto(`${base}/#${hash}`); await settled(); };
+/**
+ * Hover as a person does: bring the control into view first, let the page's scroll event come and go, then point at it. The tooltip hides on any
+ * scroll (it should: it would be left hanging off something that moved), and Playwright's own scroll-into-view lands just after the pointer does.
+ */
+const hoverSteadily = async (locator) => {
+  await locator.scrollIntoViewIfNeeded();
+  await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))));
+  await locator.hover();
+};
 const h1 = () => page.locator("h1.page-title").first().innerText();
 const bodyText = () => page.locator("main").innerText();
 const noBug = async () => expect(!(await bodyText()).includes("This page hit a bug"), "the page crashed: " + (await bodyText()).slice(0, 160));
@@ -48,6 +58,7 @@ const resultCount = async () => {
 };
 
 async function check(name, fn) {
+  if (args.only && !name.includes(args.only)) return;
   try {
     await fn();
     results.push({ name, ok: true });
@@ -344,7 +355,7 @@ await check("profile, every-metric search, maps, match log, finishing, similar p
 });
 await check("the (i) beside a metric explains it and reads where he stands", async () => {
   await go("/player/100844");
-  await page.locator(".metric-table .info").first().hover();
+  await hoverSteadily(page.locator(".metric-table .info").first());
   await page.waitForFunction(() => (document.querySelector(".tooltip.on")?.innerText || "").length > 80, null, { timeout: 5000 });
   const tip = await page.locator(".tooltip.on").innerText();
   expect(/Minutes/.test(tip) && /Where he stands/.test(tip) && /Better than \d+ of every 100 attackers/.test(tip), "the tooltip should explain the metric and read the bar: " + tip.slice(0, 160));
@@ -367,7 +378,7 @@ await check("match trend: the chart, the lines, and the opponent behind each mat
   expect((await page.locator(".trend-chart .mark").count()) >= 20, "a mark for each match he played");
   expect((await page.locator(".trend-chart .trend-line").count()) === 2, "the season line and the form line");
   expect((await page.locator(".trend-chart .slot-label").count()) >= 25, "every match should be labelled with its opponent");
-  await page.locator(".trend-chart rect.hit").nth(7).hover();
+  await hoverSteadily(page.locator(".trend-chart rect.hit").nth(7));
   await page.waitForFunction(() => /by expected points/.test(document.querySelector(".tooltip.on")?.innerText || ""), null, { timeout: 5000 });
   const tip = await page.locator(".tooltip.on").innerText();
   expect(/Matchweek \d+/.test(tip) && /Season so far/.test(tip) && /(top|middle|bottom)-third side/.test(tip), "the tooltip should name the match, the season figure and how strong the opponent was: " + tip.slice(0, 220));
@@ -388,6 +399,13 @@ await check("match trend: metric, quick picks, colouring, season and the match r
   expect((await page.locator(".trend-chart rect.mark").count()) >= 10, "a rate is drawn as bars");
   await page.locator(".segmented button", { hasText: "Home or away" }).click();
   await page.waitForFunction(() => /Venue/.test(document.querySelector(".trend-legend")?.innerText || ""), null, { timeout: 5000 });
+  // the demo world stores last season after every league's current one, so on a fresh start it is not there yet: wait until it is
+  // (polled here, not in waitForFunction: Playwright does not wait for a promise that a page function returns)
+  for (const deadline = Date.now() + 420000; ; await page.waitForTimeout(3000)) {
+    const stored = await (await page.request.get(`${base}/api/player/100844/trend?league=EPL&season=2025`)).json();
+    if (stored.available === true) break;
+    expect(Date.now() < deadline, "the demo world never stored last season's matches");
+  }
   await page.locator("main select[aria-label='Season']").selectOption("2025");
   await page.waitForFunction(() => document.querySelector("main").innerText.includes("through the 2025/26 season"), null, { timeout: 15000 });
   expect((await page.locator(".trend-chart .slot-label").count()) >= 36, "last season has its own matches");
