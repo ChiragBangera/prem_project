@@ -1,0 +1,8 @@
+# Windows batch files and PowerShell scripts need CRLF line endings and shell scripts need LF, whatever a checkout's own settings say.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+*.command text eol=lf
+*.sh text eol=lf
+*.ico binary
+*.icns binary
