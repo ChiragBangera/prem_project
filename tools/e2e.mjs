@@ -7,7 +7,7 @@
 // Every check drives the real UI in headless Chromium. Exit code 1 if any check fails. The demo world fills in its own match pages and
 // event data in the background (a few minutes); the script waits for the Premier League's current season before it checks anything
 // that needs them. Pass --chromium /path/to/chrome to use a browser Playwright did not install, and --only "some words" to run just the checks
-// whose name contains them.
+// whose name contains them. Set E2E_SLOW_API=900 to delay every API answer by that many milliseconds, as a slow machine would.
 import { createRequire } from "node:module";
 
 const args = Object.fromEntries(process.argv.slice(2).reduce((acc, a, i, all) => (a.startsWith("--") ? [...acc, [a.slice(2), all[i + 1]]] : acc), []));
@@ -27,6 +27,8 @@ let page, ctx, consoleErrors;
 async function fresh(viewport = { width: 1440, height: 900 }, colorScheme = "light") {
   if (ctx) await ctx.close();
   ctx = await browser.newContext({ viewport, colorScheme });
+  // E2E_SLOW_API=900 holds every API answer back that many milliseconds, which is how a slow CI machine behaves: it is how the checks were made to survive one
+  if (process.env.E2E_SLOW_API) await ctx.route("**/api/**", async (route) => { await new Promise((done) => setTimeout(done, Number(process.env.E2E_SLOW_API))); await route.continue(); });
   page = await ctx.newPage();
   consoleErrors = [];
   page.on("console", (m) => { if (m.type() === "error") consoleErrors.push(m.text()); });
@@ -35,6 +37,8 @@ async function fresh(viewport = { width: 1440, height: 900 }, colorScheme = "lig
 
 const settled = async () => {
   await page.waitForFunction(() => !document.querySelector(".skeleton, [aria-busy='true']"), null, { timeout: 30000 });
+  // a page drawn from a stored copy asks again and re-draws when the answer lands, which can shift the layout (and a scroll hides a tooltip): let it finish
+  await page.waitForFunction(() => !document.querySelector(".is-refetching"), null, { timeout: 30000 });
   await page.waitForTimeout(250);
 };
 const go = async (hash) => { await page.keyboard.press("Escape"); await page.goto(`${base}/#${hash}`); await settled(); };
@@ -325,8 +329,11 @@ await check("manager stints render as a table when managers.json has them", asyn
     await route.fulfill({ response: res, json: body });
   });
   await go("/team/Everton");
+  // a team opened in the last 20 seconds is drawn from memory without asking again, so the answer with the stints would never be asked for (it passed
+  // or failed on how long ago Everton was last opened): a reload empties that memory, and the page asks
+  await page.reload();
   // the page may draw a stored copy first and then the answer it asked for (the one with the stints): wait for that, instead of reading at once
-  await page.waitForFunction(() => /Test Manager A/.test(document.querySelector("main")?.innerText || ""), null, { timeout: 15000 });
+  await page.waitForFunction(() => /Test Manager A/.test(document.querySelector("main")?.innerText || ""), null, { timeout: 30000 });
   const text = await page.locator("main").innerText();
   expect(text.includes("Test Manager A") && text.includes("Test Manager B") && text.includes("now"), "manager table missing");
   await page.unroute("**/api/team?*");
@@ -420,8 +427,7 @@ await check("match trend: arrow keys walk the matches and show each one", async 
   await page.waitForFunction(() => /Matchweek/.test(document.querySelector(".tooltip.on")?.innerText || ""), null, { timeout: 5000 });
   const last = await page.locator(".tooltip.on").innerText();
   await page.keyboard.press("ArrowLeft");
-  await page.waitForTimeout(200);
-  expect((await page.locator(".tooltip.on").innerText()) !== last, "the left arrow should move to the previous match");
+  await page.waitForFunction((before) => { const t = document.querySelector(".tooltip.on")?.innerText || ""; return t.includes("Matchweek") && t !== before; }, last, { timeout: 10000 });
 });
 await check("a metric in the profile table opens its match-by-match trend", async () => {
   await go("/player/100844");
