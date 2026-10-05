@@ -34,7 +34,7 @@ class TeamPage(Part):
         stints: list[dict] = []
         for path in (PACKAGED_MANAGERS, self.settings.data_dir / "managers.json"):
             try:
-                stints += json.loads(path.read_text())["stints"]
+                stints += json.loads(path.read_text(encoding="utf-8"))["stints"]
             except (OSError, ValueError, KeyError):
                 continue
         return stints
