@@ -11,6 +11,7 @@ import logging.handlers
 import os
 from pathlib import Path
 import signal
+import socket
 import sys
 import threading
 import time
@@ -23,6 +24,7 @@ from app.errors import AppError
 from app.leagues import LEAGUES, current_season
 
 SHUTDOWN_GRACE = 15.0     # seconds a server that was asked to stop may take before the process exits anyway
+OPEN_WAIT = 30.0          # seconds the browser is held back while the server is still starting
 
 
 def _apply_env(args: argparse.Namespace) -> None:
@@ -95,9 +97,17 @@ def _utf8_output() -> None:
                 stream.reconfigure(encoding="utf-8", errors="replace")
 
 
-def _open_when_up(url: str) -> None:
-    time.sleep(0.8)
-    webbrowser.open(url)
+def _open_when_up(url: str, host: str, port: int) -> None:
+    """Open the browser once the server accepts connections. A browser that arrives first shows an error page, and starting takes seconds on a slower machine."""
+    probe = "127.0.0.1" if host in ("", "0.0.0.0") else host
+    deadline = time.monotonic() + OPEN_WAIT
+    while time.monotonic() < deadline:
+        try:
+            socket.create_connection((probe, port), timeout=1).close()
+            break
+        except OSError:                                              # not listening yet
+            time.sleep(0.1)
+    webbrowser.open(url)                                             # also when the wait ran out: the browser then says what the matter is
 
 
 def cmd_serve(args: argparse.Namespace) -> int:
@@ -110,7 +120,7 @@ def cmd_serve(args: argparse.Namespace) -> int:
     log_file = configure_logging(settings.data_dir)
     print(f"\n  Prem Lab {__version__}\n  {url}\n  data: {mode}\n  cache: {settings.db_path}\n  log: {log_file or 'not written'}\n  Ctrl+C to stop\n")
     if not args.no_open:
-        threading.Thread(target=_open_when_up, args=(url,), daemon=True).start()
+        threading.Thread(target=_open_when_up, args=(url, args.host, args.port), daemon=True).start()
     options = {"host": args.host, "port": args.port, "log_level": "warning", "timeout_graceful_shutdown": 5}   # 5 s for requests under way when it is stopped
     if args.reload:                                                  # a development aid, run by uvicorn's own supervisor
         uvicorn.run("app.api:app", reload=True, **options)
