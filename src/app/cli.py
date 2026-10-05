@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import contextlib
+import io
 import logging
 import logging.handlers
 import os
@@ -83,6 +84,15 @@ def _stoppable_server(config):
             await super().shutdown(*args, **kwargs)
 
     return Server(config)
+
+
+def _utf8_output() -> None:
+    """Write UTF-8 whatever the platform's default is. On Windows, output that is piped or redirected goes through a legacy code page that cannot hold
+    every player's name (a "ć" would stop a command with an error), so switch to UTF-8 and never fail on a character."""
+    for stream in (sys.stdout, sys.stderr):
+        if isinstance(stream, io.TextIOWrapper):                     # not a stand-in such as the one a test captures into
+            with contextlib.suppress(OSError, ValueError):
+                stream.reconfigure(encoding="utf-8", errors="replace")
 
 
 def _open_when_up(url: str) -> None:
@@ -411,6 +421,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    _utf8_output()
     parser = build_parser()
     args = parser.parse_args(argv)
     if not getattr(args, "func", None):

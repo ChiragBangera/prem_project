@@ -35,7 +35,7 @@ class Ages(Part):
         They win over Wikidata, which cannot always tell namesakes apart. Read once at start-up.
         """
         try:
-            raw = json.loads((self.settings.data_dir / "birthdates.json").read_text())
+            raw = json.loads((self.settings.data_dir / "birthdates.json").read_text(encoding="utf-8"))
         except (OSError, ValueError):
             return {}
         out: dict[str, str] = {}

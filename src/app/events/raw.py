@@ -119,7 +119,7 @@ def cached_files(data_dir: Path) -> Iterable[tuple[str, int, int, Path]]:
 def read_match_file(path: Path) -> dict | None:
     """One cached match page, or None if it is empty, unreadable or not a match (soccerdata writes ``null`` for a page with no data)."""
     try:
-        doc = json.loads(path.read_text())
+        doc = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return None
     return doc if looks_like_match(doc) else None
