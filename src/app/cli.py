@@ -106,9 +106,18 @@ def cmd_serve(args: argparse.Namespace) -> int:
         uvicorn.run("app.api:app", reload=True, **options)
         return 0
     server = _stoppable_server(uvicorn.Config("app.api:app", **options))
-    with contextlib.suppress(KeyboardInterrupt):                     # a second Ctrl+C while it is stopping
+    try:
         server.run()
-    return 0 if server.started else 3                                # 3 is what uvicorn itself exits with when it cannot start (the port is taken, say)
+    except SystemExit:                                               # uvicorn exits with 3 when it cannot start; the usual reason is a taken port
+        if server.started:
+            raise
+    except KeyboardInterrupt:                                        # a second Ctrl+C while it is stopping
+        pass
+    if not server.started:
+        print(f"\n  Prem Lab could not start: port {args.port} is probably in use by another program (perhaps Prem Lab itself, already running).\n"
+              f"  Open {url} to see, or choose another port:  prem serve --port {args.port + 1}\n", file=sys.stderr)
+        return 3
+    return 0
 
 
 def cmd_sync(args: argparse.Namespace) -> int:
