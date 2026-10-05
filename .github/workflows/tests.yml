@@ -45,15 +45,28 @@ jobs:
         with:
           python-version: "3.13"
           cache: pip
-      - name: The README's two ways to install (pip in a virtual environment, and uv)
-        shell: bash
+      - name: Install the way the README says, with pip (Command Prompt)
+        shell: cmd
         run: |
-          python -m venv "$RUNNER_TEMP/venv"
-          "$RUNNER_TEMP/venv/Scripts/python.exe" -m pip install --quiet .
-          "$RUNNER_TEMP/venv/Scripts/prem.exe" --version
+          py -m venv .venv || exit /b 1
+          .venv\Scripts\pip install --quiet -e . || exit /b 1
+          .venv\Scripts\prem --version
+      - name: The same command in PowerShell
+        shell: pwsh
+        run: |
+          .venv\Scripts\prem --version
+          if ($LASTEXITCODE -ne 0) { throw "prem did not start from PowerShell" }
+      - name: Install the way the README says, with uv
+        shell: pwsh
+        env:
+          UV_PROJECT_ENVIRONMENT: ${{ runner.temp }}\uv-environment   # the pip route above made .venv
+        run: |
           python -m pip install --quiet uv
+          if ($LASTEXITCODE -ne 0) { throw "could not install uv" }
           uv sync
+          if ($LASTEXITCODE -ne 0) { throw "uv sync failed" }
           uv run prem --version
+          if ($LASTEXITCODE -ne 0) { throw "uv run prem failed" }
       - name: The launcher starts the demo, a second launch only opens it
         shell: pwsh
         run: |
@@ -108,9 +121,28 @@ jobs:
             if ($icon.Width -lt 16) { throw "Windows could not read the $size-pixel image of the icon" }
           }
           Write-Host "the shortcut points at the launcher, and its icon has $count sizes that Windows reads"
+      - name: Opening the shortcut starts the app
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $env:PREM_DATA_DIR = Join-Path $env:RUNNER_TEMP "prem-shortcut"
+          $env:PREM_NO_OPEN = "1"
+          $env:PREM_PORT = "8767"
+          $env:PREM_DEMO = "1"
+          Start-Process -FilePath (Join-Path $env:RUNNER_TEMP "shortcut\Prem Lab.lnk")
+          try {
+            $up = $false
+            foreach ($i in 1..120) {
+              try { if ((Invoke-RestMethod "http://127.0.0.1:8767/api/health").status -eq "ok") { $up = $true; break } } catch { }
+              Start-Sleep -Seconds 1
+            }
+            if (-not $up) { throw "opening the shortcut did not start the app" }
+            Write-Host "opening the shortcut started the app"
+          }
+          finally {
+            Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like "*prem-lab.bat*" } | ForEach-Object { taskkill /PID $_.ProcessId /T /F | Out-Null }
+          }
       - name: Install the test tools and run the tests
-        # temporarily allowed to fail: the first run shows what, if anything, differs on Windows
-        continue-on-error: true
         run: |
           python -m pip install ".[dev]"
           python -m pytest -q
