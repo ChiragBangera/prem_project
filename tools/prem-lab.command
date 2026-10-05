@@ -65,13 +65,6 @@ if [[ -n "$(listener)" ]]; then
   exit 1
 fi
 
-if ! command -v uv >/dev/null 2>&1; then
-  echo "uv is not installed (or not on the PATH), so Prem Lab cannot start."
-  echo "Install it from https://docs.astral.sh/uv/ and try again."
-  pause
-  exit 1
-fi
-
 if [[ ! -f "$PROJECT/pyproject.toml" ]]; then
   echo "Cannot find the Prem Lab project (looked in $PROJECT)."
   echo "Set PREM_PROJECT to its folder, or keep this file inside it (tools/prem-lab.command)."
@@ -80,6 +73,18 @@ if [[ ! -f "$PROJECT/pyproject.toml" ]]; then
 fi
 
 cd "$PROJECT" || exit 1
+
+# what to run: uv (it also keeps the environment in step with the project), else the project's own environment (made by "python3 -m venv .venv"), else a prem on the PATH
+if command -v uv >/dev/null 2>&1; then PREM=(uv run prem)
+elif [[ -x .venv/bin/prem ]]; then PREM=(.venv/bin/prem)
+elif command -v prem >/dev/null 2>&1; then PREM=(prem)
+else
+  echo "Prem Lab is not installed yet. In $PROJECT, run:  uv sync"
+  echo "(or, without uv:  python3 -m venv .venv  and then  .venv/bin/pip install -e .)"
+  pause
+  exit 1
+fi
+
 echo "Starting Prem Lab from $PROJECT"
 echo "It opens at $URL when it is ready. Close this window or press Ctrl+C to stop it."
 echo
@@ -90,7 +95,7 @@ OPENER=$!
 trap 'kill "$OPENER" 2>/dev/null' EXIT
 trap ':' INT                                  # Ctrl+C is for the server: this script waits for it to stop, then says so
 
-uv run prem serve --port "$PORT" --no-open
+"${PREM[@]}" serve --port "$PORT" --no-open
 code=$?
 
 echo
