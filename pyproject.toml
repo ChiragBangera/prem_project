@@ -34,7 +34,7 @@ dev = [
     "ruff>=0.16,<0.17",      # pinned to the series the code is clean under: new rules arrive in new minors, so bump it on purpose
     "mypy>=1.13,<3",
 ]
-# Optional event data (passes, duels, tackles) read from WhoScored; needs Chrome, Chromium, Brave or Edge installed.
+# Optional event data (passes, duels, tackles) read from WhoScored; needs Chrome, Chromium or Brave installed (not Edge).
 events = [
     "soccerdata>=1.9,<2",
 ]

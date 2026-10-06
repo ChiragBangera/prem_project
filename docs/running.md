@@ -57,6 +57,7 @@ The server writes what it does and any error, with its traceback, to `<data dir>
 | `PREM_AUTO=0` | Do not update data in the background (default: on, except in demo and offline modes) |
 | `PREM_AUTO_EVENTS=0/1` | Whether the background updater may also run the event fetcher (default: on once event data has been used and its dependencies are installed) |
 | `PREM_TODAY=YYYY-MM-DD` | Pretend today is this date (demo and testing) |
+| `PREM_BROWSER` | Path of the Chrome, Chromium or Brave the event fetcher drives, for one that is installed where it is not found automatically (Edge does not work) |
 
 ## Docker
 
