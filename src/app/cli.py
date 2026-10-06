@@ -414,7 +414,7 @@ def build_parser() -> argparse.ArgumentParser:
     esync.add_argument("--seasons", default="", help="comma-separated start years (default: current season)")
     esync.add_argument("--limit", type=int, help="fetch at most this many matches (to try it out)")
     esync.add_argument("--pause", type=float, default=3.0, help="seconds to wait between matches (default 3)")
-    esync.add_argument("--browser", help="path to Chrome, Chromium, Brave or Edge (found automatically if omitted)")
+    esync.add_argument("--browser", help="path to Chrome, Chromium or Brave (found automatically if omitted; Edge does not work)")
     esync.add_argument("--visible", action="store_true", help="show the browser window; can help if the site blocks the hidden one")
     estatus = esub.add_parser("status", help="show what event data is stored")
     estatus.add_argument("--data-dir", help="where the cache lives (default: <repo>/.prem-data)")

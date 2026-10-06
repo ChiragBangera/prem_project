@@ -14,6 +14,7 @@ from __future__ import annotations
 import math
 import os
 import shutil
+import sys
 import time
 from pathlib import Path
 from collections.abc import Callable
@@ -22,13 +23,23 @@ from . import raw as R
 from .store import EventStore
 
 LEAGUE_CODES = R.LEAGUE_TO_SOCCERDATA
+# Chrome, Chromium and Brave only. Microsoft Edge is left out on purpose: the tool that reads WhoScored (soccerdata, through SeleniumBase's
+# undetected mode) only drives these three, and ignores an Edge it is handed (it then looks for a Chrome of its own).
 BROWSERS = (
     "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
     "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser",
     "/Applications/Chromium.app/Contents/MacOS/Chromium",
-    "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
 )
-BROWSER_COMMANDS = ("google-chrome", "chromium", "chromium-browser", "brave-browser", "microsoft-edge")
+BROWSER_COMMANDS = ("google-chrome", "google-chrome-stable", "chromium", "chromium-browser", "brave-browser", "brave")
+# Windows keeps none of these on the PATH. Each installer puts its browser under Program Files, Program Files (x86) or the user's own
+# AppData\Local, and registers the program's name (the "App Paths" key) wherever it went.
+WINDOWS_BROWSERS = (
+    ("chrome.exe", "Google/Chrome/Application/chrome.exe"),
+    ("brave.exe", "BraveSoftware/Brave-Browser/Application/brave.exe"),
+    (None, "Chromium/Application/chrome.exe"),
+)
+WINDOWS_ROOTS = ("PROGRAMFILES", "PROGRAMFILES(X86)", "LOCALAPPDATA")
+WINDOWS_COMMANDS = ("chrome", "brave", "chromium")
 SCHEDULE_REFRESH = 6 * 3600.0  # the season's match list is re-read at most this often when resuming
 
 
@@ -36,11 +47,50 @@ class FetchUnavailable(Exception):
     """The optional dependency or a browser is missing; the message says what to do."""
 
 
-def find_browser() -> str | None:
-    for path in BROWSERS:
-        if Path(path).exists():
+def _app_path(exe: str) -> str | None:
+    """Where Windows says a program is installed (its "App Paths" registry entry), or None."""
+    if sys.platform != "win32":
+        return None
+    import winreg
+
+    for hive in (winreg.HKEY_LOCAL_MACHINE, winreg.HKEY_CURRENT_USER):
+        try:
+            with winreg.OpenKey(hive, rf"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\{exe}") as key:
+                return str(winreg.QueryValueEx(key, "")[0]).strip('"')
+        except OSError:
+            continue
+    return None
+
+
+def _windows_candidates() -> list[str]:
+    roots = [Path(os.environ[name]) for name in WINDOWS_ROOTS if os.environ.get(name)]
+    found: list[str] = []
+    for exe, relative in WINDOWS_BROWSERS:
+        found.extend(str(root / relative) for root in roots)
+        registered = _app_path(exe) if exe else None
+        if registered:
+            found.append(registered)
+    return found
+
+
+def _is_edge(path: str) -> bool:
+    return "edge" in Path(path).name.lower()                         # msedge.exe, microsoft-edge, Microsoft Edge
+
+
+def find_browser(platform: str | None = None) -> str | None:
+    """The browser the event fetcher drives: the one PREM_BROWSER names, else Chrome, Brave or Chromium, wherever the system keeps it."""
+    windows = (platform or sys.platform) == "win32"
+    override = os.environ.get("PREM_BROWSER")
+    if override and not _is_edge(override):
+        if Path(override).is_file():
+            return override
+        found = shutil.which(override)
+        if found:
+            return found
+    for path in _windows_candidates() if windows else BROWSERS:
+        if Path(path).is_file():
             return path
-    for name in BROWSER_COMMANDS:
+    for name in WINDOWS_COMMANDS if windows else BROWSER_COMMANDS:
         found = shutil.which(name)
         if found:
             return found
@@ -52,8 +102,10 @@ def make_reader(league: str, season: int, *, data_dir: Path, browser: str | None
     if league not in LEAGUE_CODES:
         raise FetchUnavailable(f"WhoScored event data is only set up for {', '.join(LEAGUE_CODES)}.")
     browser = browser or find_browser()
+    if browser and _is_edge(browser):
+        raise FetchUnavailable("Microsoft Edge cannot be used for event data: the tool that reads WhoScored only drives Chrome, Chromium and Brave. Install one of them, or pass --browser with its path.")
     if not browser:
-        raise FetchUnavailable("No Chrome, Chromium, Brave or Edge found. Install one, or pass --browser with its path.")
+        raise FetchUnavailable("No Chrome, Chromium or Brave found. Install one, or pass --browser (or set PREM_BROWSER) with its path. Microsoft Edge does not work for this.")
     os.environ.setdefault("SOCCERDATA_DIR", str(data_dir / "soccerdata"))  # must be set before soccerdata is imported
     try:
         import logging

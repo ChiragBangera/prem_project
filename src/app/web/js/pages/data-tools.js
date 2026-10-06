@@ -157,6 +157,6 @@ export function EventData({ status, meta }) {
         </div>`;
       })}
     </div>` : demo ? html`<p class="small muted">${status.mode.demo_events ? "Nothing generated yet: the demo world starts filling this in a few seconds after it starts, current seasons first." : "Switched off for this run (PREM_DEMO_EVENTS=0), so event metrics are blank in the demo world."}</p>`
-      : html`<p class="small muted">Nothing stored yet. Switch event data on above (it needs Chrome, Chromium, Brave or Edge, and the optional <code>events</code> extra), or run <code>uv run --extra events prem events sync --league EPL --seasons ${meta.meta.current_season}</code> once.</p>`}
+      : html`<p class="small muted">Nothing stored yet. Switch event data on above (it needs Chrome, Chromium or Brave, and the optional <code>events</code> extra), or run <code>uv run --extra events prem events sync --league EPL --seasons ${meta.meta.current_season}</code> once.</p>`}
   </${Card}>`;
 }
