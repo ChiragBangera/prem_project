@@ -114,7 +114,7 @@ class AutoSync:
             return {"available": False, "reason": "The optional event-data package is not installed.", "hint": "Run the app with `uv run --extra events prem serve`."}
         browser = find_browser()
         if browser is None:
-            return {"available": False, "reason": "No Chrome, Chromium, Brave or Edge was found.", "hint": "Install one of them; it is found automatically."}
+            return {"available": False, "reason": "No Chrome, Chromium or Brave was found.", "hint": "Install Google Chrome or Brave and it is found automatically (Microsoft Edge does not work for this), or set PREM_BROWSER to the path of one that is installed somewhere unusual."}
         return {"available": True, "reason": None, "browser": browser}
 
     def events_enabled(self) -> bool:
