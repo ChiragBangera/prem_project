@@ -95,8 +95,9 @@ jobs:
             Write-Host "a second launch finds the app running"
           }
           finally {
-            taskkill /PID $launcher.Id /T /F | Out-Null
+            taskkill /PID $launcher.Id /T /F 2>&1 | Out-Null
           }
+          $global:LASTEXITCODE = 0   # taskkill may find a process of the tree already gone; that is not a failure of the check
       - name: The Desktop shortcut points at the launcher and Windows can read its icon
         shell: pwsh
         run: |
@@ -140,8 +141,9 @@ jobs:
             Write-Host "opening the shortcut started the app"
           }
           finally {
-            Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like "*prem-lab.bat*" } | ForEach-Object { taskkill /PID $_.ProcessId /T /F | Out-Null }
+            Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like "*prem-lab.bat*" } | ForEach-Object { taskkill /PID $_.ProcessId /T /F 2>&1 | Out-Null }
           }
+          $global:LASTEXITCODE = 0   # as above
       - name: Install the test tools and run the tests
         run: |
           python -m pip install ".[dev]"
