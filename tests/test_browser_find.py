@@ -156,3 +156,11 @@ def test_the_data_page_says_which_browsers_work_and_that_edge_does_not(monkeypat
     capability = autosync.AutoSync.events_capability()
     assert capability["available"] is False
     assert "Chrome, Chromium or Brave" in capability["reason"] and "Edge does not work" in capability["hint"] and "PREM_BROWSER" in capability["hint"]
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="the Windows registry")
+def test_a_real_windows_registry_tells_where_chrome_is():
+    # the "App Paths" entry is how a Chrome installed in an unusual folder is found; it must read back as a real file
+    registered = fetch._app_path("chrome.exe")
+    assert registered and Path(registered).is_file(), "no App Paths entry for chrome.exe on this Windows"
+    assert fetch._app_path("no-such-program.exe") is None
