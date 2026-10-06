@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 from app.events import fetch
+from app.sync import autosync
 
 EDGE = "Microsoft/Edge/Application/msedge.exe"
 CHROME = "Google/Chrome/Application/chrome.exe"
@@ -141,3 +142,17 @@ def test_a_real_windows_with_chrome_finds_it():
     # the Windows build machine has Chrome installed, in Program Files, as it has Edge; Edge must not be what is found
     found = fetch.find_browser()
     assert found and found.lower().endswith("chrome.exe") and Path(found).is_file(), "no Chrome was found on this Windows"
+
+
+def test_the_data_page_says_how_to_install_the_package(monkeypatch):
+    monkeypatch.setattr(autosync.importlib.util, "find_spec", lambda name: None)
+    capability = autosync.AutoSync.events_capability()
+    assert capability["available"] is False and "uv sync --extra events" in capability["hint"]
+
+
+def test_the_data_page_says_which_browsers_work_and_that_edge_does_not(monkeypatch):
+    monkeypatch.setattr(autosync.importlib.util, "find_spec", lambda name: object())
+    monkeypatch.setattr(autosync, "find_browser", lambda: None)
+    capability = autosync.AutoSync.events_capability()
+    assert capability["available"] is False
+    assert "Chrome, Chromium or Brave" in capability["reason"] and "Edge does not work" in capability["hint"] and "PREM_BROWSER" in capability["hint"]
