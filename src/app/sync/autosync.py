@@ -111,7 +111,7 @@ class AutoSync:
     def events_capability() -> dict:
         """Whether the optional event-data dependencies and a browser are present, and if not, what to do."""
         if importlib.util.find_spec("soccerdata") is None:
-            return {"available": False, "reason": "The optional event-data package is not installed.", "hint": "Run the app with `uv run --extra events prem serve`."}
+            return {"available": False, "reason": "The optional event-data package is not installed.", "hint": "Install it with `uv sync --extra events` in the Prem Lab folder, then start Prem Lab again."}
         browser = find_browser()
         if browser is None:
             return {"available": False, "reason": "No Chrome, Chromium or Brave was found.", "hint": "Install Google Chrome or Brave and it is found automatically (Microsoft Edge does not work for this), or set PREM_BROWSER to the path of one that is installed somewhere unusual."}
