@@ -82,7 +82,7 @@ A terminal window opens and stays open while the app runs; closing it, or pressi
 
 - **Stop:** close the terminal window, or press `Ctrl`+`C` in it.
 - **Start again:** step 4, or the icon. Nothing needs installing again.
-- **Update:** inside `prem_project`, run `git pull` and then `uv sync`. Your data is kept. If you downloaded the ZIP, download it again and move your `.prem-data` folder into the new one.
+- **Update:** inside `prem_project`, run `git pull` and then `uv sync` (`uv sync --extra events` if you use event data). Your data is kept. If you downloaded the ZIP, download it again and move your `.prem-data` folder into the new one.
 - **Your data** is in the `.prem-data` folder inside `prem_project`. To remove Prem Lab, delete the `prem_project` folder.
 
 ### If something goes wrong
@@ -135,7 +135,7 @@ Then open `http://127.0.0.1:8000` yourself (Docker cannot open your browser). Ad
 
 #### Event data
 
-By default the app knows shots and expected goals, which is what Understat records. A second, optional source adds every pass, duel, tackle and carry: the passing and defending numbers, possession, pressing and the pitch maps. It needs Chrome, Chromium, Brave or Edge on your computer, takes about two hours once per league season, and is for personal use only. See [docs/data.md](docs/data.md#event-data-optional-passes-duels-tackles-carries-and-maps) for how to switch it on.
+By default the app knows shots and expected goals, which is what Understat records. A second, optional source adds every pass, duel, tackle and carry: the passing and defending numbers, possession, pressing and the pitch maps. It needs **Google Chrome, Chromium or Brave** on your computer (Microsoft Edge, although it comes with Windows, does not work for this) and the extra packages: run `uv sync --extra events`, then switch event data on from the app's Data page. It takes about two hours once per league season and is for personal use only. When you update, run `uv sync --extra events` instead of `uv sync`, or the extra packages are removed again. See [docs/data.md](docs/data.md#event-data-optional-passes-duels-tackles-carries-and-maps) for more.
 
 </details>
 
