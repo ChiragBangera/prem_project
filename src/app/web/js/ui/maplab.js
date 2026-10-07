@@ -74,12 +74,12 @@ export function MapLab({ data, kind, shots, onMore, shotsLoading }) {
   const passLines = data.lines?.[passInfo.key] ?? data[passInfo.key] ?? [];
   const pitch = useMemo(() => {
     switch (active) {
-      case "touches": return { label: "Touch heat map", node: html`<${HeatLayer} grid=${data.grids.touches} unit="touches" total=${c.touches} />` };
+      case "touches": return { label: "Touch heat map", node: html`<${HeatLayer} grid=${data.grids?.touches} unit="touches" total=${c.touches} />` };
       case "passes": return { label: `Passes: ${passInfo.label}`, node: html`<${PassLayer} lines=${passLines} showFailed=${failed && pass === "all"} emphasis=${0} />` };
       case "network": return { label: "Pass network", node: html`<${NetworkLayer} network=${data.network} limit=${everyone ? 0 : 12} />` };
       case "defending": return {
         label: "Defensive actions",
-        node: defMode === "heat" ? html`<${HeatLayer} grid=${data.grids.def} color="var(--c2)" unit="defensive actions" total=${c.def} />`
+        node: defMode === "heat" ? html`<${HeatLayer} grid=${data.grids?.def} color="var(--c2)" unit="defensive actions" total=${c.def} />`
           : html`<${PointLayer} points=${(data.def || []).filter((p) => !off.has(p[2]))} kinds=${DEF_KINDS} matches=${matches} r=${(data.def || []).length > 600 ? 0.72 : 0.95} />`,
       };
       case "carries": return { label: "Carries", node: html`<${CarryLayer} carries=${(data.carries || []).filter((p) => !progOnly || p[4])} />` };
@@ -130,7 +130,7 @@ export function MapLab({ data, kind, shots, onMore, shotsLoading }) {
   }[active];
 
   if (!data.available && active !== "shots") {
-    return html`<${Notice} icon="info">No event data is stored for this selection, so there is nothing to draw. Event maps need the optional event data: see the Data page for how it is fetched (it then updates by itself).</${Notice}>`;
+    return html`<${Notice} icon="info">${data.reason || "No event data is stored for this selection, so there is nothing to draw."} Event maps need the optional event data: see the Data page for how it is fetched (it then updates by itself, a few dozen matches at a time).</${Notice}>`;
   }
   return html`<div class="maplab">
     <div class="maplab-tabs"><${Segmented} label="Map layer" value=${active} onChange=${setLayer} options=${available.map((l) => ({ value: l.id, label: l.label }))} /></div>
