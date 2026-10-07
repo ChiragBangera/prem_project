@@ -292,6 +292,14 @@ await check("every tab opens", async () => {
     expect((await page.locator("main .card").count()) >= 1, `${tab}: no content`);
   }
 });
+await check("player maps: a player the event data has nothing for gets a notice, not a crash", async () => {
+  // the server answers {available: false, reason} when he is not in the event data yet (a half-fetched season, or no safe match); the map lab used to read grids off it
+  await page.route("**/api/maps/player/*", (route) => route.fulfill({ json: { scope: {}, player_id: 100844, available: false, reason: "He has no matches in the event data." } }));
+  await go("/player/100844?tab=maps");
+  await noBug();
+  expect((await bodyText()).includes("He has no matches in the event data."), "the reason should be shown");
+  await page.unroute("**/api/maps/player/*");
+});
 await check("style & maps draws every layer from the stored events", async () => {
   await go("/team/Arsenal?tab=maps");
   await page.waitForSelector(".maplab svg");
