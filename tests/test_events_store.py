@@ -231,6 +231,25 @@ def test_players_link_on_name_words_and_club():
     assert [u["name"] for u in unlinked] == ["Rodri"]
 
 
+def test_clubs_the_two_sources_name_differently_link_through_the_aliases_the_matches_found():
+    # found on real data: WhoScored's "PSG", "RBL" and "Atletico" share no word with Understat's names, so these players were left out
+    ws = {
+        1: {"id": 1, "name": "Nuno Mendes", "teams": {"PSG": 180.0}, "min": 180.0},
+        2: {"id": 2, "name": "Castello Lukeba", "teams": {"RBL": 160.0}, "min": 160.0},
+        3: {"id": 3, "name": "Dani Martinez", "teams": {"Atletico": 90.0}, "min": 90.0},
+    }
+    us = [understat(10, "Nuno Mendes", "Paris Saint Germain"), understat(11, "Castello Lukeba", "RasenBallsport Leipzig"),
+          understat(12, "Dani Martinez", "Atletico Madrid"), understat(13, "Arnau Martinez", "Valencia")]
+    linked, unlinked = link_season(ws, us)
+    assert linked == {} and len(unlinked) == 3                       # by name and club text alone, none of them
+    alias = {"PSG": "Paris Saint Germain", "RBL": "RasenBallsport Leipzig", "Atletico": "Atletico Madrid"}
+    linked, unlinked = link_season(ws, us, alias)
+    assert {uid: t["id"] for uid, t in linked.items()} == {10: 1, 11: 2, 12: 3} and unlinked == []
+    # an alias names a club, it does not loosen the name: a different man at that club stays unlinked
+    linked, unlinked = link_season({4: {"id": 4, "name": "Lucas Beraldo", "teams": {"PSG": 99.0}, "min": 99.0}}, [understat(20, "Lucas Hernandez", "Paris Saint Germain")], alias)
+    assert linked == {} and [u["name"] for u in unlinked] == ["Lucas Beraldo"]
+
+
 def test_single_word_understat_names_link_only_when_unambiguous_on_both_sides():
     ws = {
         1: {"id": 1, "name": "Alisson Becker", "teams": {"Liverpool": 900.0}, "min": 900.0},
