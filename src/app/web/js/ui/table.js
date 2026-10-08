@@ -1,5 +1,5 @@
 // Sortable data table with sticky header, sticky first column, heat cells, column bands and "show more" paging.
-import { html, useEffect, useMemo, useState } from "../lib/html.js";
+import { html, useEffect, useMemo, useRef, useState } from "../lib/html.js";
 import { cls } from "../lib/format.js";
 import { tooltip } from "../lib/tooltip.js";
 import { toCsv, download } from "../lib/csv.js";
@@ -36,10 +36,35 @@ function heatStyle(col, value) {
  *   `band` names the group a column belongs to; consecutive columns with the same band share one heading cell above the headers.
  * sort / onSort: controlled sorting. presorted: the rows are already in the order wanted (the table only shows the arrow).
  */
+/**
+ * Whether a scrolling box has more to show to its left or right: a table wider than its card otherwise just looks cut off, because the
+ * scroll bar is hidden on most systems until the pointer is over it.
+ */
+function useScrollEdges() {
+  const ref = useRef(null);
+  const [edges, setEdges] = useState({ left: false, right: false });
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return undefined;
+    const measure = () => {
+      const left = el.scrollLeft > 2, right = el.scrollLeft + el.clientWidth < el.scrollWidth - 2;
+      setEdges((e) => (e.left === left && e.right === right ? e : { left, right }));
+    };
+    measure();
+    el.addEventListener("scroll", measure, { passive: true });
+    const seen = typeof ResizeObserver === "function" ? new ResizeObserver(measure) : null;
+    seen?.observe(el);
+    if (el.firstElementChild) seen?.observe(el.firstElementChild);
+    return () => { el.removeEventListener("scroll", measure); seen?.disconnect(); };
+  }, []);
+  return [ref, edges];
+}
+
 export function DataTable({
   columns, rows, rowKey = (r, i) => i, initialSort, sort: controlled, onSort, onRowClick, dense, maxHeight,
   rowClass, zone, pageSize, caption, empty = "No rows match.", footer, id, tight, presorted, bandLabels,
 }) {
+  const [scrollRef, edges] = useScrollEdges();
   const [inner, setInner] = useState(initialSort || null);
   const [shown, setShown] = useState(pageSize || Infinity);
   const sort = controlled !== undefined ? controlled : inner;
@@ -85,7 +110,7 @@ export function DataTable({
     return starts;
   }, [columns]);
 
-  return html`<div class=${cls("table-wrap", maxHeight && "tall")} style=${maxHeight ? { maxHeight } : null} id=${id}>
+  return html`<div class=${cls("table-frame", edges.left && "more-left", edges.right && "more-right")}><div class=${cls("table-wrap", maxHeight && "tall")} style=${maxHeight ? { maxHeight } : null} id=${id} ref=${scrollRef}>
     <table class=${cls("data", dense && "dense", tight && "tight", bands && "banded")}>
       ${caption ? html`<caption class="sr-only">${caption}</caption>` : null}
       <thead>
@@ -120,7 +145,7 @@ export function DataTable({
       <${Button} size="sm" onClick=${() => setShown(shown + (pageSize || 50))}>Show ${Math.min(pageSize || 50, sorted.length - shown)} more</${Button}>
       <${Button} size="sm" kind="quiet" onClick=${() => setShown(Infinity)}>Show all</${Button}></div>` : null}
     ${footer || null}
-  </div>`;
+  </div></div>`;
 }
 
 /** Downloads the given rows as CSV using each column's plain value. */

@@ -107,7 +107,7 @@ export default function Overview({ d, team, profile }) {
 
     <div class="grid cols-2 top">
       <${Splits} splits=${p.splits} />
-      ${p.eras?.length ? html`<${Managers} eras=${p.eras} />` : html`<span></span>`}
+      ${p.eras?.length ? html`<${Managers} eras=${p.eras} />` : null}
     </div>
   </div>`;
 }
