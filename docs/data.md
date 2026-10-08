@@ -43,6 +43,16 @@ uv run prem events status
 - **Safe by design.** WhoScored players and matches are matched to Understat's by name, club, date and score and **left out rather than guessed**; the Data page lists who could not be matched. Existing role scores and percentiles are never changed by event data: the all-data score is a separate column.
 - **Personal use only.** It reads a public website, which that site's terms may not allow, so it only runs when you start it and keeps what it reads on your own computer. Do not publish the data.
 
+## How much is fetched, and how to steer it
+
+Both sources are public websites read without an agreement, so the background updater reads like a patient person, not a crawler, and a new install fills its seasons over days rather than in one burst.
+
+- **Daily limits** (Data page, *Fetching: limits and pace*): at most 300 Understat match pages and 40 WhoScored matches a day by default (both changeable). Understat pages are read one at a time, 1.5 s apart; WhoScored matches 10 to 20 s apart (at random), 20 to a run, with at least 20 minutes' rest between runs. Pages you open yourself load at once and are not held back (they are counted).
+- **Pause, Resume, Stop.** Pause ends the run in progress at its next match and starts nothing until you resume (it survives restarts). *Stop this run* ends only the run in progress. The fetcher reads these between matches, so stopping always keeps what was read, on every system.
+- **Fetch plan.** For every league season the updater keeps: what is still to come from each source and roughly how many days that takes at your limits.
+- **Matches that could not be read** are not tried on every run: each is retried by itself up to three times, half a day apart, then waits for you. *Needs your eye* lists them with **Retry now** (read next, ahead of everything) and **Skip**.
+- **Linking by hand.** The automatic matching only links what it is sure of. *Needs your eye* lists the WhoScored players and matches it could not place, with the likeliest Understat candidates (same club first, closest spelling, minutes alongside). Pick one, or say a player is not in Understat; your choice always wins, shows under *Your links*, and can be undone. Everything built on the event data follows at once.
+
 ## Ages
 
 Understat has no birthdates, so ages come from two places, in this order:
