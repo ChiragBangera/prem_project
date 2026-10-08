@@ -121,6 +121,41 @@ await check("unknown route shows a friendly page", async () => {
   expect((await page.locator("main").innerText()).includes("No such page"), "missing 404 message");
 });
 
+await check("back and forward return to the same tab, the same point down the page and the same league", async () => {
+  const hash = () => decodeURIComponent(new URL(page.url()).hash);
+  const league = () => page.locator(".scope-controls select").first().inputValue();
+  await go("/league");
+  await page.locator("table tbody tr").nth(3).click();
+  await settled();
+  const teamPage = hash();
+  await page.locator(".tabs button", { hasText: "Matches" }).click();
+  await settled();
+  await page.locator(".tabs button", { hasText: "Players" }).click();
+  await settled();
+  await page.goBack(); await settled();
+  expect(hash().includes("tab=matches"), "Back from a tab should open the tab before it, not leave the page: " + hash());
+  await page.goBack(); await settled();
+  expect(hash() === teamPage, "a second Back should be the team's first tab: " + hash());
+  await page.goBack(); await settled();
+  expect(hash() === "#/league", "a third Back should be the league table: " + hash());
+  await go("/scout");
+  await page.mouse.wheel(0, 1400);
+  await page.waitForTimeout(400);
+  const y = await page.evaluate(() => Math.round(scrollY));
+  await page.locator("main a[href*='#/player/']").nth(12).click();
+  await settled();
+  await page.goBack(); await settled();
+  await page.waitForTimeout(300);
+  const back = await page.evaluate(() => Math.round(scrollY));
+  expect(y > 300 && Math.abs(back - y) < 40, `Back to Scout should land where the list was left (${y}), not at ${back}`);
+  await go("/league");
+  const before = await league();
+  await page.locator(".scope-controls select").first().selectOption({ index: 1 });
+  await settled();
+  expect((await league()) !== before, "the league should have changed");
+  await page.goBack(); await settled();
+  expect((await league()) === before, `Back should undo the league switch (${before}), not keep ${await league()}`);
+});
 console.log("Search palette");
 await check("Ctrl+K finds a team and opens it", async () => {
   await go("/");

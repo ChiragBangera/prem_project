@@ -107,7 +107,7 @@ export default function Dictionary() {
   useDocumentTitle("Data dictionary");
   return html`<div class="stack" style=${{ "--gap": "20px" }}>
     <${PageHead} eyebrow="Reference" title="Data dictionary" sub="Every number in the app: where it comes from, how it is computed, how to read it and what typical values look like. Use it to check any chart before drawing a conclusion from it." />
-    <${Tabs} tabs=${TABS} value=${tab} onChange=${(v) => setQuery({ tab: v === "metrics" ? null : v })} label="Dictionary sections" />
+    <${Tabs} tabs=${TABS} value=${tab} onChange=${(v) => setQuery({ tab: v === "metrics" ? null : v }, { replace: false })} label="Dictionary sections" />
     <${Async} q=${q}>${(d) => (tab === "metrics" ? html`<${Metrics} d=${d} stats=${st.data} query=${query} />` : tab === "raw" ? html`<${Raw} d=${d} />` : tab === "events" ? html`<${Events} d=${d} />` : tab === "profiles" ? html`<${Profiles} d=${d} />` : html`<${Concepts} d=${d} />`)}</${Async}>
   </div>`;
 }
