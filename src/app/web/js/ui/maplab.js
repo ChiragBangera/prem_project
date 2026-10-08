@@ -18,7 +18,7 @@ import {
 } from "../charts/pitchmaps.js";
 
 const PASS_FILTERS = [
-  { id: "all", label: "All open play", key: "all_passes", what: "Every open-play pass (throw-ins, goal kicks and corners excluded). Faint dashed lines are passes that did not find a team-mate." },
+  { id: "all", label: "All open play", key: "all_passes", what: "Every open-play pass (throw-ins, goal kicks and corners excluded). Orange dashed lines ending in a cross are passes that did not find a team-mate: where the ball was lost." },
   { id: "prog", label: "Progressive", key: "prog", what: "Completed passes that move the ball at least 10 metres toward goal and end in the attacking 60% of the pitch." },
   { id: "key", label: "Key passes", key: "key", what: "Passes that led directly to a shot." },
   { id: "box", label: "Into the box", key: "box", what: "Passes that start outside the penalty area and end inside it." },
@@ -75,7 +75,7 @@ export function MapLab({ data, kind, shots, onMore, shotsLoading }) {
   const pitch = useMemo(() => {
     switch (active) {
       case "touches": return { label: "Touch heat map", node: html`<${HeatLayer} grid=${data.grids?.touches} unit="touches" total=${c.touches} />` };
-      case "passes": return { label: `Passes: ${passInfo.label}`, node: html`<${PassLayer} lines=${passLines} showFailed=${failed && pass === "all"} emphasis=${0} />` };
+      case "passes": return { label: `Passes: ${passInfo.label}`, node: html`<${PassLayer} lines=${passLines} showFailed=${failed && pass !== "prog"} emphasis=${0} />` };
       case "network": return { label: "Pass network", node: html`<${NetworkLayer} network=${data.network} limit=${everyone ? 0 : 12} />` };
       case "defending": return {
         label: "Defensive actions",
@@ -97,7 +97,7 @@ export function MapLab({ data, kind, shots, onMore, shotsLoading }) {
   const facts = useMemo(() => {
     switch (active) {
       case "touches": return [["Touches", (c.touches || 0).toLocaleString("en-GB")], ["Final third", pctOf(data.zones?.thirds[2], zoneTotal)], ["Own third", pctOf(data.zones?.thirds[0], zoneTotal)]];
-      case "passes": return [["Open-play passes", (c.passes || 0).toLocaleString("en-GB")], ["Completed", pctOf(c.pass_ok, c.passes)], ["Drawn", plural(passLines.length, "pass", "passes")]];
+      case "passes": return [["Open-play passes", (c.passes || 0).toLocaleString("en-GB")], ["Completed", pctOf(c.pass_ok, c.passes)], [failed && pass !== "prog" ? "Not completed" : "Drawn", failed && pass !== "prog" ? String(passLines.filter((l) => !l[4]).length) : plural(passLines.length, "pass", "passes")]];
       case "network": return [["Players drawn", String(everyone ? data.network?.nodes?.length || 0 : Math.min(12, data.network?.nodes?.length || 0))], ["Strongest link", data.network?.edges?.[0] ? `${data.network.edges[0].n} passes` : "–"], ["Matches", String(data.network?.matches || data.n || 0)]];
       case "defending": return [["Defensive actions", (c.def || 0).toLocaleString("en-GB")], ["Per match", data.n ? nf((c.def || 0) / data.n, 1) : "–"], ["Recoveries", String((data.def || []).filter((p) => p[2] === 6).length)]];
       case "carries": return [["Carries", String((data.carries || []).length)], ["Progressive", String((data.carries || []).filter((p) => p[4]).length)], ["Per match", data.n ? nf((data.carries || []).length / data.n, 1) : "–"]];
@@ -110,7 +110,7 @@ export function MapLab({ data, kind, shots, onMore, shotsLoading }) {
 
   const legend = (() => {
     if (active === "touches") return [{ label: "More touches", color: "var(--c1)" }];
-    if (active === "passes") return [{ label: "Completed", color: "var(--c1)", shape: "box" }, ...(pass === "all" && failed ? [{ label: "Not completed", color: "var(--ink-3)", shape: "box" }] : [])];
+    if (active === "passes") return [{ label: "Completed", color: "var(--c1)", shape: "box" }, ...(pass !== "prog" && failed ? [{ label: "Not completed (cross: ball lost)", color: "var(--neg)", shape: "box" }] : [])];
     if (active === "network") return [{ label: "Player (size: touches)", color: "var(--c1)", shape: "dot" }, { label: "Line width: passes between the pair", color: "var(--accent-line)", shape: "box" }];
     if (active === "carries") return [{ label: "Carry", color: "var(--c3)" }, { label: "Progressive carry", color: "var(--c2)" }];
     if (active === "takeons") return [{ label: "Won", color: "var(--c2)", shape: "dot" }, { label: "Lost (hollow)", color: "var(--ink-3)", shape: "dot" }];
@@ -136,7 +136,7 @@ export function MapLab({ data, kind, shots, onMore, shotsLoading }) {
     <div class="maplab-tabs"><${Segmented} label="Map layer" value=${active} onChange=${setLayer} options=${available.map((l) => ({ value: l.id, label: l.label }))} /></div>
     <div class="maplab-sub">
       ${active === "passes" ? html`<div class="chipgroup">${PASS_FILTERS.map((f) => html`<button type="button" key=${f.id} class="chip" aria-pressed=${String(pass === f.id)} onClick=${() => setPass(f.id)}>${f.label}</button>`)}</div>
-        ${pass === "all" ? html`<label class="switch"><input type="checkbox" checked=${failed} onChange=${(e) => setFailed(e.target.checked)} /><span>Show passes that were not completed</span></label>` : null}` : null}
+        ${pass !== "prog" ? html`<label class="switch"><input type="checkbox" checked=${failed} onChange=${(e) => setFailed(e.target.checked)} /><span>Show passes that were not completed</span></label>` : null}` : null}
       ${active === "defending" ? html`<${Segmented} small label="Style" value=${defMode} onChange=${setDefMode} options=${[{ value: "points", label: "Each action" }, { value: "heat", label: "Heat map" }]} />
         ${defMode === "points" ? html`<div class="chipgroup">${DEF_KINDS.map((k) => html`<button type="button" key=${k.id} class="chip" aria-pressed=${String(!off.has(k.id))} onClick=${() => toggleKind(k.id)}><i class="dot" style=${{ background: k.color }}></i>${k.label}</button>`)}</div>` : null}` : null}
       ${active === "network" ? html`<label class="switch"><input type="checkbox" checked=${everyone} onChange=${(e) => setEveryone(e.target.checked)} /><span>Include squad players who played less (default: the 12 most involved)</span></label>` : null}
