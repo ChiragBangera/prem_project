@@ -19,7 +19,7 @@ TODAY = date(2026, 10, 2)    # the 2026 season is under way; 2025 is the previou
 
 
 def make(tmp_path, **overrides):
-    settings = Settings(data_dir=tmp_path, demo=False, offline=False, auto=True, min_interval=0, **overrides)
+    settings = Settings(data_dir=tmp_path, demo=False, offline=False, auto=True, min_interval=0, page_pace=0, **overrides)
     from tests.conftest import FakeProvider, raw_league
 
     provider = FakeProvider(raw_league(played=3))
@@ -295,6 +295,112 @@ def test_a_cycle_adopts_event_pages_the_download_cache_holds_and_rebuilds_stale_
             wb.store.kv_delete("events:derived")
             rebuilt = await wb.auto.run_once()
             assert rebuilt["rebuilt"] == 1 and wb.events.gold("EPL", 2025, 55) is not None
+        finally:
+            await wb.close()
+
+    run(go())
+
+
+# ---------------------------------------------------------------------- limits, rest, pause and retries a person asks for
+
+def _events_on(wb, monkeypatch, spawned, proc=None):
+    async def spawn(*cmd, **kw):
+        spawned.append(cmd)
+        return proc or Proc()
+
+    wb.auto._spawn = spawn
+    monkeypatch.setattr(AutoSync, "events_capability", staticmethod(lambda: {"available": True, "reason": None, "browser": "/bin/true"}))
+    wb.auto.set_prefs({"events": {"enabled": True, "leagues": ["EPL"], "seasons_back": 0}})
+
+
+def test_the_event_fetcher_rests_between_runs_and_keeps_to_todays_limit(tmp_path, monkeypatch):
+    async def go():
+        wb, _provider = make(tmp_path)
+        spawned = []
+        _events_on(wb, monkeypatch, spawned)
+        now = [1_800_000_000.0]
+        wb.auto._clock = lambda: now[0]
+        wb.auto.budget._clock = lambda: now[0]
+        try:
+            wb.auto.set_prefs({"limits": {"whoscored": 5}})
+            await wb.auto.run_once()
+            assert len(spawned) == 1 and spawned[0][spawned[0].index("--limit") + 1] == "5" and "--budget" in spawned[0]   # never more than today allows
+            for _ in range(3):
+                await asyncio.sleep(0)
+            wb.store.kv_delete("autosync:events:EPL:2026")                              # as if the site had more to give
+            now[0] += 60
+            held = await wb.auto.run_once()
+            assert len(spawned) == 1 and held["events"]["held"] == "resting between runs"
+            now[0] += 25 * 60
+            wb.auto.budget.spend("whoscored", 5)
+            held = await wb.auto.run_once()
+            assert len(spawned) == 1 and held["events"]["held"] == "today's limit reached"
+            now[0] += 86400                                                              # a new day
+            await wb.auto.run_once()
+            assert len(spawned) == 2
+        finally:
+            await wb.close()
+
+    run(go())
+
+
+def test_pause_holds_every_run_until_resumed_and_a_retry_jumps_the_queue(tmp_path, monkeypatch):
+    async def go():
+        wb, _provider = make(tmp_path)
+        spawned = []
+        _events_on(wb, monkeypatch, spawned)
+        try:
+            wb.auto.pause_events(True)
+            held = await wb.auto.run_once()
+            assert spawned == [] and held["events"]["held"] == "paused" and wb.auto.state()["events"]["control"]["paused"] is True
+            wb.auto.pause_events(False)
+            wb.store.kv_set("autosync:events:last_end", wb.auto._clock())                # it has only just finished a run...
+            wb.auto.retry_event_match("EPL", 2026, 4242)
+            await wb.auto.run_once()                                                     # ...but a person asked for this one: no rest for it
+            assert len(spawned) == 1 and spawned[0][spawned[0].index("--game") + 1] == "4242" and "--budget" not in spawned[0]
+            assert wb.auto.state()["events"]["retry"] == []
+        finally:
+            await wb.close()
+
+    run(go())
+
+
+def test_stop_asks_the_run_to_end_and_insists_after_the_grace(tmp_path, monkeypatch):
+    async def go():
+        import app.sync.autosync as A
+
+        wb, _provider = make(tmp_path)
+        spawned = []
+        proc = Stubborn()
+        _events_on(wb, monkeypatch, spawned, proc=proc)
+        monkeypatch.setattr(A, "STOP_GRACE", 0.05)
+        try:
+            await wb.auto.run_once()
+            assert len(spawned) == 1 and proc.returncode is None
+            control = wb.auto.stop_events()
+            assert control["stop_at"] > 0 and control["paused"] is False
+            await asyncio.sleep(0.2)
+            assert proc.returncode is None                                               # it ignored terminate too (Stubborn): close() kills it
+        finally:
+            await wb.close()
+        assert proc.killed
+
+    run(go())
+
+
+def test_match_pages_keep_to_todays_limit(tmp_path):
+    async def go():
+        wb, _provider = make(tmp_path)
+        try:
+            wb.auto.set_prefs({"limits": {"understat": 0}})
+            result = await wb.auto.run_once()
+            entry = result["leagues"]["EPL:2026"]
+            assert entry.get("held") == "today's limit reached" and entry["remaining"] > 0 and entry["fetched"] == 0
+            wb.auto.set_prefs({"limits": {"understat": 2}})
+            result = await wb.auto.run_once()
+            assert result["leagues"]["EPL:2026"]["fetched"] <= 2 and wb.auto.budget.used("understat") <= 2
+            plan = {(p["league"], p["season"]): p for p in wb.auto.plan()}
+            assert plan[("EPL", 2026)]["pages_left"] == result["leagues"]["EPL:2026"]["remaining"]
         finally:
             await wb.close()
 
