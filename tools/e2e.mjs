@@ -294,11 +294,29 @@ await check("every tab opens", async () => {
 });
 await check("player maps: a player the event data has nothing for gets a notice, not a crash", async () => {
   // the server answers {available: false, reason} when he is not in the event data yet (a half-fetched season, or no safe match); the map lab used to read grids off it
-  await page.route("**/api/maps/player/*", (route) => route.fulfill({ json: { scope: {}, player_id: 100844, available: false, reason: "He has no matches in the event data." } }));
-  await go("/player/100844?tab=maps");
+  await page.route("**/api/maps/player/100007*", (route) => route.fulfill({ json: { scope: {}, player_id: 100007, available: false, reason: "He has no matches in the event data." } }));
+  await go("/player/100007?tab=maps");                                    // another player than the next check uses: a page is drawn from its stored copy first
   await noBug();
   expect((await bodyText()).includes("He has no matches in the event data."), "the reason should be shown");
-  await page.unroute("**/api/maps/player/*");
+  await page.unroute("**/api/maps/player/100007*");
+});
+await check("player maps: passes that were not completed are drawn, ending in a cross, and the switch hides them", async () => {
+  await go("/player/100844?tab=maps");
+  await page.waitForSelector(".maplab svg");
+  await page.locator(".maplab-tabs button", { hasText: /^Passes$/ }).click();
+  await page.locator(".chip", { hasText: "All open play" }).click();      // the layer opens on Progressive, which is completed passes only
+  await page.waitForTimeout(200);
+  const lost = () => page.locator(".maplab svg .pass-lost-end").count();
+  const asked = parseInt((await page.locator(".mapfacts").innerText()).match(/NOT COMPLETED\s+(\d+)/i)?.[1] ?? "-1", 10);
+  expect((await lost()) > 0, "no lost passes are drawn");
+  expect((await lost()) === asked, `the Not completed fact (${asked}) should match the crosses drawn (${await lost()})`);
+  await page.getByLabel("Show passes that were not completed").uncheck();
+  expect((await lost()) === 0, "the switch should hide them");
+  await page.getByLabel("Show passes that were not completed").check();
+  await page.locator(".chip", { hasText: "Into the final third" }).click();
+  expect((await lost()) > 0, "the switch also works on the other filters");
+  await page.locator(".chip", { hasText: "Progressive" }).click();
+  expect((await page.getByLabel("Show passes that were not completed").count()) === 0, "progressive passes are all completed: no switch");
 });
 await check("style & maps draws every layer from the stored events", async () => {
   await go("/team/Arsenal?tab=maps");

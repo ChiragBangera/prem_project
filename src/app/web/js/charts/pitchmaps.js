@@ -92,10 +92,11 @@ const arrowId = (id, key) => `${id}-${key}`;
 const fadeFor = (n) => Math.min(1, Math.max(0.28, Math.sqrt(160 / Math.max(n, 1))));
 
 /**
- * Passes as arrows. lines: [[x0, y0, x1, y1, ok, flags, minute, match]]. Completed ones in `color`, incomplete ones faint and dashed.
+ * Passes as arrows. lines: [[x0, y0, x1, y1, ok, flags, minute, match]]. Completed ones in `color`; incomplete ones dashed in `failColor`
+ * and ending in a cross, where the ball was lost, drawn clearly enough to read (they are what the map is for: who loses the ball, and where).
  * `emphasis` (optional): flags whose lines are drawn heavier (key passes, say) within a lighter wash of the others.
  */
-export function PassLayer({ lines, color = "var(--c1)", failColor = "var(--ink-3)", showFailed = true, emphasis = 0, width = 0.3 }) {
+export function PassLayer({ lines, color = "var(--c1)", failColor = "var(--neg)", showFailed = true, emphasis = 0, width = 0.3 }) {
   const id = useMemo(nextId, []);
   const ok = lines.filter((l) => l[4]);
   const bad = showFailed ? lines.filter((l) => !l[4]) : [];
@@ -105,7 +106,8 @@ export function PassLayer({ lines, color = "var(--c1)", failColor = "var(--ink-3
   const arrow = (key, fill) => html`<marker id=${arrowId(id, key)} viewBox="0 0 6 6" refX="5" refY="3" markerWidth=${head} markerHeight=${head} markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path d="M0 0 6 3 0 6z" style=${{ fill }} /></marker>`;
   return html`<g>
     <defs>${arrow("ok", color)}${arrow("bad", failColor)}</defs>
-    ${bad.map((l, i) => html`<line key=${"b" + i} x1=${px(l[0])} y1=${py(l[1])} x2=${px(l[2])} y2=${py(l[3])} style=${{ stroke: failColor, strokeOpacity: 0.28 * fade, strokeWidth: width * (0.6 + 0.4 * fade), strokeDasharray: "0.9 0.9" }} />`)}
+    ${bad.map((l, i) => html`<line class="pass-lost" key=${"b" + i} x1=${px(l[0])} y1=${py(l[1])} x2=${px(l[2])} y2=${py(l[3])} style=${{ stroke: failColor, strokeOpacity: 0.55 + 0.3 * fade, strokeWidth: width * (0.7 + 0.5 * fade), strokeDasharray: "0.9 0.7" }} />`)}
+    ${bad.map((l, i) => { const x = px(l[2]), y = py(l[3]), r = 0.7 + 0.4 * fade; return html`<path class="pass-lost-end" key=${"x" + i} d=${`M${x - r} ${y - r}L${x + r} ${y + r}M${x - r} ${y + r}L${x + r} ${y - r}`} style=${{ stroke: failColor, strokeOpacity: 0.55 + 0.35 * fade, strokeWidth: width * (1.5 + 0.7 * fade), fill: "none", strokeLinecap: "round" }} />`; })}
     ${ok.map((l, i) => html`<line key=${"o" + i} x1=${px(l[0])} y1=${py(l[1])} x2=${px(l[2])} y2=${py(l[3])} marker-end=${`url(#${arrowId(id, "ok")})`} style=${{ stroke: color, strokeOpacity: strong(l) ? 0.95 : (emphasis ? 0.28 : 0.62) * fade, strokeWidth: (strong(l) ? width * 1.9 : width) * (0.6 + 0.4 * fade) }} />`)}
   </g>`;
 }
