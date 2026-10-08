@@ -29,7 +29,7 @@ class EventLinks(Part):
             return hit[1]
         fixtures, alias, unlinked_matches = link_fixtures(agg, ls.fixtures)
         totals = {pid: {"id": pid, "name": p["name"], "teams": p["teams"], "min": p["c"].get("min", 0)} for pid, p in agg["players"].items()}
-        linked, unlinked = link_season(totals, ls.players)
+        linked, unlinked = link_season(totals, ls.players, alias)
         players = {uid: t["id"] for uid, t in linked.items()}
         by_id = {}
         if unlinked:
