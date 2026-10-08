@@ -94,6 +94,17 @@ function Scorers({ list, align }) {
 
 const SHAPE = (f) => formation(f) || "–";
 
+/**
+ * The scoreboard shows the same xG as the chart, the shot map and the head to head below it: every shot added up. Understat's own match figure
+ * counts the shots of one attack once (a saved shot and the rebound scored a moment later are one chance, not two), so it is lower when there
+ * were rebounds; say so on hover rather than show two different totals for one team on one page.
+ */
+function matchXgNote(f, summary) {
+  const h = summary?.home?.xg, a = summary?.away?.xg;
+  if (h == null || a == null || (Math.abs(h - f.hxg) < 0.01 && Math.abs(a - f.axg) < 0.01)) return "Every shot's xG added up";
+  return `Every shot's xG added up. Understat's match figure, which counts the shots of one attack (a rebound) once, is ${nf(f.hxg, 2)} – ${nf(f.axg, 2)}.`;
+}
+
 /** What the event data adds to the result: possession, passing, set pieces, discipline and the shape each side used. */
 function HowPlayed({ stats, f }) {
   if (!stats) return null;
@@ -126,7 +137,7 @@ function MatchView({ d }) {
     <${DataNotices} scope=${dscope} meta=${meta} />
     <div class="scoreboard card">
       <div class="sb-col"><a class="sb-team" href=${teamHref(f.home)}><${Crest} team=${f.home} short=${f.home_short} size=${56} /><span>${f.home}</span></a><${Scorers} list=${r.scorers?.h} align="start" /></div>
-      <div class="sb-score"><div class="figure">${goalsHome}<i>–</i>${goalsAway}</div><div class="sb-xg num">xG ${nf(f.hxg, 2)} – ${nf(f.axg, 2)}${stats?.poss ? html` · possession ${stats.poss[0]}–${stats.poss[1]}%` : ""}</div></div>
+      <div class="sb-score"><div class="figure">${goalsHome}<i>–</i>${goalsAway}</div><div class="sb-xg num" title=${matchXgNote(f, r.summary)}>xG ${nf(r.summary?.home?.xg ?? f.hxg, 2)} – ${nf(r.summary?.away?.xg ?? f.axg, 2)}${stats?.poss ? html` · possession ${stats.poss[0]}–${stats.poss[1]}%` : ""}</div></div>
       <div class="sb-col away"><a class="sb-team away" href=${teamHref(f.away)}><${Crest} team=${f.away} short=${f.away_short} size=${56} /><span>${f.away}</span></a><${Scorers} list=${r.scorers?.a} align="end" /></div>
     </div>
     <${Insights} items=${insights} scope=${dscope} />
