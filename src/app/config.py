@@ -56,6 +56,7 @@ class Settings:
     auto_events: bool | None = None  # None: on when the optional event-data dependencies and a browser are available
     auto_interval: float = 15 * 60.0
     auto_first_delay: float = 10.0
+    page_pace: float = 1.5            # seconds between two Understat match pages fetched in the background (one at a time)
     demo_events: bool = False        # in demo mode, fill the event store with synthetic matches in the background (see sync/demofeed.py)
 
     @property

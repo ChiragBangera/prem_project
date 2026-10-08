@@ -81,13 +81,29 @@ class MatchSync:
                 return False
 
     async def run(self, ls: LeagueSeason, *, limit: int | None = None, stop: Callable[[], bool] | None = None,
-                  progress: Callable[[int, int], None] | None = None) -> dict:
-        """Fetch the pending pages of one league season. Returns ``{"fetched", "failed", "remaining"}``."""
+                  progress: Callable[[int, int], None] | None = None, pace: float = 0.0) -> dict:
+        """Fetch the pending pages of one league season. Returns ``{"fetched", "failed", "remaining"}``.
+
+        ``pace`` > 0 fetches one page at a time with that many seconds between them: how the background updater reads, so a new install
+        filling several seasons does not hit the site with a burst. Without it (a person asked for a sync) pages go a few at a time.
+        """
         if self.repo.settings.offline:
             return {"fetched": 0, "failed": 0, "remaining": len(self.pending(ls))}
         todo = self.pending(ls)
         batch = todo[:limit] if limit is not None else todo
         fetched = failed = 0
+        if pace > 0:
+            for i, fixture in enumerate(batch):
+                if stop is not None and stop():
+                    break
+                ok = await self._one(fixture)
+                fetched += ok
+                failed += not ok
+                if progress is not None:
+                    progress(i + 1, len(batch))
+                if i + 1 < len(batch):
+                    await asyncio.sleep(pace)
+            return {"fetched": fetched, "failed": failed, "remaining": len(todo) - fetched}
         for start in range(0, len(batch), 16):
             if stop is not None and stop():
                 break
