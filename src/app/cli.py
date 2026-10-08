@@ -227,8 +227,11 @@ def cmd_events_sync(args: argparse.Namespace) -> int:
     """Fetch event data (passes, duels, tackles) from WhoScored into the local store. Slow; safe to stop and resume."""
     _apply_env(args)
     from app.data.store import Store
+    from app.events import ledger
     from app.events.fetch import FetchUnavailable, sync_season
     from app.events.store import EventStore
+    from app.sync.autosync import PREFS_KEY
+    from app.sync.budget import Budget
 
     settings = Settings.from_env()
     seasons = [int(x) for x in args.seasons.split(",") if x.strip()] if args.seasons else [current_season()]
@@ -238,10 +241,20 @@ def cmd_events_sync(args: argparse.Namespace) -> int:
     work.mkdir(parents=True, exist_ok=True)
     os.chdir(work)  # the browser tooling drops lock files in the working folder: keep them inside the data folder, not the project
     signal.signal(signal.SIGTERM, _stop_like_ctrl_c)
+    run_started = time.time()
+    only = {int(g) for g in str(args.game or "").split(",") if g.strip().isdigit()} or None
+    budget = Budget(store, lambda: (store.kv_get(PREFS_KEY) or {}).get("limits") or {}) if args.budget else None
+
+    def spent() -> None:
+        if budget is not None:
+            budget.spend("whoscored")
+
     try:
         for season in seasons:
             print(f"\n{args.league} {season}: fetching event data from WhoScored (a match takes about 15 seconds; Ctrl+C is safe, run it again to carry on)")
-            status = sync_season(events, args.league, season, data_dir=settings.data_dir, browser=args.browser, headless=not args.visible, limit=args.limit, pause=args.pause)
+            status = sync_season(events, args.league, season, data_dir=settings.data_dir, browser=args.browser, headless=not args.visible, limit=args.limit, pause=args.pause,
+                                 only=only, stop=lambda: ledger.stop_reason(store, run_started),
+                                 allowance=(lambda: budget.left("whoscored")) if budget else None, on_fetched=spent)
             print(f"{args.league} {season}: {len(events.match_ids(args.league, season))} matches stored ({status['done']} fetched now, {status['failed']} failed).")
     except FetchUnavailable as exc:
         print(f"\n{exc}")
@@ -413,7 +426,9 @@ def build_parser() -> argparse.ArgumentParser:
     esync.add_argument("--league", default="EPL", help=f"one of: {', '.join(LEAGUES)}")
     esync.add_argument("--seasons", default="", help="comma-separated start years (default: current season)")
     esync.add_argument("--limit", type=int, help="fetch at most this many matches (to try it out)")
-    esync.add_argument("--pause", type=float, default=3.0, help="seconds to wait between matches (default 3)")
+    esync.add_argument("--pause", type=float, default=10.0, help="wait this to twice this many seconds between matches (default 10)")
+    esync.add_argument("--game", help="only these WhoScored match ids, comma-separated (to try a failed match again)")
+    esync.add_argument("--budget", action="store_true", help="stop at today's limit for WhoScored, as the background updater does")
     esync.add_argument("--browser", help="path to Chrome, Chromium or Brave (found automatically if omitted; Edge does not work)")
     esync.add_argument("--visible", action="store_true", help="show the browser window; can help if the site blocks the hidden one")
     estatus = esub.add_parser("status", help="show what event data is stored")

@@ -152,3 +152,97 @@ def test_helpers():
     with pytest.raises(FetchUnavailable):
         make_reader("Nonexistent_League", 2025, data_dir=__import__("pathlib").Path("."))
     assert find_browser() is None or isinstance(find_browser(), str)
+
+
+# ---------------------------------------------------------------------- the ledger of failed matches, pause, stop and the daily limit
+
+from app.events import ledger as L  # noqa: E402
+from app.sync.budget import Budget  # noqa: E402
+
+
+def test_a_failed_match_waits_half_a_day_and_gives_up_after_three_tries(events, tmp_path):
+    reader = FakeReader(games(3), tmp_path, broken={101})
+    now = [1_000_000.0]
+    status, _ = run(events, reader, tmp_path, clock=lambda: now[0])
+    assert status["done"] == 2 and status["failed"] == 1
+    entry = L.failures(events.store, "EPL", 2025)[101]
+    assert entry["attempts"] == 1 and entry["label"] == "Reds v Blues" and entry["date"] == "2025-08-02" and "blocked" in entry["error"]
+    reader.event_calls.clear()
+    status, lines = run(events, reader, tmp_path, clock=lambda: now[0] + 3600)
+    assert reader.event_calls == [] and any("waiting to be tried again" in line for line in lines)     # not again within the hour
+    for attempt in (2, 3):
+        now[0] += L.RETRY_AFTER + 1
+        run(events, reader, tmp_path, clock=lambda: now[0])
+        assert L.failures(events.store, "EPL", 2025)[101]["attempts"] == attempt
+    now[0] += L.RETRY_AFTER + 1
+    reader.event_calls.clear()
+    run(events, reader, tmp_path, clock=lambda: now[0])
+    assert reader.event_calls == [] and L.waiting_for_person(L.failures(events.store, "EPL", 2025)[101])   # three tries: a person decides now
+
+
+def test_retry_now_reads_just_that_match_and_a_stored_match_is_forgotten(events, tmp_path):
+    reader = FakeReader(games(3), tmp_path, broken={101})
+    run(events, reader, tmp_path)
+    reader.broken.clear()
+    reader.event_calls.clear()
+    status, _ = run(events, reader, tmp_path, only={101})
+    assert reader.event_calls == [101] and status["done"] == 1 and L.failures(events.store, "EPL", 2025) == {}
+
+
+def test_skip_keeps_a_match_out_until_it_is_unskipped(events, tmp_path):
+    reader = FakeReader(games(2), tmp_path, broken={100})
+    run(events, reader, tmp_path)
+    L.set_skip(events.store, "EPL", 2025, 100, True)
+    reader.event_calls.clear()
+    run(events, reader, tmp_path, clock=lambda: 10**12)
+    assert reader.event_calls == []
+    L.set_skip(events.store, "EPL", 2025, 100, False)
+    reader.broken.clear()
+    run(events, reader, tmp_path, clock=lambda: 10**12)
+    assert reader.event_calls == [100] and events.has_match("EPL", 2025, 100)
+
+
+def test_pause_and_stop_end_the_run_before_the_next_match(events, tmp_path):
+    reader = FakeReader(games(4), tmp_path)
+    calls = []
+
+    def stop():
+        calls.append(1)
+        return "paused" if len(calls) > 2 else None
+
+    status, lines = run(events, reader, tmp_path, stop=stop)
+    assert status["done"] == 2 and status["stopped"] == "paused" and any("Stopping before match 3 of 4: paused" in line for line in lines)
+    L.set_control(events.store, paused=True)
+    assert L.stop_reason(events.store, run_started=0.0) == "paused"
+    L.set_control(events.store, paused=False, stop_at=50.0)
+    assert L.stop_reason(events.store, run_started=40.0) == "stopped" and L.stop_reason(events.store, run_started=60.0) is None   # a stop ends the run it was meant for only
+
+
+def test_the_daily_limit_stops_the_run_and_counts_only_what_came_from_the_site(events, tmp_path):
+    budget = Budget(events.store, lambda: {"whoscored": 2}, clock=lambda: 1_000_000.0)
+    reader = FakeReader(games(5), tmp_path)
+    status, lines = run(events, reader, tmp_path, allowance=lambda: budget.left("whoscored"), on_fetched=lambda: budget.spend("whoscored"), cached_under=-1)
+    assert status["done"] == 2 and budget.used("whoscored") == 2 and budget.left("whoscored") == 0
+    assert any("today's limit reached" in line for line in lines)
+    tomorrow = Budget(events.store, lambda: {"whoscored": 2}, clock=lambda: 1_000_000.0 + 86400)
+    assert tomorrow.left("whoscored") == 2
+
+
+def test_the_pause_between_matches_is_at_random_between_once_and_twice_the_setting(events, tmp_path):
+    waits = []
+    sync_season(events, "EPL", 2025, data_dir=tmp_path, reader=FakeReader(games(4), tmp_path), pause=10, sleep=waits.append, log=lambda line: None, cached_under=-1)
+    assert len(waits) == 3 and all(10 <= w <= 20 for w in waits)                           # none after the last match
+
+
+def test_budget_limits_are_clamped_and_old_days_are_dropped(tmp_path):
+    store = Store(tmp_path / "b.sqlite")
+    try:
+        day = [1_000_000.0]
+        b = Budget(store, lambda: {"understat": 10**9, "whoscored": -5}, clock=lambda: day[0])
+        assert b.limit("understat") == 5000 and b.limit("whoscored") == 0
+        b.spend("understat", 3)
+        day[0] += 10 * 86400
+        b.spend("understat", 1)
+        assert list(store.kv_prefix("budget:understat:")) == [f"budget:understat:{b.day()}"] and b.used("understat") == 1
+    finally:
+        store.close()
