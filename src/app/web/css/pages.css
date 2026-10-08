@@ -449,3 +449,11 @@ ul.plain { margin: 6px 0 0; padding-left: 18px; display: grid; gap: 3px; }
 .sb-scorers b { font-weight: 650; color: var(--ink); }
 .sb-scorers.end { text-align: right; }
 @media (max-width: 720px) { .sb-col, .sb-col.away { align-items: center; } .sb-scorers.end, .sb-scorers { text-align: center; } }
+
+/* Data page: fetching limits and the review of what needs a person */
+.fetch-limits { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 18px 28px; }
+.fetch-state { padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--r-md, 10px); background: var(--surface-2); }
+.review .h4 { font-size: var(--fs-md, 15px); font-weight: 650; margin: 0; }
+.review-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; padding: 10px 0; border-top: 1px solid var(--line); }
+.review-row > div:first-child { min-width: 0; flex: 1 1 260px; }
+.review-row .select { max-width: min(420px, 100%); }

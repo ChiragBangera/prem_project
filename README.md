@@ -135,7 +135,7 @@ Then open `http://127.0.0.1:8000` yourself (Docker cannot open your browser). Ad
 
 #### Event data
 
-By default the app knows shots and expected goals, which is what Understat records. A second, optional source adds every pass, duel, tackle and carry: the passing and defending numbers, possession, pressing and the pitch maps. It needs **Google Chrome, Chromium or Brave** on your computer (Microsoft Edge, although it comes with Windows, does not work for this) and the extra packages: run `uv sync --extra events`, then switch event data on from the app's Data page. It takes about two hours once per league season and is for personal use only. When you update, run `uv sync --extra events` instead of `uv sync`, or the extra packages are removed again. See [docs/data.md](docs/data.md#event-data-optional-passes-duels-tackles-carries-and-maps) for more.
+By default the app knows shots and expected goals, which is what Understat records. A second, optional source adds every pass, duel, tackle and carry: the passing and defending numbers, possession, pressing and the pitch maps. It needs **Google Chrome, Chromium or Brave** on your computer (Microsoft Edge, although it comes with Windows, does not work for this) and the extra packages: run `uv sync --extra events`, then switch event data on from the app's Data page. It is fetched a little each day (40 matches by default, changeable on the Data page, where you can also pause it, retry a match or link a player by hand) and is for personal use only. When you update, run `uv sync --extra events` instead of `uv sync`, or the extra packages are removed again. See [docs/data.md](docs/data.md#event-data-optional-passes-duels-tackles-carries-and-maps) for more.
 
 </details>
 

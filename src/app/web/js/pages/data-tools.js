@@ -152,7 +152,7 @@ export function EventData({ status, meta }) {
           </div>
           ${e.linked != null ? html`<div class="xsmall muted"><b class="num">${e.linked}</b> players matched to Understat${e.unlinked_n ? `, ${e.unlinked_n} with 90+ minutes could not be matched safely and are left out` : ""}.</div>` : null}
           ${run.last_error ? html`<div class="xsmall muted">Last error: ${run.last_error}</div>` : null}
-          ${e.unlinked?.length ? html`<details class="xsmall"><summary class="muted">Players left out</summary>
+          ${e.unlinked?.length ? html`<details class="xsmall"><summary class="muted">Players left out (link them by hand in Needs your eye, below)</summary>
             <ul class="plain">${e.unlinked.map((u) => html`<li key=${u.id}>${u.name} <span class="muted">· ${u.teams.join(" / ")} · ${Math.round(u.minutes)} min${u.candidates?.length > 1 ? " · ambiguous name" : ""}</span></li>`)}</ul></details>` : null}
         </div>`;
       })}
