@@ -13,12 +13,14 @@ from __future__ import annotations
 
 import math
 import os
+import random
 import shutil
 import sys
 import time
 from pathlib import Path
 from collections.abc import Callable
 
+from . import ledger as L
 from . import raw as R
 from .store import EventStore
 
@@ -136,16 +138,23 @@ def _page_path(reader, row: dict) -> Path:
 
 def sync_season(
     events: EventStore, league: str, season: int, *, data_dir: Path, browser: str | None = None, headless: bool = True,
-    limit: int | None = None, pause: float = 3.0, max_failures: int = 5, reader=None, log: Callable[[str], None] = print,
-    sleep: Callable[[float], None] = time.sleep,
+    limit: int | None = None, pause: float = 10.0, max_failures: int = 5, reader=None, log: Callable[[str], None] = print,
+    sleep: Callable[[float], None] = time.sleep, only: set[int] | None = None, stop: Callable[[], str | None] | None = None,
+    allowance: Callable[[], int] | None = None, on_fetched: Callable[[], None] | None = None, clock: Callable[[], float] = time.time,
+    cached_under: float = 2.0,
 ) -> dict:
     """Fetch every finished match of a league-season that is not stored yet. Returns the final status.
 
     Each match is read once through the browser, stored raw in the app's own store (see :mod:`app.events.raw`) and derived from there, so
     a stopped run loses nothing and a later run only fetches what is still missing.
+
+    Politeness: between two matches it waits ``pause`` to twice ``pause`` seconds (at random, so the visits do not tick like a machine).
+    A match that failed before is skipped until it is due again (see :mod:`app.events.ledger`), unless it is in ``only``, which also limits
+    the run to those matches (a person asked for them). ``stop`` is asked before every match and ends the run when it gives a reason
+    (paused, stopped); ``allowance`` says how many more matches today's budget allows, and ``on_fetched`` is told of each one read from the site.
     """
     previous = events.status(league, season) or {}
-    events.set_status(league, season, running=True, started=time.time(), done=0, failed=0, last_error=None, stalled=False)
+    events.set_status(league, season, running=True, started=time.time(), done=0, failed=0, last_error=None, stalled=False, stopped=None)
     done = failed = consecutive = 0
     try:
         adopted = R.import_soccerdata_cache(events.store, data_dir, only=[(league, season)])  # pages a stopped run downloaded but never stored
@@ -158,13 +167,29 @@ def sync_season(
         log(f"Reading the {league} {season} match list ({'from cache' if fresh else 'this takes a few minutes'})...")
         schedule = _finished(_records(reader.read_schedule(force_cache=True) if fresh else reader.read_schedule()))
         events.set_status(league, season, schedule_at=time.time())
-        todo = [r for r in schedule if not events.has_match(league, season, int(r["game_id"]))]
-        stored = len(schedule) - len(todo)
+        missing = [r for r in schedule if not events.has_match(league, season, int(r["game_id"]))]
+        stored = len(schedule) - len(missing)
+        book = L.failures(events.store, league, season)
+        now = clock()
+        if only is not None:
+            todo = [r for r in missing if int(r["game_id"]) in only]
+            waiting = 0
+        else:
+            todo = [r for r in missing if L.due(book.get(int(r["game_id"])), now)]
+            waiting = len(missing) - len(todo)
         if limit is not None:
             todo = todo[:limit]
         events.set_status(league, season, total=len(todo), finished_matches=len(schedule))
-        log(f"{len(schedule)} finished matches, {stored} already stored, {len(todo)} to fetch.")
+        log(f"{len(schedule)} finished matches, {stored} already stored, {len(todo)} to fetch"
+            + (f", {waiting} failed before and waiting to be tried again." if waiting else "."))
         for i, match in enumerate(todo, start=1):
+            reason = stop() if stop is not None else None
+            if reason is None and allowance is not None and allowance() <= 0:
+                reason = "today's limit reached"
+            if reason is not None:
+                log(f"Stopping before match {i} of {len(todo)}: {reason}. Everything fetched so far is saved.")
+                events.set_status(league, season, stopped=reason)
+                break
             gid = int(match["game_id"])
             label = f"{match.get('home_team', '?')} v {match.get('away_team', '?')}"
             started = time.monotonic()
@@ -176,19 +201,24 @@ def sync_season(
                 if doc is None or not events.ingest(league, season, gid, doc, fetched_at=time.time()):
                     raise ValueError("no events returned")
                 done, consecutive = done + 1, 0
+                L.forget(events.store, league, season, gid)
                 log(f"  [{i}/{len(todo)}] {label}: stored")
             except KeyboardInterrupt:
                 raise
             except Exception as exc:  # noqa: BLE001 - one bad match must not stop the run (it is counted and logged below); a wall of them means we are blocked
                 failed, consecutive = failed + 1, consecutive + 1
                 events.set_status(league, season, last_error=f"{label}: {str(exc)[:160]}")
+                L.note_failure(events.store, league, season, gid, label=label, date=str(match.get("date") or "")[:10] or None, error=str(exc), now=clock())
                 log(f"  [{i}/{len(todo)}] {label}: FAILED ({str(exc)[:100]})")
                 if consecutive >= max_failures:
                     log(f"Stopping: {max_failures} matches in a row failed. WhoScored may be blocking requests; try again later, or add --visible.")
                     break
             events.set_status(league, season, done=done, failed=failed)
-            if time.monotonic() - started > 2.0:  # the pause is for the website's sake: a match read back from the local cache needs none
-                sleep(pause)
+            if time.monotonic() - started > cached_under:  # the pause is for the website's sake: a match read back from the local cache needs none
+                if on_fetched is not None:
+                    on_fetched()
+                if i < len(todo):
+                    sleep(pause * (1.0 + random.random()))
     except KeyboardInterrupt:
         log("Stopped. Everything fetched so far is saved; run the same command again to carry on.")
     finally:
