@@ -114,6 +114,17 @@ def test_lines_view_picks_by_flag_and_hides_restarts_unless_asked():
     assert len(M.lines_view(out, limit=2)) == 2
 
 
+def test_lines_view_can_keep_only_completed_or_only_lost_passes_and_thins_after_choosing():
+    out = layer(player=1)
+    every, lost, done = M.lines_view(out), M.lines_view(out, ok=False), M.lines_view(out, ok=True)
+    assert len(lost) + len(done) == len(every) and all(not p[4] for p in lost) and all(p[4] for p in done)
+    assert len(M.lines_view(out, ok=False, limit=1)) <= 1
+    big = [ev("Pass", 1, x=10 + i % 80, y=10 + i % 70, end_x=20 + i % 70, end_y=15 + i % 60, minute=1 + i % 90, outcome=1 if i % 10 else 0) for i in range(4000)] + [end()]
+    out = M.collect([(1, silver(big, home_players=[player(1)], away_players=[player(9, team_side="away")]))], M.Selection(player=1))
+    sample_lost = sum(1 for p in M.lines_view(out, limit=600) if not p[4])
+    assert len(M.lines_view(out, ok=False, limit=600)) > sample_lost * 2                              # a map of lost passes alone has far more than a few left over from a mixed sample
+
+
 def test_the_pass_network_needs_enough_passing_and_says_who_gave_it_to_whom():
     events = []
     for i in range(30):                                                                             # 1 -> 2 -> 1 -> 2 ..., three seconds apart, with a third player who barely touches the ball

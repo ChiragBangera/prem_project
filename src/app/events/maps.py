@@ -156,9 +156,10 @@ def collect(matches: Iterable[tuple[int, Match]], selection: Selection) -> dict:
     return out
 
 
-def lines_view(layer: dict, *, flags: int = 0, limit: int = MAX_LINES) -> list:
-    """The pass lines that carry any of ``flags`` (all open-play passes when 0), thinned to ``limit``."""
-    picked = [p for p in layer["passes"] if (not flags and not p[5] & PF_RESTART) or p[5] & flags]
+def lines_view(layer: dict, *, flags: int = 0, limit: int = MAX_LINES, ok: bool | None = None) -> list:
+    """The pass lines that carry any of ``flags`` (all open-play passes when 0), thinned to ``limit``; only the completed ones (``ok=True``) or only the
+    ones that were not (``ok=False``) when asked. Thinning after that choice is what lets the browser show a team's lost passes as a map of their own."""
+    picked = [p for p in layer["passes"] if ((not flags and not p[5] & PF_RESTART) or p[5] & flags) and (ok is None or bool(p[4]) == ok)]
     return thin(picked, limit)
 
 
