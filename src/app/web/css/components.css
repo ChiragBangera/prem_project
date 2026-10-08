@@ -150,6 +150,12 @@ textarea.input { height: auto; padding: 9px 11px; line-height: 1.45; resize: ver
 
 /* ============ tables ============ */
 .table-wrap { overflow: auto; max-width: 100%; position: relative; }
+/* a table wider than its card: a soft shade at the edge that has more, so it reads as "scroll for more", not as cut off */
+.table-frame { position: relative; min-width: 0; }
+.table-frame::before, .table-frame::after { content: ""; position: absolute; top: 0; bottom: 0; width: 28px; pointer-events: none; opacity: 0; transition: opacity .15s; z-index: 3; }
+.table-frame::before { left: 0; background: linear-gradient(to right, color-mix(in oklab, var(--ink) 14%, transparent), transparent); }
+.table-frame::after { right: 0; background: linear-gradient(to left, color-mix(in oklab, var(--ink) 14%, transparent), transparent); }
+.table-frame.more-left::before, .table-frame.more-right::after { opacity: 1; }
 .table-wrap.tall { max-height: 640px; }
 table.data { width: 100%; font-size: var(--fs-sm); font-variant-numeric: tabular-nums lining-nums; }
 table.data th, table.data td { padding: 0 12px; height: 40px; text-align: left; white-space: nowrap; border-bottom: 1px solid var(--line); vertical-align: middle; }

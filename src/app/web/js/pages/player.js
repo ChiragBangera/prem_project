@@ -357,7 +357,7 @@ function PlayerView({ d, id, tab, span, setSpan }) {
         <${Button} icon="compare" onClick=${() => navigate("/compare", { ids: String(p.id) })}>Compare</${Button}>
       </div>`} />
     <${DataNotices} scope=${dScope} meta=${d.meta} extra=${(d.meta?.warnings || []).slice(0, 2)} />
-    ${p.tags?.length ? html`<div class="row wrap" style=${{ gap: "8px" }}>${p.tags.map((tg) => html`<span class="tag strong-tag" key=${tg.key} title=${tg.why}>${tg.label}<span class="muted"> · ${tg.why}</span></span>`)}${!p.in_pool ? html`<${Badge} tone="warn" title="Fewer minutes than the ranking pool requires">Small sample</${Badge}>` : null}</div>` : (!p.in_pool ? html`<${Badge} tone="warn">Small sample</${Badge}>` : null)}
+    ${p.tags?.length ? html`<div class="row wrap" style=${{ gap: "8px" }}>${p.tags.map((tg) => html`<span class="tag strong-tag" key=${tg.key} title=${tg.why}><span class="tag-name">${tg.label}</span><span class="muted"> · ${tg.why}</span></span>`)}${!p.in_pool ? html`<${Badge} tone="warn" title="Fewer minutes than the ranking pool requires">Small sample</${Badge}>` : null}</div>` : (!p.in_pool ? html`<${Badge} tone="warn">Small sample</${Badge}>` : null)}
     <div class="tiles">
       <${Stat} label="Role score" value=${p.output != null ? Math.round(p.output) : "–"} sub=${p.score_full != null ? `All-data score ${Math.round(p.score_full)}` : `vs ${p.pool_n} ${detail.group_label.toLowerCase()}s`} title="Average percentile across the metrics that define his role (Understat). The all-data score also uses the event metrics." />
       <${Stat} label="Goals" value=${t.goals} sub=${`${nf(t.xg, 1)} xG · ${signed(t.g_xg, 1)}`} tone=${t.g_xg > 1 ? "up" : t.g_xg < -1 ? "down" : ""} />
