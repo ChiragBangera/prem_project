@@ -300,23 +300,57 @@ await check("player maps: a player the event data has nothing for gets a notice,
   expect((await bodyText()).includes("He has no matches in the event data."), "the reason should be shown");
   await page.unroute("**/api/maps/player/100007*");
 });
-await check("player maps: passes that were not completed are drawn, ending in a cross, and the switch hides them", async () => {
+await check("player maps: passes can be shown completed, not completed or both, and the lost ones end in a cross", async () => {
   await go("/player/100844?tab=maps");
   await page.waitForSelector(".maplab svg");
   await page.locator(".maplab-tabs button", { hasText: /^Passes$/ }).click();
   await page.locator(".chip", { hasText: "All open play" }).click();      // the layer opens on Progressive, which is completed passes only
   await page.waitForTimeout(200);
+  const which = (name) => page.getByRole("button", { name, exact: true }).first();
   const lost = () => page.locator(".maplab svg .pass-lost-end").count();
+  const arrows = () => page.locator(".maplab svg line[marker-end]").count();
   const asked = parseInt((await page.locator(".mapfacts").innerText()).match(/NOT COMPLETED\s+(\d+)/i)?.[1] ?? "-1", 10);
-  expect((await lost()) > 0, "no lost passes are drawn");
+  expect((await lost()) > 0 && (await arrows()) > 0, "both kinds should be drawn at first");
   expect((await lost()) === asked, `the Not completed fact (${asked}) should match the crosses drawn (${await lost()})`);
-  await page.getByLabel("Show passes that were not completed").uncheck();
-  expect((await lost()) === 0, "the switch should hide them");
-  await page.getByLabel("Show passes that were not completed").check();
+  await which("Completed").click();
+  expect((await lost()) === 0 && (await arrows()) > 0, "Completed: arrows only");
+  await which("Not completed").click();
+  expect((await lost()) === asked && (await arrows()) === 0, "Not completed: crosses only");
+  await which("Both").click();
   await page.locator(".chip", { hasText: "Into the final third" }).click();
-  expect((await lost()) > 0, "the switch also works on the other filters");
+  await which("Not completed").click();
+  expect((await arrows()) === 0 && (await lost()) > 0, "the choice also works on the other filters");
   await page.locator(".chip", { hasText: "Progressive" }).click();
-  expect((await page.getByLabel("Show passes that were not completed").count()) === 0, "progressive passes are all completed: no switch");
+  expect((await which("Not completed").count()) === 0, "progressive passes are all completed: no choice");
+});
+await check("player maps: take-ons and defensive actions can be narrowed to the ones that worked, or did not", async () => {
+  await go("/player/100844?tab=maps");
+  await page.waitForSelector(".maplab svg");
+  const which = (name) => page.getByRole("button", { name, exact: true }).first();
+  const marks = () => page.locator(".maplab svg circle:not(.mark):not(.spot)").count();
+  await page.locator(".maplab-tabs button", { hasText: /^Take-ons$/ }).click();
+  await page.waitForTimeout(200);
+  const both = await marks();
+  await which("Won").click();
+  const won = await marks();
+  await which("Lost").click();
+  const lostOnes = await marks();
+  expect(won > 0 && lostOnes > 0 && won < both && lostOnes < both, `take-ons: won ${won}, lost ${lostOnes}, both ${both}`);
+  await page.locator(".maplab-tabs button", { hasText: /^Defending$/ }).click();
+  await page.waitForTimeout(200);
+  expect((await which("Unsuccessful").count()) === 1 && (await which("Successful").count()) === 1, "defending offers the same choice");
+});
+await check("team maps: the passes that were not completed are a map of their own, not what is left of a sample of everything", async () => {
+  await go("/team/Arsenal?tab=maps");
+  await page.waitForSelector(".maplab svg");
+  await page.locator(".maplab-tabs button", { hasText: /^Passes$/ }).click();
+  await page.locator(".chip", { hasText: "All open play" }).click();
+  await page.getByRole("button", { name: "Not completed", exact: true }).first().click();
+  await page.waitForTimeout(300);
+  const crosses = await page.locator(".maplab svg .pass-lost-end").count();
+  expect(crosses > 150, `only ${crosses} lost passes drawn for a whole team`);
+  const shown = parseInt((await page.locator(".mapfacts").innerText()).match(/NOT COMPLETED\s+([\d,]+)/i)?.[1].replace(/,/g, "") ?? "-1", 10);
+  expect(shown > crosses, `the Not completed fact (${shown}) should be the real total, more than the ${crosses} drawn`);
 });
 await check("style & maps draws every layer from the stored events", async () => {
   await go("/team/Arsenal?tab=maps");

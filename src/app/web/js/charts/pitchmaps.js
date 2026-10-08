@@ -89,50 +89,52 @@ export function HeatLayer({ grid, color, gamma = 0.7, blur = 1.5, unit = "events
 const arrowId = (id, key) => `${id}-${key}`;
 
 /** How strongly to draw each of n lines: a few are drawn at full strength; thousands are drawn fainter and thinner, so where they overlap the picture reads as density, not a solid wall. */
-const fadeFor = (n) => Math.min(1, Math.max(0.28, Math.sqrt(160 / Math.max(n, 1))));
+const fadeFor = (n) => Math.min(1, Math.max(0.5, Math.sqrt(160 / Math.max(n, 1))));
+const thick = (width, fade) => width * (0.85 + 0.35 * fade);       // stroke width by how many lines share the pitch
+const headSize = (fade) => 1.8 * (0.7 + 0.3 * fade);
 
 /**
  * Passes as arrows. lines: [[x0, y0, x1, y1, ok, flags, minute, match]]. Completed ones in `color`; incomplete ones dashed in `failColor`
  * and ending in a cross, where the ball was lost, drawn clearly enough to read (they are what the map is for: who loses the ball, and where).
  * `emphasis` (optional): flags whose lines are drawn heavier (key passes, say) within a lighter wash of the others.
  */
-export function PassLayer({ lines, color = "var(--c1)", failColor = "var(--neg)", showFailed = true, emphasis = 0, width = 0.3 }) {
+export function PassLayer({ lines, color = "var(--c1)", failColor = "var(--neg)", show = "both", emphasis = 0, width = 0.5 }) {
   const id = useMemo(nextId, []);
-  const ok = lines.filter((l) => l[4]);
-  const bad = showFailed ? lines.filter((l) => !l[4]) : [];
+  const ok = show === "bad" ? [] : lines.filter((l) => l[4]);               // show: "ok" completed passes, "bad" passes that were not completed, "both"
+  const bad = show === "ok" ? [] : lines.filter((l) => !l[4]);
   const strong = (l) => emphasis && l[5] & emphasis;
   const fade = fadeFor(ok.length + bad.length);
-  const head = 1.25 * (0.6 + 0.4 * fade);
+  const head = headSize(fade);
   const arrow = (key, fill) => html`<marker id=${arrowId(id, key)} viewBox="0 0 6 6" refX="5" refY="3" markerWidth=${head} markerHeight=${head} markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path d="M0 0 6 3 0 6z" style=${{ fill }} /></marker>`;
   return html`<g>
     <defs>${arrow("ok", color)}${arrow("bad", failColor)}</defs>
-    ${bad.map((l, i) => html`<line class="pass-lost" key=${"b" + i} x1=${px(l[0])} y1=${py(l[1])} x2=${px(l[2])} y2=${py(l[3])} style=${{ stroke: failColor, strokeOpacity: 0.55 + 0.3 * fade, strokeWidth: width * (0.7 + 0.5 * fade), strokeDasharray: "0.9 0.7" }} />`)}
-    ${bad.map((l, i) => { const x = px(l[2]), y = py(l[3]), r = 0.7 + 0.4 * fade; return html`<path class="pass-lost-end" key=${"x" + i} d=${`M${x - r} ${y - r}L${x + r} ${y + r}M${x - r} ${y + r}L${x + r} ${y - r}`} style=${{ stroke: failColor, strokeOpacity: 0.55 + 0.35 * fade, strokeWidth: width * (1.5 + 0.7 * fade), fill: "none", strokeLinecap: "round" }} />`; })}
-    ${ok.map((l, i) => html`<line key=${"o" + i} x1=${px(l[0])} y1=${py(l[1])} x2=${px(l[2])} y2=${py(l[3])} marker-end=${`url(#${arrowId(id, "ok")})`} style=${{ stroke: color, strokeOpacity: strong(l) ? 0.95 : (emphasis ? 0.28 : 0.62) * fade, strokeWidth: (strong(l) ? width * 1.9 : width) * (0.6 + 0.4 * fade) }} />`)}
+    ${bad.map((l, i) => html`<line class="pass-lost" key=${"b" + i} x1=${px(l[0])} y1=${py(l[1])} x2=${px(l[2])} y2=${py(l[3])} style=${{ stroke: failColor, strokeOpacity: 0.78 + 0.2 * fade, strokeWidth: thick(width, fade) * 1.1, strokeDasharray: "1.1 0.7" }} />`)}
+    ${bad.map((l, i) => { const x = px(l[2]), y = py(l[3]), r = 0.9 + 0.4 * fade; return html`<path class="pass-lost-end" key=${"x" + i} d=${`M${x - r} ${y - r}L${x + r} ${y + r}M${x - r} ${y + r}L${x + r} ${y - r}`} style=${{ stroke: failColor, strokeOpacity: 0.85 + 0.15 * fade, strokeWidth: thick(width, fade) * 1.5, fill: "none", strokeLinecap: "round" }} />`; })}
+    ${ok.map((l, i) => html`<line key=${"o" + i} x1=${px(l[0])} y1=${py(l[1])} x2=${px(l[2])} y2=${py(l[3])} marker-end=${`url(#${arrowId(id, "ok")})`} style=${{ stroke: color, strokeOpacity: strong(l) ? 0.95 : (emphasis ? 0.3 : 0.85) * (0.6 + 0.4 * fade), strokeWidth: thick(strong(l) ? width * 1.9 : width, fade) }} />`)}
   </g>`;
 }
 
-export function CarryLayer({ carries, color = "var(--c3)", progColor = "var(--c2)", width = 0.34 }) {
+export function CarryLayer({ carries, color = "var(--c3)", progColor = "var(--c2)", width = 0.5 }) {
   const id = useMemo(nextId, []);
   const fade = fadeFor(carries.length);
-  const head = 1.25 * (0.6 + 0.4 * fade);
+  const head = headSize(fade);
   const arrow = (key, fill) => html`<marker id=${arrowId(id, key)} viewBox="0 0 6 6" refX="5" refY="3" markerWidth=${head} markerHeight=${head} markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path d="M0 0 6 3 0 6z" style=${{ fill }} /></marker>`;
   return html`<g>
     <defs>${arrow("c", color)}${arrow("p", progColor)}</defs>
-    ${carries.map((c, i) => html`<line key=${i} x1=${px(c[0])} y1=${py(c[1])} x2=${px(c[2])} y2=${py(c[3])} marker-end=${`url(#${arrowId(id, c[4] ? "p" : "c")})`} style=${{ stroke: c[4] ? progColor : color, strokeOpacity: (c[4] ? 0.9 : 0.45) * (c[4] ? Math.max(fade, 0.5) : fade), strokeWidth: (c[4] ? width * 1.5 : width) * (0.6 + 0.4 * fade) }} />`)}
+    ${carries.map((c, i) => html`<line key=${i} x1=${px(c[0])} y1=${py(c[1])} x2=${px(c[2])} y2=${py(c[3])} marker-end=${`url(#${arrowId(id, c[4] ? "p" : "c")})`} style=${{ stroke: c[4] ? progColor : color, strokeOpacity: (c[4] ? 0.95 : 0.8) * (0.6 + 0.4 * fade), strokeWidth: thick(c[4] ? width * 1.4 : width, fade) }} />`)}
   </g>`;
 }
 
 // ------------------------------------------------------------------ points
 
 function Mark({ shape, x, y, r, color, filled, ...rest }) {
-  const style = { fill: filled ? color : "transparent", stroke: color, strokeWidth: 0.35, fillOpacity: filled ? 0.85 : 0, strokeOpacity: 0.95 };
+  const style = { fill: filled ? color : "transparent", stroke: color, strokeWidth: filled ? 0.4 : 0.7, fillOpacity: filled ? 0.9 : 0, strokeOpacity: 1 };
   switch (shape) {
     case "square": return html`<rect x=${x - r} y=${y - r} width=${2 * r} height=${2 * r} style=${style} ...${rest} />`;
     case "diamond": return html`<path d=${`M${x} ${y - r * 1.25}L${x + r * 1.25} ${y}L${x} ${y + r * 1.25}L${x - r * 1.25} ${y}Z`} style=${style} ...${rest} />`;
     case "tri": return html`<path d=${`M${x} ${y - r * 1.2}L${x + r * 1.1} ${y + r * 0.9}L${x - r * 1.1} ${y + r * 0.9}Z`} style=${style} ...${rest} />`;
-    case "plus": return html`<path d=${`M${x - r} ${y}H${x + r}M${x} ${y - r}V${y + r}`} style=${{ ...style, fill: "none", strokeWidth: 0.55 }} ...${rest} />`;
-    case "cross": return html`<path d=${`M${x - r} ${y - r}L${x + r} ${y + r}M${x + r} ${y - r}L${x - r} ${y + r}`} style=${{ ...style, fill: "none", strokeWidth: 0.5 }} ...${rest} />`;
+    case "plus": return html`<path d=${`M${x - r} ${y}H${x + r}M${x} ${y - r}V${y + r}`} style=${{ ...style, fill: "none", strokeWidth: 0.85 }} ...${rest} />`;
+    case "cross": return html`<path d=${`M${x - r} ${y - r}L${x + r} ${y + r}M${x + r} ${y - r}L${x - r} ${y + r}`} style=${{ ...style, fill: "none", strokeWidth: 0.8 }} ...${rest} />`;
     default: return html`<circle cx=${x} cy=${y} r=${r} style=${style} ...${rest} />`;
   }
 }
@@ -150,7 +152,7 @@ export function PointLayer({ points, kinds, matches, r = 0.95 }) {
 
 /** Take-ons: [[x, y, ok, minute, match]]. Won ones filled. */
 export function TakeOnLayer({ points, matches, color = "var(--c2)" }) {
-  return html`<g>${points.map((p, i) => html`<${Mark} key=${i} shape="circle" x=${px(p[0])} y=${py(p[1])} r=${1.0} color=${color} filled=${Boolean(p[2])}
+  return html`<g>${points.map((p, i) => html`<${Mark} key=${i} shape="circle" x=${px(p[0])} y=${py(p[1])} r=${1.2} color=${color} filled=${Boolean(p[2])}
     onMouseMove=${(e) => tooltip.move(e, html`<div><div class="tt-title">Take-on ${p[2] ? "won" : "lost"}</div><div class="tt-sub">${p[3]}′${matches?.[p[4]] ? ` · ${matches[p[4]].home ? "vs" : "at"} ${matches[p[4]].opp}` : ""}</div></div>`)} onMouseLeave=${tooltip.hide} />`)}</g>`;
 }
 
@@ -198,7 +200,7 @@ export function NetworkLayer({ network, color = "var(--c1)", limit = 0 }) {
     ${network.edges.map((e, i) => {
       const a = byId[e.a], b = byId[e.b];
       if (!a || !b) return null;
-      return html`<line key=${i} x1=${px(a.x)} y1=${py(a.y)} x2=${px(b.x)} y2=${py(b.y)} style=${{ stroke: color, strokeOpacity: 0.18 + 0.6 * (e.n / maxN), strokeWidth: 0.2 + 1.9 * (e.n / maxN) }}
+      return html`<line key=${i} x1=${px(a.x)} y1=${py(a.y)} x2=${px(b.x)} y2=${py(b.y)} style=${{ stroke: color, strokeOpacity: 0.4 + 0.5 * (e.n / maxN), strokeWidth: 0.5 + 2.1 * (e.n / maxN) }}
         onMouseMove=${(ev) => tooltip.move(ev, html`<div><div class="tt-title">${last(a.name)} ↔ ${last(b.name)}</div><div class="tt-sub">${e.n} passes between them (either way)</div></div>`)} onMouseLeave=${tooltip.hide} />`;
     })}
     ${network.nodes.map((n) => html`<g key=${n.id} onMouseMove=${(ev) => tooltip.move(ev, html`<div><div class="tt-title">${n.name}</div><div class="tt-sub">${n.touches} touches in ${network.matches} matches</div></div>`)} onMouseLeave=${tooltip.hide}>
@@ -224,7 +226,7 @@ export function ShotLayer({ shots, mirror = false, color = "var(--c1)", onPick, 
   return html`<g>${ordered.map((s, i) => {
     const goal = s[3] === "Goal";
     const cx = (mirror ? 1 - s[0] : s[0]) * L, cy = (mirror ? 1 - s[1] : s[1]) * W;
-    return html`<circle key=${i} cx=${cx} cy=${cy} r=${SHOT_RADIUS(s[2])} style=${goal ? { fill: color, stroke: "var(--ink)", strokeWidth: 0.4, fillOpacity: 0.95 } : { fill: color, stroke: color, strokeWidth: 0.3, fillOpacity: 0.2 }} class="shot"
+    return html`<circle key=${i} cx=${cx} cy=${cy} r=${SHOT_RADIUS(s[2])} style=${goal ? { fill: color, stroke: "var(--ink)", strokeWidth: 0.4, fillOpacity: 0.95 } : { fill: color, stroke: color, strokeWidth: 0.55, fillOpacity: 0.3, strokeOpacity: 0.9 }} class="shot"
       onMouseMove=${(e) => tooltip.move(e, html`<div><div class="tt-title">${goal ? "Goal" : s[3] === "SavedShot" ? "Saved" : s[3] === "BlockedShot" ? "Blocked" : s[3] === "ShotOnPost" ? "Hit the post" : "Off target"} · ${nf(s[2], 2)} xG</div>
         <div class="tt-sub">${s[5]} · ${s[4]}′${extra ? ` · ${extra(s)}` : ""}</div>
         <div class="tt-row"><span class="k">Situation</span><span class="v">${s[6]}</span></div><div class="tt-row"><span class="k">Body part</span><span class="v">${String(s[7] || "").replace(/([a-z])([A-Z])/g, "$1 $2")}</span></div></div>`)} onMouseLeave=${tooltip.hide}
