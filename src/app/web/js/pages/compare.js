@@ -211,7 +211,7 @@ export default function Compare() {
   return html`<div class="stack" style=${{ "--gap": "24px" }}>
     <${PageHead} eyebrow="Compare" title=${mode === "players" ? "Players side by side" : "Teams head to head"}
       sub=${mode === "players" ? "Percentile profiles against each player's own role peers, with the gaps spelled out." : "Two teams on chance quality, style and results."}
-      actions=${html`<${Segmented} label="What to compare" value=${mode} onChange=${(v) => setQuery({ mode: v === "players" ? null : v })} options=${[{ value: "players", label: "Players" }, { value: "teams", label: "Teams" }]} />`} />
+      actions=${html`<${Segmented} label="What to compare" value=${mode} onChange=${(v) => setQuery({ mode: v === "players" ? null : v }, { replace: false })} options=${[{ value: "players", label: "Players" }, { value: "teams", label: "Teams" }]} />`} />
     ${mode === "players" ? html`<${PlayerCompare} query=${query} scope=${scope} />` : html`<${TeamCompare} query=${query} scope=${scope} />`}
   </div>`;
 }

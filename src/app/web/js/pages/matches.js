@@ -55,14 +55,14 @@ function MatchesView({ d, query }) {
   return html`
     <${PageHead} eyebrow=${`${scope.league_name} · ${scope.label}`} title="Matches"
       sub=${view === "flagged" ? `${plural(flagged.length, "result")} this season went against what the chances said: the winner created less, or the favourite only drew.` : `Matchweek ${round}: results with the scorers, and the numbers that explain them. Times are in your time zone.`}
-      actions=${html`<${Segmented} label="View" value=${view} onChange=${(v) => setQuery({ view: v === "round" ? null : v })} options=${[{ value: "round", label: "By matchweek" }, { value: "flagged", label: `Results that lied (${flagged.length})` }]} />`} />
+      actions=${html`<${Segmented} label="View" value=${view} onChange=${(v) => setQuery({ view: v === "round" ? null : v }, { replace: false })} options=${[{ value: "round", label: "By matchweek" }, { value: "flagged", label: `Results that lied (${flagged.length})` }]} />`} />
     <${DataNotices} scope=${scope} meta=${meta} />
     ${missingScorers ? html`<${Notice} icon="clock">Scorers are shown for ${coverage.scorers} of ${coverage.played} played matches. The rest arrive as the app downloads each match page in the background (<a class="link" href=${href("/data")}>Data status</a>).</${Notice}>` : null}
     ${view === "round" ? html`
       <div class="round-nav">
-        <${Button} kind="quiet" icon="chevronLeft" title="Previous matchweek" disabled=${round <= 1} onClick=${() => setQuery({ round: round - 1 })} />
-        <${RoundStrip} rounds=${rounds} value=${round} onPick=${(r) => setQuery({ round: r })} />
-        <${Button} kind="quiet" icon="chevronRight" title="Next matchweek" disabled=${round >= rounds.length} onClick=${() => setQuery({ round: round + 1 })} />
+        <${Button} kind="quiet" icon="chevronLeft" title="Previous matchweek" disabled=${round <= 1} onClick=${() => setQuery({ round: round - 1 }, { replace: false })} />
+        <${RoundStrip} rounds=${rounds} value=${round} onPick=${(r) => setQuery({ round: r }, { replace: false })} />
+        <${Button} kind="quiet" icon="chevronRight" title="Next matchweek" disabled=${round >= rounds.length} onClick=${() => setQuery({ round: round + 1 }, { replace: false })} />
       </div>
       <div class="round-head"><h2>Matchweek ${round}</h2><span class="muted">${current ? `${dateShort(current.from)}${current.to !== current.from ? ` to ${dateShort(current.to)}` : ""}` : ""}</span><${RoundSummary} matches=${list} /></div>` : null}
     ${list.length

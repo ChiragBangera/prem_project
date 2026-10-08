@@ -3,7 +3,7 @@ import { html, useEffect, useRef, useState } from "./lib/html.js";
 import { Icon } from "./lib/icons.js";
 import { ui, metaStore, pending, shortlistStore, useStore } from "./lib/store.js";
 import { useApi } from "./lib/api.js";
-import { compile, match, useLocation, href, navigate } from "./lib/router.js";
+import { compile, match, useLocation, href, navigate, entryState, stampEntry, pushEntry } from "./lib/router.js";
 import { TooltipHost } from "./lib/tooltip.js";
 import { relTime } from "./lib/format.js";
 import { useMedia } from "./lib/media.js";
@@ -124,8 +124,8 @@ function TopBar({ meta, onSearch }) {
   const leagues = (meta?.leagues || [{ code: "EPL", name: "Premier League", short: "EPL" }]).map((l) => ({ value: l.code, label: narrow ? l.short || l.code : l.name }));
   return html`<header class="topbar">
     <div class="scope-controls" role="group" aria-label="League and season">
-      <${Select} label="League" value=${scope.league} options=${leagues} onChange=${setLeague} />
-      <${Select} label="Season" value=${scope.season} options=${seasons} onChange=${setSeason} />
+      <${Select} label="League" value=${scope.league} options=${leagues} onChange=${(v) => { pushEntry(); setLeague(v); }} />
+      <${Select} label="Season" value=${scope.season} options=${seasons} onChange=${(v) => { pushEntry(); setSeason(v); }} />
     </div>
     <div class="spacer"></div>
     <button type="button" class="search-trigger" onClick=${onSearch} aria-label="Search players, teams and pages"><${Icon} name="search" size="sm" /><span>Search players, teams…</span><kbd>⌘K</kbd></button>
@@ -149,6 +149,29 @@ function applyTheme(theme) {
   const root = document.documentElement;
   if (theme === "light" || theme === "dark") root.dataset.theme = theme;
   else delete root.dataset.theme;
+}
+
+/**
+ * Scroll back to y once the page is tall enough to reach it (its data may still be arriving), giving up after a few seconds or as soon as the
+ * user scrolls or presses a key. Returns the cancel function.
+ */
+function restoreScroll(y) {
+  let done = false;
+  const started = performance.now();
+  const stop = () => { done = true; };
+  const events = ["wheel", "touchstart", "keydown", "mousedown"];
+  events.forEach((e) => window.addEventListener(e, stop, { passive: true, once: true }));
+  const step = () => {
+    if (done) return;
+    const room = document.documentElement.scrollHeight - window.innerHeight;
+    if (room >= y - 2 || performance.now() - started > 4000) {
+      window.scrollTo(0, Math.min(y, Math.max(0, room)));
+      if (room >= y - 2) { done = true; return; }
+    }
+    if (performance.now() - started < 4000) requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+  return () => { done = true; events.forEach((e) => window.removeEventListener(e, stop)); };
 }
 
 export function App() {
@@ -179,11 +202,32 @@ export function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  // new page: scroll to top and hand focus to the main region for keyboard/screen-reader users
+  // Back and Forward return to the league and season that entry was left with, and to the same point down the page (once it is drawn
+  // tall enough to get there). A new page starts at the top, with focus on the main region for keyboard and screen-reader users.
+  const scope = useStore(ui, (s) => ({ league: s.league, season: s.season }));
+  const lastPath = useRef(loc.path);
   useEffect(() => {
-    window.scrollTo(0, 0);
-    mainRef.current?.focus({ preventScroll: true });
-  }, [loc.path]);
+    const state = entryState();
+    if (loc.kind === "back") {
+      if (state.scope && (state.scope.league !== scope.league || state.scope.season !== scope.season)) ui.set({ league: state.scope.league, season: state.scope.season });
+      return restoreScroll(state.y || 0);
+    }
+    if (loc.kind === "new" && loc.path !== lastPath.current) {
+      window.scrollTo(0, 0);
+      mainRef.current?.focus({ preventScroll: true });
+    }
+    lastPath.current = loc.path;
+    return undefined;
+  }, [loc.id, loc.kind, loc.path]);
+  useEffect(() => { lastPath.current = loc.path; }, [loc.path]);
+  // the current entry always knows the league and season in effect, and how far down the page is
+  useEffect(() => { stampEntry({ scope }); }, [loc.id, scope.league, scope.season]);
+  useEffect(() => {
+    let timer = 0;
+    const save = () => { clearTimeout(timer); timer = setTimeout(() => stampEntry({ y: Math.round(window.scrollY) }), 120); };
+    window.addEventListener("scroll", save, { passive: true });
+    return () => { window.removeEventListener("scroll", save); clearTimeout(timer); };
+  }, []);
 
   const found = match(routes, loc.path);
   const Page = found?.route.page;

@@ -366,7 +366,7 @@ function PlayerView({ d, id, tab, span, setSpan }) {
       <${Stat} label="Share of team chain" value=${pct(detail.team_context.chain_share)} sub=${`${pct(detail.team_context.share_npxg)} of team npxG`} title="How much of the team's attacking play runs through him" />
     </div>
     <${Insights} items=${insights} scope=${dScope} limit=${3} expandable />
-    <${Tabs} tabs=${tabs} value=${tab} onChange=${(v) => setQuery({ tab: v === "profile" ? null : v })} label="Player sections" />
+    <${Tabs} tabs=${tabs} value=${tab} onChange=${(v) => setQuery({ tab: v === "profile" ? null : v }, { replace: false })} label="Player sections" />
 
     ${tab === "profile" ? html`<div class="stack">
       <div class="grid cols-wide-narrow top">

@@ -51,7 +51,7 @@ function TeamView({ d, team, tab }) {
       <${Stat} label="Chance difference" value=${`${signed(t.xgd_pg, 2)}`} sub=${`per game · ${ordinal(t.rank_xgd)} in the league`} />
       <div class="tile"><span class="label">Last five</span><span style=${{ paddingTop: "4px" }}><${Form} items=${t.form} /></span><span class="delta">${t.w}W ${t.d}D ${t.l}L overall</span></div>
     </div>
-    <${Tabs} tabs=${tabs} value=${tab} onChange=${(v) => setQuery({ tab: v === "overview" ? null : v, by: null, chart: null })} label="Team sections" />
+    <${Tabs} tabs=${tabs} value=${tab} onChange=${(v) => setQuery({ tab: v === "overview" ? null : v, by: null, chart: null }, { replace: false })} label="Team sections" />
 
     ${tab === "overview" ? html`<${Overview} d=${d} team=${team} profile=${profile} />` : null}
     ${tab === "players" ? html`<${TeamPlayers} team=${team} scope=${scope} squad=${p.squad} concentration=${p.concentration} />` : null}
