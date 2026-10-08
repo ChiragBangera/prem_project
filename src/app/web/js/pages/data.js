@@ -7,6 +7,7 @@ import { Icon } from "../lib/icons.js";
 import { Async, Badge, Button, Card, Notice, PageHead, Select, Switch, useDocumentTitle } from "../ui/common.js";
 import { DataTable } from "../ui/table.js";
 import { Birthdates, CheckCard, Enrichment, EventData, Progress, SyncCard } from "./data-tools.js";
+import { EventReview, FetchControls, FetchPlan } from "./data-events.js";
 
 const nowSec = () => Date.now() / 1000;
 
@@ -220,6 +221,8 @@ function DataView({ status, meta, reload }) {
       <div class="tile"><span class="label">Event matches</span><span class="value figure">${eventMatches.toLocaleString("en-GB")}</span><span class="delta">${eventMatches ? "maps and event metrics available" : "none stored yet"}</span></div>
     </div>
     ${status.mode.demo ? html`<${DemoUpdates} status=${status} />` : html`<${AutoCard} auto=${auto} mode=${status.mode} reload=${reload} />
+    ${auto.auto ? html`<${FetchControls} auto=${auto} reload=${reload} />` : null}
+    <${FetchPlan} auto=${auto} />
     <div class="grid cols-2 top">
       <div class="stack"><${CycleCard} auto=${auto} /><${Failures} auto=${auto} /></div>
       <${Activity} auto=${auto} />
@@ -229,6 +232,7 @@ function DataView({ status, meta, reload }) {
       <${EventData} status=${status} meta=${meta} />
       <${Storage} status=${status} reload=${reload} />
     </div>
+    <${EventReview} status=${status} meta=${meta} reload=${reload} />
     <${HowItWorks} />
     <h2 class="section-h">Tools</h2>
     <div class="grid cols-2 top">
