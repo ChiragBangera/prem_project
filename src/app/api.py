@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import logging
 import math
@@ -113,6 +114,26 @@ class AutoPrefs(BaseModel):
     enabled: bool | None = None
     seasons_back: int | None = Field(None, ge=0, le=4)
     events: dict | None = None
+    limits: dict | None = None
+
+
+class EventMatch(BaseModel):
+    league: str
+    season: int
+    game: int
+    skip: bool | None = None
+
+
+class EventPause(BaseModel):
+    paused: bool
+
+
+class EventLink(BaseModel):
+    league: str
+    season: int
+    kind: str = Field(pattern="^(players|matches)$")
+    ws: int
+    us: int | None = None          # None: forget the person's choice; 0 (players): not in Understat, leave him out
 
 
 def ok(payload: Any, status: int = 200) -> SafeJSONResponse:
@@ -319,6 +340,36 @@ def create_app(settings: Settings | None = None, *, provider=None, today: date |
     async def data_auto_run(request: Request):
         wb(request).auto.wake()
         return ok({"started": True})
+
+    # ------------------------------------------------------------------ steering the event fetcher
+
+    @app.get("/api/events/review")
+    async def events_review(request: Request, league: str, season: int):
+        w = wb(request)
+        return ok(await asyncio.to_thread(w.links.review, w.seasons.league_code(league), season))
+
+    @app.put("/api/events/link")
+    async def events_link(request: Request, body: EventLink):
+        w = wb(request)
+        league = w.seasons.league_code(body.league)
+        w.links.set_override(league, body.season, body.kind, body.ws, body.us)
+        return ok(await asyncio.to_thread(w.links.review, league, body.season))
+
+    @app.post("/api/events/retry")
+    async def events_retry(request: Request, body: EventMatch):
+        return ok({"queue": wb(request).auto.retry_event_match(body.league, body.season, body.game)})
+
+    @app.post("/api/events/skip")
+    async def events_skip(request: Request, body: EventMatch):
+        return ok({"entry": wb(request).auto.skip_event_match(body.league, body.season, body.game, bool(body.skip))})
+
+    @app.post("/api/events/pause")
+    async def events_pause(request: Request, body: EventPause):
+        return ok({"control": wb(request).auto.pause_events(body.paused)})
+
+    @app.post("/api/events/stop")
+    async def events_stop(request: Request):
+        return ok({"control": wb(request).auto.stop_events()})
 
     @app.post("/api/data/reclaim")
     async def data_reclaim(request: Request):

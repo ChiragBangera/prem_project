@@ -14,6 +14,8 @@ The fetching process (``prem events sync`` or the automatic updater) and the app
 
 from __future__ import annotations
 
+import json
+
 import threading
 import time
 from collections import defaultdict
@@ -166,9 +168,11 @@ class EventStore:
         return {"rebuilt": rebuilt, "skipped": skipped, "failed": failed, "total": len(todo) + skipped}
 
     def version(self, league: str, season: int) -> tuple:
-        """Changes whenever a match is added or the code that derives from matches changes: results built on it use it to know they are stale."""
+        """Changes whenever a match is added, the code that derives from matches changes, or a person links a player or match by hand
+        (``links:override:``, see :mod:`app.workbench.links`): results built on it use it to know they are stale."""
         count, newest = self.raw.stamp(league, season)
-        return (count, newest, SV.SILVER_VERSION, C.GOLD_VERSION)
+        manual = self.store.kv_get(f"links:override:{league}:{season}")
+        return (count, newest, SV.SILVER_VERSION, C.GOLD_VERSION, json.dumps(manual, sort_keys=True) if manual else "")
 
     # ------------------------------------------------------------------ what a season adds up to
 
