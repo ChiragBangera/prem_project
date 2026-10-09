@@ -336,3 +336,17 @@ def test_the_report_comes_from_the_read_until_understat_publishes_and_then_is_th
 
     run(go())
 
+
+def test_a_half_time_page_that_never_got_its_full_time_read_is_deleted_after_two_days(tmp_path):
+    from app.data.store import Store
+    from app.events.store import EventStore
+
+    store = Store(tmp_path / "s.sqlite")
+    try:
+        events = EventStore(store)
+        assert events.ingest("EPL", 2026, 77, page_doc(), fetched_at=1000.0) == "live"
+        assert events.ingest("EPL", 2026, 78, page_doc(), fetched_at=5000.0) == "live"
+        assert events.raw.drop_old_live(older_than=2000.0) == 1
+        assert events.live("EPL", 2026, 77) is None and events.live("EPL", 2026, 78) is not None and events.match_ids("EPL", 2026) == []
+    finally:
+        store.close()

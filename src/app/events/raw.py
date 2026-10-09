@@ -102,6 +102,14 @@ class RawStore:
             self.store.put(LIVE_KIND, key, doc, source=SOURCE, complete=False, fetched_at=fetched_at)
         return state
 
+    def drop_old_live(self, older_than: float) -> int:
+        """Delete provisional pages read before ``older_than``: a match that never got its full-time read (abandoned, postponed in play)
+        must not keep a half-played page for ever. Returns how many were deleted."""
+        old = [key for key, fetched_at, _complete in self.store.keys(LIVE_KIND) if fetched_at < older_than]
+        for key in old:
+            self.store.delete(LIVE_KIND, key)
+        return len(old)
+
     def live(self, league: str, season: int, game_id: int | str) -> tuple[dict, float] | None:
         """The provisional page of a match read before the final whistle, and when it was read; None when there is none."""
         record = self.store.get(LIVE_KIND, raw_key(league, season, game_id))

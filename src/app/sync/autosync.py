@@ -65,6 +65,7 @@ EVENT_RETRY_KEY = "autosync:events:retry"   # matches a person asked to have rea
 STOP_GRACE = 60.0              # seconds a run that was asked to stop gets to reach the end of its match, before it is ended
 EVENT_RECHECK = 3 * 3600.0     # a season the fetcher found nothing more to do for is not run again sooner than this
 STOP_WAIT = 5.0                # seconds the event fetcher gets to stop cleanly when the app stops, before it is killed
+LIVE_KEEP = 2 * 86400.0        # a provisional (half-time) page with no full-time read after this long is deleted
 FT_GIVE_UP = 4 * 3600.0        # full-time reads stop this long after kickoff; after that catching up takes care of it
 NOT_FOUND_TRIES = 3            # a fixture WhoScored's match list does not have is looked for this many times
 CLEARANCE = 15 * 60.0          # catching up does not start a run when a matchday read is due within this (a run takes about ten minutes)
@@ -326,8 +327,12 @@ class AutoSync:
                 self.store.kv_set(STATE_KEY, {"last": {**result, "finished": result.get("finished", self._clock())}, "log": list(self._log)})
 
     async def _housekeeping(self, result: dict) -> None:
-        """Adopt match pages the download cache holds but the store lacks, and rebuild derived layers made by older code."""
+        """Adopt match pages the download cache holds but the store lacks, rebuild derived layers made by older code, and delete
+        provisional pages of matches that never got a full-time read."""
         try:
+            dropped = await asyncio.to_thread(self.wb.events.raw.drop_old_live, self._clock() - LIVE_KEEP)
+            if dropped:
+                self._note("info", f"deleted {dropped} half-time pages of matches that never got a full-time read")
             adopted = await asyncio.to_thread(R.import_soccerdata_cache, self.store, self.settings.data_dir)
             result["adopted"] = adopted["imported"]
             if adopted["imported"]:
