@@ -220,13 +220,11 @@ function DataView({ status, meta, reload }) {
       <div class="tile"><span class="label">League seasons</span><span class="value figure">${cache.length}</span><span class="delta">${cache.filter((c) => c.complete).length} final, ${cache.filter((c) => !c.complete).length} live</span></div>
       <div class="tile"><span class="label">Event matches</span><span class="value figure">${eventMatches.toLocaleString("en-GB")}</span><span class="delta">${eventMatches ? "maps and event metrics available" : "none stored yet"}</span></div>
     </div>
-    ${status.mode.demo ? html`<${DemoUpdates} status=${status} />` : html`<${AutoCard} auto=${auto} mode=${status.mode} reload=${reload} />
-    ${auto.auto ? html`<${FetchControls} auto=${auto} reload=${reload} />` : null}
-    <${FetchPlan} auto=${auto} />
-    <div class="grid cols-2 top">
-      <div class="stack"><${CycleCard} auto=${auto} /><${Failures} auto=${auto} /></div>
-      <${Activity} auto=${auto} />
-    </div>`}
+    <span class="wide-page" hidden></span>
+    ${status.mode.demo ? html`<${DemoUpdates} status=${status} />` : html`<div class=${"mrow " + (auto.auto ? "m-n2" : "")}><${AutoCard} auto=${auto} mode=${status.mode} reload=${reload} />
+      ${auto.auto ? html`<${FetchControls} auto=${auto} reload=${reload} />` : null}</div>
+    <div class=${"mrow " + (auto.plan?.length ? "m-7-5" : "")}><${FetchPlan} auto=${auto} /><${CycleCard} auto=${auto} /></div>
+    <div class="mrow m-n2"><${Activity} auto=${auto} /><${Failures} auto=${auto} /></div>`}
     <${Coverage} status=${status} meta=${meta} />
     <div class="grid cols-2 top">
       <${EventData} status=${status} meta=${meta} />

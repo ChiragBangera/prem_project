@@ -447,7 +447,8 @@ ul.plain { margin: 6px 0 0; padding-left: 18px; display: grid; gap: 3px; }
 @media (max-width: 720px) { .sb-col, .sb-col.away { align-items: center; } .sb-scorers.end, .sb-scorers { text-align: center; } }
 
 /* Briefing: the latest results two to a row beside the fixtures column, instead of one tall stack with an empty gap beside it */
-.mgrid.brief-grid { grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); }
+.mgrid.brief-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (max-width: 640px) { .mgrid.brief-grid { grid-template-columns: minmax(0, 1fr); } }
 
 /* a profile tag keeps its name on one line; the reason beside it may wrap */
 .tag .tag-name { white-space: nowrap; }

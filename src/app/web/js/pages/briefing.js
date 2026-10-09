@@ -67,6 +67,7 @@ function BriefingView({ d }) {
   return html`
     <${PageHead} eyebrow=${`${scope.league_name} · ${scope.label} · Matchweek ${scope.rounds_played} of ${scope.rounds_total}${scope.complete ? " · final" : ""}`}
       title="Briefing" sub=${headline(d)} />
+    <span class="wide-page" hidden></span>
     <${DataNotices} scope=${scope} meta=${meta} />
 
     <${Section} title="What stands out" sub=${`${insights.length} findings, ranked by how far they sit from expectation`}>
@@ -75,24 +76,16 @@ function BriefingView({ d }) {
 
     <${Watchlist} scope=${{ league: scope.league, season: scope.season }} />
 
-    <div class="grid cols-main-side top">
-      <${Section} title="Latest results" sub=${flagged.length ? `${flagged.length} of ${recent.length} did not follow the chances` : "All followed the chances"} actions=${html`<a class="link small" href=${href("/matches")}>All matchweeks</a>`}>
-        <div class="mgrid brief-grid">${recent.slice(0, 6).map((m) => html`<${MatchCard} key=${m.id} m=${m} />`)}</div>
-      </${Section}>
-      <div class="stack">
-        ${upcoming.length ? html`<${Card} flush title="Next fixtures" sub="Kickoff in your time zone, with each side's league position, form and chance difference" actions=${html`<a class="link small" href=${href("/matches")}>Schedule</a>`}>
-          <div class="fixtures">${upcoming.slice(0, 6).map((f) => html`<${FixtureRow} key=${f.id} f=${f} />`)}</div>
-        </${Card}>` : null}
-        ${movers.risers.length || movers.fallers.length ? html`<${Card} title="Movers" sub=${`Table position over the last ${movers.span} matchweeks`}>
-          <div class="movers">
-            ${movers.risers.map((m) => html`<${MoverRow} key=${m.team} m=${m} up=${true} />`)}
-            ${movers.fallers.map((m) => html`<${MoverRow} key=${m.team} m=${m} up=${false} />`)}
-          </div>
-        </${Card}>` : null}
-      </div>
+    <div class="mrow m-7-5">
+      <${Card} title="Latest results" sub=${flagged.length ? `${flagged.length} of ${recent.length} did not follow the chances` : "All followed the chances"} actions=${html`<a class="link small" href=${href("/matches")}>All matchweeks</a>`}>
+        <div class="mgrid brief-grid">${recent.slice(0, 10).map((m) => html`<${MatchCard} key=${m.id} m=${m} />`)}</div>
+      </${Card}>
+      ${upcoming.length ? html`<${Card} flush title="Next fixtures" sub="Kickoff in your time zone, with each side's league position, form and chance difference" actions=${html`<a class="link small" href=${href("/matches")}>Schedule</a>`}>
+        <div class="fixtures">${upcoming.slice(0, 10).map((f) => html`<${FixtureRow} key=${f.id} f=${f} />`)}</div>
+      </${Card}>` : null}
     </div>
 
-    <div class="grid cols-wide-narrow top">
+    <div class="mrow m-7-5">
       <${Card} title="Points against expected points"
         sub="Expected points replay every shot of every match. Blue: more points than the chances earned. Orange: fewer.">
         <${DivergingBars} rows=${gapRows(table)} format=${(v) => signed(v, 1)}
@@ -101,10 +94,18 @@ function BriefingView({ d }) {
             { label: "Table rank", value: r.team.rank }, { label: "Rank on expected points", value: r.team.rank_xpts },
           ]} />`} />
       </${Card}>
-      <${Section} title="From the scouting board" sub="Players whose numbers say something">
-        <div class="stack" style=${{ "--gap": "10px" }}><${Insights} items=${highlights} scope=${scope} limit=${4} compact /></div>
-        <a class="link" href=${href("/scout")}>Open the scouting board <${Icon} name="arrowRight" size="sm" /></a>
-      </${Section}>
+      <div class="stack">
+        ${movers.risers.length || movers.fallers.length ? html`<${Card} title="Movers" sub=${`Table position over the last ${movers.span} matchweeks`}>
+          <div class="movers">
+            ${movers.risers.map((m) => html`<${MoverRow} key=${m.team} m=${m} up=${true} />`)}
+            ${movers.fallers.map((m) => html`<${MoverRow} key=${m.team} m=${m} up=${false} />`)}
+          </div>
+        </${Card}>` : null}
+        <${Section} title="From the scouting board" sub="Players whose numbers say something">
+          <div class="stack" style=${{ "--gap": "10px" }}><${Insights} items=${highlights} scope=${scope} limit=${4} compact /></div>
+          <a class="link" href=${href("/scout")}>Open the scouting board <${Icon} name="arrowRight" size="sm" /></a>
+        </${Section}>
+      </div>
     </div>
   `;
 }
