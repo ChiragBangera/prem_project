@@ -54,7 +54,7 @@ WHY = {
     "full_time": "full time",
     "result": "waiting for the result",
     "settle": "xG still settling",
-    "quiet": "routine check",
+    "quiet": "the twice-daily check for moved fixtures",
 }
 
 

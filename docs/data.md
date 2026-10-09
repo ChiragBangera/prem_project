@@ -18,7 +18,7 @@ None of these is an official, supported API. The app is unofficial and not affil
 
 ## Your data stays up to date by itself
 
-While the app is open, a background updater keeps everything current. It does not look every few minutes: every fixture's kickoff is known, so after each **cycle** it works out the next moment something *can* have changed and sleeps until then (90 seconds while there is a backlog, never longer than six hours). The Data page says what it is waiting for, for example "Next: full time of Arsenal v Chelsea (Premier League), at 16:52". It fetches only what changed:
+While the app is open, a background updater keeps everything current. It does not look every few minutes: every fixture's kickoff is known, so after each **cycle** it works out the next moment something *can* have changed and sleeps until then (90 seconds while there is a backlog; the sleep follows the wall clock, so a laptop closed meanwhile does not delay it). The Data page says what it is waiting for, for example "Next: full time of Arsenal v Chelsea (Premier League), at 16:52". It fetches only what changed:
 
 - A **live season**'s table is read again shortly after each match's full time, then every 20 minutes until Understat lists the result (every 2 hours after six hours; a match still missing after two days counts as postponed), every 6 hours while a recent match's xG settles, and otherwise twice a day so a moved fixture is noticed. A quiet Tuesday costs two requests per league, not a hundred.
 - A **finished season** is never fetched again. A **match page** is fetched once, after Understat has settled its numbers, and kept for good.

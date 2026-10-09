@@ -422,8 +422,8 @@ def test_a_new_install_fills_up_to_todays_limit_then_sleeps_until_midnight(tmp_p
             second = await wb.auto.run_once()                                            # the backlog look 90 seconds later
             assert second["backlog"] == 0 and len([c for c in provider.calls if c[0] == "match"]) == 2
             options = [(next_midnight(now[0]), "today's match-page limit is used up"),   # the limit's reset,
-                       (now[0] + wb.settings.auto_longest_sleep, "routine check")]       # or the longest sleep (six hours)
-            assert wb.auto.next_wake() == min(options)                                   # no retrying all day: whichever comes first
+                       (now[0] + 12 * 3600, "Premier League: the twice-daily check for moved fixtures")]   # or the tables' twice-daily look
+            assert wb.auto.next_wake() == min(options, key=lambda o: o[0])               # no retrying all day: whichever comes first
             now[0] = next_midnight(now[0]) + 1                                            # a new day: it carries on
             await wb.auto.run_once()
             assert len([c for c in provider.calls if c[0] == "match"]) == 3

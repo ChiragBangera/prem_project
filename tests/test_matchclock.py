@@ -34,7 +34,7 @@ def test_a_finished_match_missing_from_the_table_is_looked_for_often_then_slowly
     assert soon.why == "result" and soon.at == end + 60 + M.RESULT_POLL
     later = M.league_due([match], end + 7 * 3600)
     assert later.why == "result" and later.at == end + 7 * 3600 + M.RESULT_POLL_SLOW
-    gone = M.league_due([match], at("2026-10-13 14:00:00"))      # three days on: postponed; only the routine check is left
+    gone = M.league_due([match], at("2026-10-13 14:00:00"))      # three days on: postponed; only the twice-daily check is left
     assert gone.why == "quiet" and gone.at == at("2026-10-13 14:00:00") + M.QUIET
 
 
@@ -93,7 +93,36 @@ def test_the_updater_sleeps_until_the_next_full_time_and_says_so(tmp_path):
             assert when == at("2025-09-06 15:00:00") + M.FULL_TIME                # hours away, not fifteen minutes
             assert why.startswith("full time of ") and why.endswith("(Premier League)")
             clock.now = at("2025-09-06 07:00:00")
-            assert wb.auto.next_wake() == (clock.now + settings.auto_longest_sleep, "routine check")   # never longer than the longest sleep
+            assert wb.auto.next_wake()[0] == at("2025-09-06 15:00:00") + M.FULL_TIME     # ten hours away: no wake-up in between
+        finally:
+            await wb.close()
+
+    asyncio.run(go())
+
+
+def test_a_long_sleep_ends_on_time_even_when_the_computer_slept_meanwhile(tmp_path, monkeypatch):
+    """The event loop's clock stops while a laptop sleeps; the updater's sleep is checked against the wall clock in short steps."""
+    from app.sync import autosync
+
+    async def go():
+        settings = Settings(data_dir=tmp_path, demo=False, offline=False, auto=True)
+        wb = Workbench(settings, provider=FakeProvider(raw_league(played=6)), today=date(2025, 9, 6))
+        wall = Clock(at("2025-09-06 12:00:00"))
+        wb.auto._clock = wall
+        monkeypatch.setattr(autosync, "CLOCK_CHECK", 0.01)
+        steps = []
+        real_wait_for = asyncio.wait_for
+
+        async def wait_for(aw, timeout):
+            steps.append(timeout)
+            if len(steps) == 2:
+                wall.advance(10 * 3600)                     # the lid was closed for ten hours during this step
+            return await real_wait_for(aw, timeout)
+
+        monkeypatch.setattr(autosync.asyncio, "wait_for", wait_for)
+        try:
+            await real_wait_for(wb.auto._sleep_until(wall.now + 8 * 3600), timeout=2)   # ends right after the jump, not 8 hours later
+            assert len(steps) == 2                                                       # one short step, the step with the jump, done
         finally:
             await wb.close()
 

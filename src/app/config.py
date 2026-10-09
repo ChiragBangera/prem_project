@@ -55,7 +55,7 @@ class Settings:
     # time or full time, a result still to come), and fetches only that.
     auto: bool = False
     auto_events: bool | None = None  # None: on when the optional event-data dependencies and a browser are available
-    auto_longest_sleep: float = 6 * 3600.0   # the updater never sleeps longer than this, whatever the fixture list says
+    auto_longest_sleep: float = 24 * 3600.0   # a fallback when nothing at all is due (each league table is still read twice a day)
     auto_first_delay: float = 10.0
     page_pace: float = 1.5            # seconds between two Understat match pages fetched in the background (one at a time)
     demo_events: bool = False        # in demo mode, fill the event store with synthetic matches in the background (see sync/demofeed.py)

@@ -2,8 +2,8 @@
 
 It does not look every few minutes. After each *cycle* it works out, from the fixture list (every kickoff is known, in UTC), the next
 moment something can have changed: a match's full time, a result Understat has not listed yet, a match page that has settled, the end of
-the event fetcher's rest. It sleeps until the earliest of them (see :mod:`app.data.matchclock`), and never longer than
-``auto_longest_sleep``. What it is waiting for is shown on the Data page. A cycle:
+the event fetcher's rest. It sleeps until the earliest of them (see :mod:`app.data.matchclock`), and what it is waiting for is
+shown on the Data page. The sleep is measured against the wall clock, so a computer that sleeps meanwhile does not push it back. A cycle:
 
 1. **League seasons.** For every league and every tracked season (this one, and as many previous ones as the preferences say), ask the
    repository for the season. It decides, by its freshness policy, whether to touch the network: a finished season never is, a live one
@@ -56,6 +56,7 @@ CYCLE_BUDGET = 300.0           # seconds of fetching per cycle before it yields
 BACKLOG_INTERVAL = 90.0        # look again this soon while there is still a backlog
 RETRY_AFTER = 15 * 60.0        # a cycle with problems is tried again after this (doubling, up to two hours)
 MIN_SLEEP = 60.0               # never wake up sooner than this after a cycle (a due moment already past is handled by the cycle just run)
+CLOCK_CHECK = 300.0            # a long sleep is cut into steps this long that only compare the wall clock (see _sleep_until)
 BACKOFF_BASE, BACKOFF_MAX = 300.0, 6 * 3600.0
 EVENT_BATCH = 20               # matches per event-fetcher run (about ten minutes of reading at the polite pace)
 EVENT_REST = 20 * 60.0         # seconds the event fetcher rests between two runs
@@ -218,8 +219,23 @@ class AutoSync:
             delay = max(MIN_SLEEP, at - self._clock())
             self.next_at, self.next_reason = self._clock() + delay, reason
             self._wake.clear()
-            with contextlib.suppress(TimeoutError):
-                await asyncio.wait_for(self._wake.wait(), timeout=delay)
+            await self._sleep_until(self.next_at)
+
+    async def _sleep_until(self, deadline: float) -> None:
+        """Sleep until the wall clock reaches ``deadline``, or until :meth:`wake`.
+
+        The event loop's own clock stops while the computer sleeps (a laptop with its lid closed), so one long wait would end that much
+        late: a full time at 01:52 noticed at 07:00. The wait is cut into steps of ``CLOCK_CHECK`` seconds; a step only compares the time
+        (no cycle, no request), and the sleep ends at the first step past the deadline."""
+        while not self._stop:
+            left = deadline - self._clock()
+            if left <= 0:
+                return
+            try:
+                await asyncio.wait_for(self._wake.wait(), timeout=min(left, CLOCK_CHECK))
+                return
+            except TimeoutError:
+                continue
 
     # ------------------------------------------------------------------ when to look again
 
@@ -228,7 +244,7 @@ class AutoSync:
         to come, xG settling, the twice-daily check), a match page that has settled, a league in its back-off window, and the event
         fetcher's next run. Read from the store only."""
         now = self._clock()
-        found: list[tuple[float, str]] = [(now + self.settings.auto_longest_sleep, "routine check")]
+        found: list[tuple[float, str]] = [(now + self.settings.auto_longest_sleep, "a check in case anything changed")]
         pages_held = self.budget.left("understat") <= 0
         for code, season in self.tracked():
             label = pretty(code, season)
