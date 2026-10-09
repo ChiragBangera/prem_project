@@ -51,10 +51,11 @@ class Settings:
     ttl_dob_miss: int = 14 * DAY
     ttl_roster_live: int = 24 * HOUR  # squads change in transfer windows; finished seasons never refresh
 
-    # Background updates: while the app runs, a cycle looks for newly finished matches and fetches only those.
+    # Background updates: while the app runs, the updater sleeps until the fixture list says something can have changed (a match's half
+    # time or full time, a result still to come), and fetches only that.
     auto: bool = False
     auto_events: bool | None = None  # None: on when the optional event-data dependencies and a browser are available
-    auto_interval: float = 15 * 60.0
+    auto_longest_sleep: float = 6 * 3600.0   # the updater never sleeps longer than this, whatever the fixture list says
     auto_first_delay: float = 10.0
     page_pace: float = 1.5            # seconds between two Understat match pages fetched in the background (one at a time)
     demo_events: bool = False        # in demo mode, fill the event store with synthetic matches in the background (see sync/demofeed.py)

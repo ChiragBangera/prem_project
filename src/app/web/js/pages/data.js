@@ -21,6 +21,19 @@ function until(ts) {
   return `in ${Math.round(m / 60)} h`;
 }
 
+/** "16:52", or "Sat 16:52" when it is not today: a moment in the reader's own time zone. */
+function clockTime(ts) {
+  const d = new Date(ts * 1000);
+  const time = d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+  return d.toDateString() === new Date().toDateString() ? time : `${d.toLocaleDateString(undefined, { weekday: "short" })} ${time}`;
+}
+
+/** What the updater waits for: "Next: full time of Arsenal v Chelsea (Premier League), at 16:52 (in 3 h)." */
+function nextLine(auto) {
+  if (!auto.next_at) return null;
+  return `Next: ${auto.next_reason || "the next check"}, at ${clockTime(auto.next_at)} (${until(auto.next_at)}).`;
+}
+
 const STATE_TONE = { ok: "good", stale: "warn", failed: "crit", waiting: "warn", "not available": "outline" };
 
 // ------------------------------------------------------------------ automatic updates
@@ -43,10 +56,10 @@ function AutoCard({ auto, mode, reload }) {
     ? (offline ? "Automatic updates are off in demo and offline mode." : "Automatic updates are switched off for this run (PREM_AUTO=0).")
     : !prefs.enabled ? "Paused: nothing is fetched until you switch it back on."
       : auto.running ? "Updating right now…"
-        : `${auto.next_at ? `Next check ${until(auto.next_at)}.` : last?.finished ? "The next check happens shortly after the app starts." : "The first check happens shortly after the app starts."}${last?.finished ? ` Last cycle finished ${relTime(nowSec() - last.finished)}: ${plural(fetched, "match page")} fetched${last.errors?.length ? `, ${plural(last.errors.length, "problem")}` : ", no problems"}${last.backlog ? `, ${last.backlog} still to fetch (carried on next cycle)` : ""}.` : ""}`;
+        : `${auto.next_at ? nextLine(auto) : last?.finished ? "The next check happens shortly after the app starts." : "The first check happens shortly after the app starts."}${last?.finished ? ` Last cycle finished ${relTime(nowSec() - last.finished)}: ${plural(fetched, "match page")} fetched${last.errors?.length ? `, ${plural(last.errors.length, "problem")}` : ", no problems"}${last.backlog ? `, ${last.backlog} still to fetch (carried on next cycle)` : ""}.` : ""}`;
   const eventsOn = Boolean(ev.enabled);
   const evLeagues = prefs.events.leagues;
-  return html`<${Card} title="Automatic updates" sub="While the app is open it looks for newly finished matches and fetches only those. A match page is fetched once and kept for good; finished seasons are never fetched again."
+  return html`<${Card} title="Automatic updates" sub="While the app is open it follows the fixture list and wakes up only when a match can have changed something: shortly after each full time, and while a result or its xG is still coming. A match page is fetched once and kept for good; finished seasons are never fetched again."
     actions=${html`<${Button} icon="refresh" disabled=${busy || !auto.auto || !prefs.enabled || auto.running} onClick=${runNow} title="Run a cycle now instead of waiting for the next one">Update now</${Button}>`}>
     <div class="stack" style=${{ "--gap": "16px" }}>
       <div class="row between wrap" style=${{ gap: "12px" }}>

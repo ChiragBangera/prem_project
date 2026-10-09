@@ -29,6 +29,7 @@ from app.config import Settings
 from app.errors import AppError, DataUnavailable, NotFound, UpstreamError
 from app.leagues import current_season
 
+from . import matchclock
 from .models import LeagueSeason, MatchPage, PlayerPage, TeamPage
 from .normalize import (
     normalize_league,
@@ -125,7 +126,7 @@ class Repository:
             fetch=lambda: self.provider.league(league, season),
             parse=lambda raw: normalize_league(raw, league, season),
             is_complete=lambda ls: self._league_complete(ls),
-            ttl=lambda ls, complete: self._league_ttl(ls, complete),
+            ttl=lambda ls, complete, at: self._league_ttl(ls, complete, at),
             refresh=refresh,
             force=force,
             weight=10,
@@ -140,7 +141,7 @@ class Repository:
             fetch=lambda: self.provider.player(int(player_id)),
             parse=lambda raw: normalize_player_page(raw, int(player_id)),
             is_complete=lambda page: False,
-            ttl=lambda page, complete: self._player_ttl(page),
+            ttl=lambda page, complete, at: self._player_ttl(page),
             refresh=refresh,
             force=force,
             weight=1,
@@ -161,7 +162,7 @@ class Repository:
             fetch=lambda: self.provider.match(int(match_id)),
             parse=lambda raw: normalize_match_page(raw, int(match_id)),
             is_complete=lambda page: final and (not expect_shots or any(page.shots.values())),
-            ttl=lambda page, complete: FOREVER if complete else self.settings.ttl_match_open,
+            ttl=lambda page, complete, at: FOREVER if complete else self.settings.ttl_match_open,
             refresh=refresh,
             force=force,
             weight=1,
@@ -195,7 +196,7 @@ class Repository:
             fetch=lambda: self.provider.team(team, season),
             parse=lambda raw: normalize_team_page(raw, team, season),
             is_complete=lambda page: season < current_season(),
-            ttl=lambda page, complete: FOREVER if complete else self.settings.ttl_team_live,
+            ttl=lambda page, complete, at: FOREVER if complete else self.settings.ttl_team_live,
             refresh=refresh,
             force=force,
             weight=2,
@@ -263,22 +264,19 @@ class Repository:
     def _league_complete(self, ls: LeagueSeason) -> bool:
         return bool(ls.fixtures) and not ls.upcoming
 
-    def _league_ttl(self, ls: LeagueSeason, complete: bool) -> float:
-        if complete:
-            return FOREVER
-        now = self._clock()
-        soonest = None
-        for fixture in ls.fixtures:
-            try:
-                kickoff = datetime.fromisoformat(fixture.dt).replace(tzinfo=UTC).timestamp()
-            except ValueError:
-                continue
-            gap = abs(kickoff - now)
-            soonest = gap if soonest is None else min(soonest, gap)
-        # Around matchdays xG lands within hours: refresh often. Quiet weeks can be lazy.
-        if soonest is not None and soonest < 48 * 3600:
-            return 2 * 3600
-        return float(self.settings.ttl_league_live * 4)
+    def _league_ttl(self, ls: LeagueSeason, complete: bool, fetched_at: float) -> float:
+        """Fresh until the match clock says something can have changed: a match's full time, a result still to come, xG settling."""
+        due = matchclock.league_due(ls.fixtures, fetched_at, complete=complete)
+        return FOREVER if due is None else max(0.0, due.at - fetched_at)
+
+    def league_due(self, league: str, season: int) -> matchclock.Due | None:
+        """When the stored table of a league season is next worth reading, and why; None when it is final or not stored."""
+        meta = self.store.meta("league", f"{league}:{season}")
+        ls = self.cached_league(league, season) if meta is not None else None
+        if meta is None or ls is None:
+            return None
+        fetched_at, _source, complete = meta
+        return matchclock.league_due(ls.fixtures, fetched_at, complete=complete or self._league_complete(ls))
 
     def _player_ttl(self, page: PlayerPage) -> float:
         if page.shots and page.shots[-1].season >= current_season():
@@ -295,7 +293,7 @@ class Repository:
         fetch: Callable[[], Awaitable[dict]],
         parse: Callable[[dict], T],
         is_complete: Callable[[T], bool],
-        ttl: Callable[[T, bool], float],
+        ttl: Callable[[T, bool, float], float],
         refresh: bool,
         force: bool = False,
         weight: int,
@@ -369,8 +367,8 @@ class Repository:
             return None  # unreadable cache row: treat as a miss
         return _Entry(record.fetched_at, record.complete or bool(is_complete(value)), record.source, value)
 
-    def _is_fresh(self, entry: _Entry, ttl: Callable[[Any, bool], float]) -> bool:
-        limit = ttl(entry.value, entry.complete)
+    def _is_fresh(self, entry: _Entry, ttl: Callable[[Any, bool, float], float]) -> bool:
+        limit = ttl(entry.value, entry.complete, entry.fetched_at)
         return limit == FOREVER or (self._clock() - entry.fetched_at) < limit
 
     def _translate(self, exc: AppError, kind: str, key: str) -> AppError:

@@ -1,6 +1,9 @@
 """The background updater: while the app runs, keep the local data current without anyone pressing a button.
 
-One *cycle* every ``interval`` (shorter while there is a backlog):
+It does not look every few minutes. After each *cycle* it works out, from the fixture list (every kickoff is known, in UTC), the next
+moment something can have changed: a match's full time, a result Understat has not listed yet, a match page that has settled, the end of
+the event fetcher's rest. It sleeps until the earliest of them (see :mod:`app.data.matchclock`), and never longer than
+``auto_longest_sleep``. What it is waiting for is shown on the Data page. A cycle:
 
 1. **League seasons.** For every league and every tracked season (this one, and as many previous ones as the preferences say), ask the
    repository for the season. It decides, by its freshness policy, whether to touch the network: a finished season never is, a live one
@@ -30,6 +33,7 @@ from collections import deque
 from typing import TYPE_CHECKING, Any
 from collections.abc import Callable
 
+from app.data import matchclock
 from app.errors import AppError
 from app.events import ledger
 from app.events import raw as R
@@ -48,6 +52,8 @@ FAIL_PREFIX = "autosync:fail:"
 EVENT_RUN_PREFIX = "autosync:events:"
 CYCLE_BUDGET = 300.0           # seconds of fetching per cycle before it yields
 BACKLOG_INTERVAL = 90.0        # look again this soon while there is still a backlog
+RETRY_AFTER = 15 * 60.0        # a cycle with problems is tried again after this (doubling, up to two hours)
+MIN_SLEEP = 60.0               # never wake up sooner than this after a cycle (a due moment already past is handled by the cycle just run)
 BACKOFF_BASE, BACKOFF_MAX = 300.0, 6 * 3600.0
 EVENT_BATCH = 20               # matches per event-fetcher run (about ten minutes of reading at the polite pace)
 EVENT_REST = 20 * 60.0         # seconds the event fetcher rests between two runs
@@ -62,6 +68,13 @@ def _days(left: int, per_day: int) -> int | None:
     if left <= 0 or per_day <= 0:
         return None
     return -(-left // per_day)
+
+
+def next_midnight(now: float) -> float:
+    """The start of the next local calendar day (when the daily limits start again)."""
+    from datetime import date, datetime, time as dtime, timedelta
+
+    return datetime.combine(date.fromtimestamp(now) + timedelta(days=1), dtime()).timestamp()
 
 
 def pretty(code: str, season: int) -> str:
@@ -94,6 +107,7 @@ class AutoSync:
         self._log: deque[dict] = deque(maxlen=40)
         self.running = False
         self.next_at: float | None = None
+        self.next_reason: str | None = None
         self.budget = Budget(wb.store, lambda: self.prefs()["limits"], clock=clock)
 
     # ------------------------------------------------------------------ preferences
@@ -176,23 +190,66 @@ class AutoSync:
         await asyncio.sleep(self.settings.auto_first_delay)
         failures = 0
         while not self._stop:
-            delay = self.settings.auto_interval
+            now = self._clock()
+            at, reason = now + self.settings.auto_longest_sleep, "switched off"
             try:
                 if self.prefs()["enabled"]:
                     result = await self.run_once()
                     failures = 0 if not result["errors"] else min(failures + 1, 5)
-                    delay = BACKLOG_INTERVAL if result["backlog"] and not result["errors"] else self.settings.auto_interval * (2 ** failures if failures else 1)
+                    at, reason = self.next_wake()
+                    now = self._clock()
+                    if result["backlog"] and not result["errors"]:
+                        at, reason = min((at, reason), (now + BACKLOG_INTERVAL, "carrying on with what is still to fetch"))
+                    elif failures:
+                        at, reason = max((at, reason), (now + min(RETRY_AFTER * 2 ** (failures - 1), 2 * 3600), "trying again after a problem"))
             except asyncio.CancelledError:
                 raise
             except Exception as exc:  # pragma: no cover - the updater must never take the app down
                 log.exception("auto-update cycle failed")
                 self._note("error", f"cycle failed: {type(exc).__name__}: {str(exc)[:120]}")
                 failures = min(failures + 1, 5)
-                delay = min(self.settings.auto_interval * 2 ** failures, 2 * 3600)
-            self.next_at = self._clock() + delay
+                at, reason = self._clock() + min(RETRY_AFTER * 2 ** failures, 2 * 3600), "trying again after a problem"
+            delay = max(MIN_SLEEP, at - self._clock())
+            self.next_at, self.next_reason = self._clock() + delay, reason
             self._wake.clear()
             with contextlib.suppress(TimeoutError):
                 await asyncio.wait_for(self._wake.wait(), timeout=delay)
+
+    # ------------------------------------------------------------------ when to look again
+
+    def next_wake(self) -> tuple[float, str]:
+        """The next moment worth a cycle, and why: the earliest of every league table's due moment (a match's full time, a result still
+        to come, xG settling, the twice-daily check), a match page that has settled, a league in its back-off window, and the event
+        fetcher's next run. Read from the store only."""
+        now = self._clock()
+        found: list[tuple[float, str]] = [(now + self.settings.auto_longest_sleep, "routine check")]
+        pages_held = self.budget.left("understat") <= 0
+        for code, season in self.tracked():
+            label = pretty(code, season)
+            fail = self.store.kv_get(FAIL_PREFIX + f"{code}:{season}")
+            if fail and fail.get("next_try", 0) > now:
+                found.append((fail["next_try"], f"{label}: trying again after a problem"))
+                continue
+            due = self.wb.repo.league_due(code, season)
+            if due is not None:
+                found.append((due.at, self._why(due, code)))
+            ls = self.wb.repo.cached_league(code, season)
+            page_due = self.wb.matchsync.next_due(ls) if ls is not None else None
+            if page_due is not None:
+                found.append((next_midnight(now), "today's match-page limit is used up") if pages_held and page_due <= now
+                             else (page_due, f"{label}: a match page has settled"))
+        found.extend(self._events_wake(now))
+        return min(found, key=lambda t: t[0])
+
+    @staticmethod
+    def _why(due: matchclock.Due, code: str) -> str:
+        league = LEAGUES[code].name if code in LEAGUES else code
+        f = due.fixture
+        if due.why == "full_time" and f is not None:
+            return f"full time of {f.home} v {f.away} ({league})"
+        if due.why == "result" and f is not None:
+            return f"the result of {f.home} v {f.away} ({league})"
+        return f"{league}: {matchclock.WHY[due.why]}"
 
     # ------------------------------------------------------------------ one cycle
 
@@ -324,8 +381,18 @@ class AutoSync:
         if allowed <= 0:
             result["events"]["held"] = "today's limit reached"
             return
+        for code, season, played, not_before in self._backfill():
+            if not_before <= self._clock():
+                await self._start_events(code, season, played, result, limit=min(EVENT_BATCH, allowed))
+                return
+
+    def _backfill(self) -> list[tuple[str, int, int, float]]:
+        """League seasons with finished matches whose event data is still missing, in the order they are fetched:
+        ``(league, season, finished matches, not before)``. ``not before`` is in the future for a season the fetcher looked at a moment ago
+        and found nothing more it could read (it waits for another match to finish, or ``EVENT_RECHECK``)."""
         prefs = self.prefs()["events"]
         now = current_season(self.wb.today)
+        out = []
         for back in range(prefs["seasons_back"] + 1):
             for code in prefs["leagues"]:
                 season = now - back
@@ -342,10 +409,24 @@ class AutoSync:
                 if stored + parked >= played.n_played:
                     continue
                 last = self.store.kv_get(EVENT_RUN_PREFIX + f"{code}:{season}") or {}
-                if last and last.get("played") == played.n_played and self._clock() - last.get("at", 0) < EVENT_RECHECK:
-                    continue  # the fetcher already looked at exactly this many finished matches and found nothing more it could read
-                await self._start_events(code, season, played.n_played, result, limit=min(EVENT_BATCH, allowed))
-                return
+                same = bool(last) and last.get("played") == played.n_played
+                out.append((code, season, played.n_played, last.get("at", 0) + EVENT_RECHECK if same else 0.0))
+        return out
+
+    def _events_wake(self, now: float) -> list[tuple[float, str]]:
+        """When the event fetcher next has something to do (nothing when it is off, unavailable, paused or already running: its end wakes
+        the updater by itself)."""
+        if not self.events_enabled() or self._proc_alive() or ledger.control(self.store).get("paused"):
+            return []
+        if self.store.kv_get(EVENT_RETRY_KEY):
+            return [(now, "reading again the matches you asked for")]
+        waiting = [not_before for *_rest, not_before in self._backfill()]
+        if not waiting or not self.events_capability()["available"]:
+            return []
+        at = max(min(waiting), float(self.store.kv_get(EVENT_LAST_END) or 0) + EVENT_REST)
+        if self.budget.left("whoscored") <= 0:
+            return [(next_midnight(now), "today's event-data limit is used up")]
+        return [(at, "catching up on event data")]
 
     async def _start_events(self, code: str, season: int, played: int | None, result: dict, *, limit: int = EVENT_BATCH, games: list[int] | None = None) -> None:
         label = pretty(code, season)
@@ -469,7 +550,7 @@ class AutoSync:
         """A few fields for the top bar's status pill (cheap: no capability probing)."""
         last = (self.store.kv_get(STATE_KEY) or {}).get("last") or {}
         return {
-            "enabled": bool(self.settings.auto and self.prefs()["enabled"]), "running": self.running, "next_at": self.next_at,
+            "enabled": bool(self.settings.auto and self.prefs()["enabled"]), "running": self.running, "next_at": self.next_at, "next_reason": self.next_reason,
             "finished": last.get("finished"), "errors": len(last.get("errors") or []), "backlog": last.get("backlog", 0),
             "events_running": self._proc_label if self._proc_alive() else None,
         }
@@ -478,7 +559,7 @@ class AutoSync:
         saved = self.store.kv_get(STATE_KEY) or {}
         cap = self.events_capability()
         return {
-            "auto": self.settings.auto, "prefs": self.prefs(), "running": self.running, "next_at": self.next_at,
+            "auto": self.settings.auto, "prefs": self.prefs(), "running": self.running, "next_at": self.next_at, "next_reason": self.next_reason,
             "last": saved.get("last"), "log": list(self._log) or saved.get("log", []),
             "events": {"capability": cap, "enabled": self.events_enabled(), "process": self._proc_label if self._proc_alive() else None,
                        "control": ledger.control(self.store), "retry": self.store.kv_get(EVENT_RETRY_KEY) or [],

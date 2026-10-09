@@ -48,7 +48,7 @@ def test_health_meta_and_catalog(client):
     metric = catalog["player"]["metrics"]["npxg90"]
     assert metric["hib"] is True and metric["formula"] and metric["what"] and metric["needs"] == "base" and catalog["player"]["profile"]["role"]["ATT"][0] == "npxg90"
     assert len(catalog["player"]["metrics"]) > 100 and len(catalog["team"]["metrics"]) > 90
-    assert {"enabled", "running", "next_at", "finished", "errors", "backlog", "events_running"} == set(meta["auto"]) and meta["auto"]["enabled"] is False   # the top-bar pill reads this; demo never updates itself
+    assert {"enabled", "running", "next_at", "next_reason", "finished", "errors", "backlog", "events_running"} == set(meta["auto"]) and meta["auto"]["enabled"] is False   # the top-bar pill reads this; demo never updates itself
     tags = catalog["player"]["tags"]                                           # the Profile filter and the dictionary are built from this list
     assert {t["group"] for t in tags} == {"ATT", "MID", "DEF", "GK"} and all(t["explain"] and t["rules"] for t in tags)
     assert all(r["metrics"][0] in catalog["player"]["metrics"] for t in tags for r in t["rules"])

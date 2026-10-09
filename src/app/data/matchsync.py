@@ -58,6 +58,24 @@ class MatchSync:
         # stored early (or empty): look again once it can have settled, or after the open-match window
         return self.is_final(fixture) or self._clock() - fetched_at >= self.repo.settings.ttl_match_open
 
+    def next_due(self, ls: LeagueSeason) -> float | None:
+        """When the next match page of this season is worth fetching: now for a finished match with no page, else the moment a stored
+        early page has settled (or its open-match window ends). None when every page is final."""
+        soonest = None
+        for fixture in ls.fixtures:
+            if not fixture.played:
+                continue
+            status = self.repo.match_status(fixture.id)
+            if status is None:
+                return self._clock()
+            fetched_at, complete = status
+            kickoff = _kickoff(fixture)
+            if complete or kickoff is None:
+                continue
+            due = min(kickoff + SETTLE_HOURS * 3600, fetched_at + self.repo.settings.ttl_match_open)
+            soonest = due if soonest is None else min(soonest, due)
+        return soonest
+
     def pending(self, ls: LeagueSeason) -> list[Fixture]:
         """Finished fixtures whose page is missing or not final yet, oldest first (so a stopped run leaves no gaps in the past)."""
         return sorted((f for f in ls.fixtures if self.needs_fetch(f)), key=lambda f: (f.dt, f.id))
