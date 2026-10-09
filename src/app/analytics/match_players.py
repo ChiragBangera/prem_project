@@ -57,13 +57,19 @@ def season_pools(rows: Sequence[dict], keys: Sequence[str]) -> dict[tuple[str, s
     return out
 
 
+def needs_xg(metric) -> bool:
+    """Whether a metric is built from Understat's xG (xG, xA, xGChain, xGBuildup, and its big chances, an xG threshold)."""
+    return any("xg" in i or i in ("xa", "s_big", "s_big_goals") for i in metric.inputs)
+
+
 def build_match_players(
     fixture: Fixture, page: MatchPage, season_rows: Sequence[dict], *, league: str, season: int,
-    event_counters: Callable[[int], dict | None] | None = None,
+    event_counters: Callable[[int], dict | None] | None = None, without_xg: bool = False,
 ) -> dict:
     """The payload: ``keys`` and, for each player who played, ``v`` and ``p`` aligned with them (the shape of a Scout row).
 
     ``event_counters(understat id)`` gives his event counters in this match, ``None`` when none are stored for it or he could not be linked.
+    ``without_xg`` leaves out every metric that needs xG (a match Understat has not published: a zero there would be made up).
     """
     by_id = {r["id"]: r for r in season_rows}
     entries = [(side, e) for side in ("h", "a") for e in page.rosters.get(side, []) if e.minutes > 0]
@@ -87,7 +93,8 @@ def build_match_players(
         applicable = np.array([applies(metric, g) for g in groups])
         values[metric.key] = np.where(applicable, value, np.nan)
     # a metric nobody has a value for (no event data, say) is left out rather than sent as a column of blanks
-    shown = [k for k in keys if np.isfinite(values[k]).any()]
+    skip = {m.key for m in PER_MATCH_METRICS if needs_xg(m)} if without_xg else set()
+    shown = [k for k in keys if k not in skip and np.isfinite(values[k]).any()]
 
     out = []
     for i, (side, e) in enumerate(entries):

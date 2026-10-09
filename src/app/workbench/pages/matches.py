@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import dataclasses
+
 from app.analytics import matchsum
+from app.analytics.live_page import live_match_page, live_report, score
 from app.data import matchclock
 from app.analytics.match import match_report
 from app.analytics.match_players import build_match_players
+from app.data.repository import Meta
 from app.errors import BadRequest, NotFound
 from app.events import ledger
 from app.insights.briefing import recent_matches
@@ -37,13 +41,25 @@ class MatchesPage(Part):
                 "coverage": {"scorers": have, "played": ls.n_played, "events": len(self.events.match_ids(code, s))}}
 
     async def report(self, match_id: int, league: str, season) -> dict:
-        """One played match: the scoreboard, the shots, the story of the game and how it was played."""
+        """One played match: the scoreboard, the shots, the story of the game and how it was played.
+
+        A match Understat has not published yet (being played, or just finished) is reported from its latest WhoScored read instead:
+        the same report, with every shot's xG estimated (see :mod:`app.analytics.live_page`) and a ``live`` block saying so."""
         code, s, fetched, scope = await self.wb.seasons.scope(league, season)
         fixture = next((f for f in fetched.data.fixtures if f.id == match_id), None)
         if fixture is None:
             raise NotFound(f"Match {match_id} is not in {scope['league_name']} {scope['label']}.", hint="Check the league and season.")
         if not fixture.played:
-            raise BadRequest("That match has not been played yet: there are no shots to analyse.")
+            src = self._live_source(code, s, fixture)
+            if src is None:
+                raise BadRequest("That match has not been played yet: there are no shots to analyse.")
+            live_fixture, page = self._live_page(fetched.data, fixture, s, src)
+            report = live_report(live_fixture, page, src["doc"])
+            report["scorers"] = {side: [{**g, "xg": None} for g in goals] for side, goals in matchsum.scorers(page).items()}
+            insights: list = []   # every match insight reads xG (an own goal shows in the scorers): they come with Understat's figures
+            meta = Meta("whoscored", src["at"], complete=False).to_dict(now=self.wb.auto._clock())
+            return {"scope": scope, "meta": meta, "report": report, "insights": dicts(insights), "stats": _team_stats(*_sides(src["gold"])) if src["gold"] else None,
+                    "live": self._live_block(fixture, src)}
         page = await self.repo.match(match_id, final=self.wb.matchsync.is_final(fixture), expect_shots=bool((fixture.hxg or 0) + (fixture.axg or 0) > 0))
         report = match_report(fixture, page.data)
         report["scorers"] = matchsum.scorers(page.data)
@@ -60,7 +76,21 @@ class MatchesPage(Part):
         if fixture is None:
             raise NotFound(f"Match {match_id} is not in {scope['league_name']} {scope['label']}.", hint="Check the league and season.")
         if not fixture.played:
-            raise BadRequest("That match has not been played yet: there are no players to analyse.")
+            src = self._live_source(code, s, fixture)
+            if src is None:
+                raise BadRequest("That match has not been played yet: there are no players to analyse.")
+            live_fixture, live = self._live_page(ls, fixture, s, src)
+            ds, _fetched = await wb.datasets.players([(code, s)])
+            by_ws = {r["id"]: r["c"] for r in (src["gold"] or {}).get("players", [])}
+            to_ws = self._links(ls)[1]
+
+            def counters(player_id: int) -> dict | None:
+                return by_ws.get(to_ws.get(player_id) if player_id > 0 else -player_id)
+
+            out = await wb.memo(("match-players-live", code, s, match_id), (src["at"], wb.seasons.version((code, s))),
+                                lambda: build_match_players(live_fixture, live, ds.rows, league=code, season=s, event_counters=counters, without_xg=True))
+            meta = Meta("whoscored", src["at"], complete=False).to_dict(now=wb.auto._clock())
+            return {"scope": scope, "meta": meta, "pool_minutes": ds.pool_minutes, "group_sizes": ds.group_sizes, "live": self._live_block(fixture, src), **out}
         page = await self.repo.match(match_id, final=wb.matchsync.is_final(fixture), expect_shots=bool((fixture.hxg or 0) + (fixture.axg or 0) > 0))
         ds, _fetched = await wb.datasets.players([(code, s)])
         version = (wb.seasons.version((code, s)), self.events.version(code, s), self.repo.epochs.get("match", 0), page.meta.fetched_at)
@@ -70,6 +100,51 @@ class MatchesPage(Part):
 
         out = await wb.memo(("match-players", code, s, match_id), version, compute)
         return {"scope": scope, "meta": page.meta.to_dict(), "pool_minutes": ds.pool_minutes, "group_sizes": ds.group_sizes, **out}
+
+    # ------------------------------------------------------------------ a match Understat has not published: from its WhoScored read
+
+    def _live_source(self, code: str, season: int, fixture) -> dict | None:
+        """The latest WhoScored read of a fixture (half time, in play or full time): its page, when it was read, whether WhoScored called it
+        finished, and its counters. None when it has not been read."""
+        note = ledger.matchday(self.store, code, season, fixture.id) or {}
+        if not note.get("game") or note.get("state") not in ("final", "live"):
+            return None
+        game = int(note["game"])
+        if self.events.has_match(code, season, game):
+            doc, at, final, gold = self.events.raw.get(code, season, game), note.get("at"), True, self.events.gold(code, season, game)
+        else:
+            found = self.events.live(code, season, game)
+            if found is None:
+                return None
+            doc, at, final, gold = found["doc"], found["fetched_at"], False, found["gold"]
+        return None if doc is None else {"doc": doc, "at": at, "final": final, "gold": gold, "note": note, "game": game}
+
+    def _links(self, ls) -> tuple[dict[int, int], dict[int, int]]:
+        """``(WhoScored player id -> Understat id, Understat id -> WhoScored id)`` for a season, from the links already made."""
+        info = self.wb.links.for_season(ls, self.wb.matchbook.pages(ls)) or {}
+        to_ws = dict(info.get("players") or {})
+        return {w: u for u, w in to_ws.items()}, to_ws
+
+    def _live_page(self, ls, fixture, season: int, src: dict):
+        """The fixture with the read's score and estimated xG, and the Understat-shaped page built from the read."""
+        to_us, _to_ws = self._links(ls)
+        page = live_match_page(src["doc"], match_id=fixture.id, season=season, home=fixture.home, away=fixture.away, date=fixture.date,
+                               understat_id=to_us.get)
+        hg, ag = score(src["doc"])
+        return dataclasses.replace(fixture, hg=hg, ag=ag, hxg=None, axg=None), page
+
+    def _live_block(self, fixture, src: dict) -> dict:
+        """What the page says about a report made from a WhoScored read: when it was read, at what point of the match, and from when
+        Understat (and with it xG) is looked for."""
+        wb = self.wb
+        now = wb.auto._clock()
+        note = src["note"]
+        kickoff = matchclock.kickoff(fixture)
+        return {
+            "final": src["final"], "elapsed": "FT" if src["final"] else str(note.get("elapsed") or src["doc"].get("elapsed") or ""),
+            "at": src["at"], "phase": matchclock.phase(fixture, now), "moment": note.get("moment"),
+            "understat_from": None if kickoff is None else kickoff + matchclock.UNDERSTAT_FIRST,
+        }
 
     def _event_reader(self, ls, fixture, code: str, season: int):
         """``Understat player id -> his event counters in this match``; ``None`` for everyone when the match has no event data."""
@@ -166,19 +241,25 @@ class MatchesPage(Part):
                 home_name = info["alias"].get(gold["teams"][0]["name"])
                 flip = home_name is not None and home_name != fixture.home
                 a, b = (gold["teams"][1], gold["teams"][0]) if flip else (gold["teams"][0], gold["teams"][1])
-                pa, pb = a["c"].get("passes", 0), b["c"].get("passes", 0)
-                out.setdefault(fixture.id, {})["stats"] = {
-                    "poss": None if pa + pb == 0 else [round(100 * pa / (pa + pb)), round(100 * pb / (pa + pb))],
-                    "passes": [pa, pb], "pass_acc": [None if not pa else round(100 * a["c"].get("pass_ok", 0) / pa), None if not pb else round(100 * b["c"].get("pass_ok", 0) / pb)],
-                    "corners": [a["c"].get("corners", 0), b["c"].get("corners", 0)], "fouls": [a["c"].get("fouls", 0), b["c"].get("fouls", 0)],
-                    "yellow": [a["c"].get("yellow", 0), b["c"].get("yellow", 0)], "red": [a["c"].get("red", 0), b["c"].get("red", 0)],
-                    "formations": [a["formation"], b["formation"]], "managers": [a["manager"], b["manager"]],
-                }
+                out.setdefault(fixture.id, {})["stats"] = _team_stats(a, b)
         return out
 
 
 LIVE_STATS = (("goals", "Goals"), ("shots", "Shots"), ("sot", "On target"), ("bigch", "Big chances"), ("passes", "Passes"), ("pass_f3", "Passes into the final third"),
               ("touch_box", "Touches in the box"), ("tackles", "Tackles"), ("interceptions", "Interceptions"), ("corners", "Corners"), ("fouls", "Fouls"), ("yellow", "Yellow cards"))
+
+
+def _team_stats(a: dict, b: dict) -> dict:
+    """How each side played, from its event counters (home first): possession as the share of passes, passing, corners, fouls, cards,
+    formations and managers. The match card and the report read this."""
+    pa, pb = a["c"].get("passes", 0), b["c"].get("passes", 0)
+    return {
+        "poss": None if pa + pb == 0 else [round(100 * pa / (pa + pb)), round(100 * pb / (pa + pb))],
+        "passes": [pa, pb], "pass_acc": [None if not pa else round(100 * a["c"].get("pass_ok", 0) / pa), None if not pb else round(100 * b["c"].get("pass_ok", 0) / pb)],
+        "corners": [a["c"].get("corners", 0), b["c"].get("corners", 0)], "fouls": [a["c"].get("fouls", 0), b["c"].get("fouls", 0)],
+        "yellow": [a["c"].get("yellow", 0), b["c"].get("yellow", 0)], "red": [a["c"].get("red", 0), b["c"].get("red", 0)],
+        "formations": [a.get("formation"), b.get("formation")], "managers": [a.get("manager"), b.get("manager")],
+    }
 
 
 def _sides(gold: dict) -> tuple[dict, dict]:

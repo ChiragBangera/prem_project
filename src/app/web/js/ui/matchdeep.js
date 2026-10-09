@@ -111,8 +111,10 @@ function Table({ d, f, catalog, scope }) {
   </div>`;
 }
 
-export function MatchDeep({ id, scope, f }) {
+export function MatchDeep({ id, scope, f, live = false }) {
   const { catalog } = useMeta();
-  const q = useApi(`/api/match/${id}/players`, { league: scope.league, season: scope.season });
+  // a match drawn from a WhoScored read: its own cache key, asked again every minute, never kept in the browser's store (see MatchPage)
+  const q = useApi(`/api/match/${id}/players`, live ? { league: scope.league, season: scope.season, live: 1 } : { league: scope.league, season: scope.season },
+    live ? { staleMs: 0, persist: false, pollMs: 60000 } : undefined);
   return html`<${Async} q=${q}>${(d) => (catalog ? html`<${Table} d=${d} f=${f} catalog=${catalog} scope=${scope} />` : null)}</${Async}>`;
 }

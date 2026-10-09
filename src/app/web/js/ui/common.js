@@ -11,7 +11,8 @@ import { favouritesStore, shortlistStore, useStore } from "../lib/store.js";
 // ------------------------------------------------------------------ links
 
 export const teamHref = (team, query) => href(`/team/${encodeURIComponent(team)}`, query);
-export const playerHref = (id, query) => href(`/player/${id}`, query);
+// A player WhoScored has but Understat does not (a negative id on a match Understat has not published) has no page: no link.
+export const playerHref = (id, query) => (Number(id) > 0 ? href(`/player/${id}`, query) : undefined);
 export const matchHref = (id, query) => href(`/match/${id}`, query);
 
 export function linkHref(link, scope) {

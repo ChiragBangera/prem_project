@@ -35,7 +35,7 @@ function readLine(read) {
   if (!read) return null;
   const when = read.at ? ` at ${clock(read.at)}` : "";
   const what = read.final ? "Read at full time" : read.elapsed === "HT" ? "Read at half time" : `Read in play (${read.elapsed || "?"}')`;
-  return `${what}${read.score ? ` (${read.score.replace(" : ", "–")})` : ""}${when}.${read.final ? " Final: these numbers will not change." : " Provisional: the full-time read replaces them, and they count nowhere else until then."}`;
+  return `${what}${read.score ? ` (${read.score.replace(" : ", "–")})` : ""}${when}.${read.final ? " WhoScored's numbers are final." : " Provisional: the next read replaces them, and they count nowhere else until full time."}`;
 }
 
 function nextLine(d) {
@@ -90,6 +90,19 @@ const PLAYER_COLS = (f) => [
   { key: "recoveries", label: "Recoveries", num: true },
   { key: "fouls", label: "Fouls", num: true },
 ];
+
+/** What a live match's page is made from: which read, what comes next, and why it is followed. ``d`` is /api/match/{id}/live. */
+export function LiveNotice({ d }) {
+  if (!d) return null;
+  const read = d.read;
+  return html`<${Notice} icon="info">
+    <div class="stack" style=${{ "--gap": "4px" }}>
+      ${read ? html`<span><b>${readLine(read)}</b> Expected goals come from Understat once it has the match (looked for from the 90th minute, every three minutes): until then the xG parts of this page wait.</span>` : null}
+      ${nextLine(d) ? html`<span>${nextLine(d)}</span>` : null}
+      ${followLine(d) ? html`<span class="small secondary">${followLine(d)}</span>` : null}
+    </div>
+  </${Notice}>`;
+}
 
 export function LiveView({ d }) {
   const f = d.fixture, read = d.read, st = read?.stats;

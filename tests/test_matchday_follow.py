@@ -259,3 +259,80 @@ def test_the_live_view_reads_shots_goals_cards_substitutions_and_line_ups_from_t
     assert [(t["minute"], t["kind"], t["side"], t["player"]) for t in out["timeline"]] == [
         (34, "goal", "home", "Home Ten"), (41, "own_goal", "home", "Away Six"), (42, "yellow", "away", "Away Six"), (45, "sub", "away", "Away Six")]
 
+
+# ------------------------------------------------------------------ the full match page from a WhoScored read
+
+
+def page_doc(elapsed="HT", status=3, score="1 : 0"):
+    """A half-time page with a goal (assisted), a saved header from a corner marked a big chance, an own goal and a yellow card."""
+    q = lambda *names: [{"type": {"displayName": n}} for n in names]   # noqa: E731
+    doc = ht_doc(elapsed, status, score)
+    doc["playerIdNameDictionary"] = {"1": "Home Ten", "2": "Away Six"}
+    pass_ = {**ev("Pass", 1, minute=32, x=80.0, y=60.0), "eventId": 900, "qualifiers": q("Cross")}
+    doc["events"] = doc["events"] + [
+        pass_,
+        {**ev("Goal", 1, minute=33, x=94.0, y=52.0), "qualifiers": q("RightFoot", "RegularPlay", "Assisted") + [{"type": {"displayName": "RelatedEventId"}, "value": "900"}]},
+        {**ev("SavedShot", 1, minute=20, x=90.0, y=45.0), "qualifiers": q("Head", "FromCorner", "BigChance")},
+        {**ev("Card", 2, team=AWAY, minute=41, x=None, y=None), "qualifiers": q("Yellow")},
+    ]
+    return doc
+
+
+def test_a_whoscored_page_becomes_the_full_report_with_nothing_made_up():
+    from app.analytics.live_page import live_match_page, live_report, score
+    from app.data.models import Fixture
+
+    doc = page_doc()
+    fx = Fixture(id=5, dt="2026-10-10 14:00:00", home="Reds", away="Blues", home_short="RED", away_short="BLU", played=False, hg=1, ag=0)
+    page = live_match_page(doc, match_id=5, season=2026, home="Reds", away="Blues", date="2026-10-10", understat_id={1: 101}.get)
+    report = live_report(fx, page, doc)
+    json.dumps(report, allow_nan=False)                                                      # no NaN anywhere
+    assert score(doc) == (1, 0) and report["has_xg"] is False and report["deserved"] is None and report["timeline"] is None
+    assert report["fixture"]["hxg"] is None and report["summary"]["home"]["xg"] is None and report["summary"]["home"]["shots"] == 2
+    assert report["summary"]["home"]["big_chances"] == 1 and report["summary"]["home"]["on_target"] == 2   # Opta's big chance, not an xG threshold
+    assert report["buckets"]["unit"] == "shots" and report["buckets"]["home"][1] == 1 and report["buckets"]["home"][2] == 1
+    goal = next(s for s in report["shots"]["home"] if s["result"] == "Goal")
+    assert goal["assisted_by"] == "Home Ten" and goal["xg"] is None and goal["situation"] == "OpenPlay" and goal["player_id"] == 101
+    header = next(s for s in report["shots"]["home"] if s["result"] == "SavedShot")
+    assert header["type"] == "Head" and header["situation"] == "FromCorner"
+    assert [c["minute"] for c in report["key_chances"]] == [20, 33]                             # every shot, in the order it came
+    home = {p["name"]: p for p in report["players"]["home"]}
+    assert home["Home Ten"]["goals"] == 1 and home["Home Ten"]["shots"] == 2 and home["Home Ten"]["kp"] == 1 and home["Home Ten"]["xg"] is None
+    away = {p["name"]: p for p in report["players"]["away"]}
+    assert away["Away Six"]["yellow"] == 1 and away["Away Six"]["id"] == -2                     # not linked to Understat: shown, never linked
+
+
+def test_the_report_comes_from_the_read_until_understat_publishes_and_then_is_the_normal_one(tmp_path, monkeypatch):
+    async def go():
+        wb = make(tmp_path)
+        events_on(wb, monkeypatch, [])
+        now = [ROUND_TWO + 55 * 60]
+        wb.auto._clock = wb.auto.budget._clock = lambda: now[0]
+        try:
+            await wb.repo.league("EPL", 2026)
+            with pytest.raises(BadRequest):
+                await wb.matches.report(1003, "EPL", "2026")                                    # no read yet: nothing to draw
+            assert wb.events.ingest("EPL", 2026, 77, page_doc()) == "live"
+            ledger.note_matchday(wb.store, "EPL", 2026, 1003, game=77, state="live", at=now[0], moment="ht", elapsed="HT", score="1 : 0")
+            live = await wb.matches.report(1003, "EPL", "2026")
+            json.dumps(live, allow_nan=False)
+            assert live["report"]["has_xg"] is False and live["live"]["elapsed"] == "HT" and live["insights"] == [] and live["stats"]["poss"]
+            assert (live["report"]["fixture"]["hg"], live["report"]["fixture"]["ag"]) == (1, 0) and live["meta"]["source"] == "whoscored"
+            deep = await wb.matches.players(1003, "EPL", "2026")
+            json.dumps(deep, allow_nan=False)
+            assert deep["rows"] and not any("xg" in k or k in ("xa", "xa90", "big90") for k in deep["keys"])   # no xG metric made of zeros
+            # full time: the page replaces the half-time one, which leaves no trace
+            now[0] = ROUND_TWO + matchclock.FT_READ + 60
+            assert wb.events.ingest("EPL", 2026, 77, page_doc("FT", 6, "2 : 0")) == "final"
+            ledger.note_matchday(wb.store, "EPL", 2026, 1003, state="final", at=now[0], moment="ft", elapsed="FT", score="2 : 0")
+            assert wb.events.live("EPL", 2026, 77) is None and wb.store.keys("ws_live") == []
+            final = await wb.matches.report(1003, "EPL", "2026")
+            assert final["live"]["final"] is True and (final["report"]["fixture"]["hg"], final["report"]["fixture"]["ag"]) == (2, 0)
+            # Understat publishes: the report is Understat's own again, exactly as for any finished match
+            other = await wb.matches.report(1000, "EPL", "2026")                                 # a fixture Understat has published
+            assert "live" not in other and other["report"].get("has_xg", True) is True and other["report"]["timeline"]["home"]
+        finally:
+            await wb.close()
+
+    run(go())
+
