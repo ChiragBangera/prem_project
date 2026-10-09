@@ -473,6 +473,35 @@ await check("the percentile bars say who he is compared with and what a bar mean
   expect(/better than \d+ of every 100/.test(card), "the card should say what a number means: " + card.slice(0, 200));
 });
 
+console.log("Match: deep analytics");
+await check("match deep analytics: both teams in one table, filters, and who leads", async () => {
+  const league = await (await fetch(`${base}/api/matches?league=EPL`)).json();
+  const played = league.rounds.flatMap((r) => r.matches).filter((m) => m.played).pop();
+  await go(`/match/${played.id}`);
+  await page.waitForSelector(".tabs [role=tab]");
+  expect((await page.locator(".grid.cols-2 table.data").count()) === 2, "the quick view keeps one table per team");
+  await page.getByRole("tab", { name: "Deep analytics" }).click();
+  await page.waitForSelector(".deep-controls");
+  await page.waitForSelector(".results-card table.data tbody tr");
+  expect(page.url().includes("tab=deep"), "the tab should be in the address: " + page.url());
+  const count = () => page.locator(".results-card table.data tbody tr").count();
+  const all = await count();
+  expect(all >= 18, "every player who played should be listed, from both teams: " + all);
+  expect((await page.locator(".results-card .deep-side").evaluateAll((els) => new Set(els.map((e) => e.title)).size)) === 2, "both teams in the one table");
+  await page.locator(".deep-controls .segmented button").nth(1).click();
+  const home = await count();
+  expect(home > 0 && home < all, `one team only should show fewer players: ${home} of ${all}`);
+  await page.locator(".deep-controls .segmented button").first().click();
+  await page.locator(".deep-controls select[aria-label='Minutes played']").selectOption("90");
+  const full = await count();
+  expect(full > 0 && full <= all, "the full-match filter should keep only players who played 90");
+  expect((await page.locator(".results-card .mx-best").count()) >= 3, "the best of each metric should be marked");
+  expect((await page.locator(".results-card .is-tile").count()) === 3, "best, median and weakest of the sorted metric");
+  await page.locator("main select[aria-label='Sort by']").selectOption("tackles90");
+  await page.waitForSelector("table.data thead th.sorted");
+  expect((await page.locator("table.data thead th.sorted").first().innerText()).includes("Tackles"), "the table should sort by the chosen metric");
+});
+
 console.log("Player: match trend");
 await check("match trend: the chart, the lines, and the opponent behind each match", async () => {
   await go("/player/100844?tab=trend");

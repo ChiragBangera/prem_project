@@ -27,7 +27,7 @@ export function MetricCell({ row, ctx, k }) {
   const poolN = ctx.groupSizes?.[row.group];
   const move = (e) => tooltip.move(e, html`<${Tip} title=${def?.label || k} sub=${`${row.name ?? row.team}${role ? ` · ${role} pool` : ""}`} rows=${[
     { label: "Value", value: fmtMetric(def, v) },
-    ...(p != null ? [{ label: row.group ? `Percentile among ${role?.toLowerCase() || "peers"}${poolN ? ` (${poolN})` : ""}` : "Percentile in the league", value: fmtPct(p) }] : []),
+    ...(p != null ? [{ label: ctx.pctWhat ? ctx.pctWhat(row) : row.group ? `Percentile among ${role?.toLowerCase() || "peers"}${poolN ? ` (${poolN})` : ""}` : "Percentile in the league", value: fmtPct(p) }] : []),
     ...(neutral ? [{ label: "Reading", value: "style, not quality" }] : []),
     ...(thin ? [{ label: "Sample", value: "small: read with care" }] : []),
   ]} />`);

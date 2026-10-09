@@ -97,7 +97,7 @@ def match_report(fixture: Fixture, page: MatchPage) -> dict:
     hg, ag = fixture.hg or 0, fixture.ag or 0
     actual = "home" if hg > ag else "away" if ag > hg else "draw"
     winner_prob = dv[actual]
-    biggest = sorted([("h", s) for s in home] + [("a", s) for s in away], key=lambda t: -t[1].xg)[:6]
+    biggest = sorted([("h", s) for s in home] + [("a", s) for s in away], key=lambda t: -t[1].xg)[:8]
     return {
         "fixture": {
             "id": fixture.id, "date": fixture.date, "dt": fixture.dt, "round": fixture.round,

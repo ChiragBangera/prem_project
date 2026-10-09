@@ -90,7 +90,7 @@ export function InsightStrip({ model, noun }) {
 
 // ------------------------------------------------------------------ columns and the table
 
-function metricColumns(keys, ctx, bandOf) {
+export function metricColumns(keys, ctx, bandOf) {
   return keys.map((k) => {
     const def = ctx.metrics[k];
     const i = ctx.idx[k];
@@ -102,7 +102,7 @@ function metricColumns(keys, ctx, bandOf) {
 }
 
 /** The metric the list is sorted by, as an extra column right after the fixed ones when it is not already shown. */
-function pinnedSort(model, bandOf) {
+export function pinnedSort(model, bandOf) {
   const { ctx, view, columns } = model;
   const key = view.sort;
   const def = ctx.metrics[key];

@@ -2,9 +2,12 @@
 import { html } from "../lib/html.js";
 import { useApi } from "../lib/api.js";
 import { useScope } from "../lib/scope.js";
-import { dateLong, formation, nf, timeOf, weekday, probText } from "../lib/format.js";
+import { dateLong, formation, nf, timeOf, weekday } from "../lib/format.js";
 
-import { Async, Badge, Card, Crest, DataNotices, Insights, PageHead, useDocumentTitle, playerHref, teamHref } from "../ui/common.js";
+import { Async, Badge, Card, Crest, DataNotices, Insights, PageHead, Tabs, useDocumentTitle, playerHref, teamHref } from "../ui/common.js";
+import { MatchDeep } from "../ui/matchdeep.js";
+import { Contributors } from "../ui/matchcontrib.js";
+import { setQuery, useLocation } from "../lib/router.js";
 import { DataTable } from "../ui/table.js";
 import { MatchPitch } from "../charts/pitch.js";
 import { XgRace } from "../charts/race.js";
@@ -26,28 +29,6 @@ function Tug({ label, home, away, format = (v) => String(v), inverse = false }) 
       <span class="tug-bars"><i class="h" style=${{ width: (home / total) * 100 + "%" }}></i><i class="a" style=${{ width: (away / total) * 100 + "%" }}></i></span></div>
     <b class=${"num " + (awayBetter ? "lead" : "")}>${format(away)}</b>
   </div>`;
-}
-
-function Deserved({ report }) {
-  const dv = report.deserved, f = report.fixture;
-  const rows = [
-    { key: "home", label: `${f.home} win`, p: dv.home, color: "var(--c1)" },
-    { key: "draw", label: "Draw", p: dv.draw, color: "var(--axis)" },
-    { key: "away", label: `${f.away} win`, p: dv.away, color: "var(--c2)" },
-  ];
-  const top = [...rows].sort((a, b) => b.p - a.p)[0];
-  return html`<${Card} title="What the chances say" sub="Every shot replayed by its xG: how often each result comes out of the chances both sides made.">
-    <div class="stack" style=${{ "--gap": "12px" }}>
-      ${rows.map((r) => html`<div class="deserve" key=${r.key}>
-        <span class="lab">${r.label}${dv.actual === r.key ? html` <${Badge} tone="accent">Actual</${Badge}>` : null}</span>
-        <span class="track"><i style=${{ width: r.p * 100 + "%", background: r.color }}></i></span>
-        <b class="num">${probText(r.p)}</b>
-      </div>`)}
-    </div>
-    <p class="small" style=${{ marginTop: "12px" }}>
-      ${dv.actual === top.key ? `The result matches the most likely outcome from the chances (${probText(dv.actual_probability)}).` : `The actual result came up only ${probText(dv.actual_probability)} of the time from these chances. The likeliest was “${top.label}” at ${probText(top.p)}.`}
-    </p>
-  </${Card}>`;
 }
 
 function Buckets({ b, homeShort, awayShort }) {
@@ -128,12 +109,14 @@ function HowPlayed({ stats, f }) {
 
 function MatchView({ d }) {
   const scope = useScope();
+  const tab = useLocation().query.tab === "deep" ? "deep" : "quick";
   const { report: r, insights, scope: dscope, meta, stats } = d;
   const f = r.fixture, s = r.summary;
-  const chances = [...r.key_chances].sort((a, b) => b.xg - a.xg).slice(0, 6);
+  const chances = [...r.key_chances].sort((a, b) => b.xg - a.xg).slice(0, 8);
   const goalsHome = f.hg, goalsAway = f.ag;
   return html`
     <${PageHead} eyebrow=${`${dscope.league_name} · ${dscope.label} · Matchweek ${f.round}`} title=${`${f.home} v ${f.away}`} sub=${`${weekday(f.date)} ${dateLong(f.date)}, kicked off ${timeOf(f.dt)}.`} />
+    <span class="wide-page" hidden></span>
     <${DataNotices} scope=${dscope} meta=${meta} />
     <div class="scoreboard card">
       <div class="sb-col"><a class="sb-team" href=${teamHref(f.home)}><${Crest} team=${f.home} short=${f.home_short} size=${56} /><span>${f.home}</span></a><${Scorers} list=${r.scorers?.h} align="start" /></div>
@@ -142,17 +125,17 @@ function MatchView({ d }) {
     </div>
     <${Insights} items=${insights} scope=${dscope} />
 
-    <div class="grid cols-wide-narrow top">
+    <div class="mrow m-race">
       <${Card} title="How the chances built up" sub="Running total of expected goals. Rings mark goals; hover a ring for the scorer.">
         <${XgRace} home=${r.timeline.home} away=${r.timeline.away} homeName=${f.home} awayName=${f.away} homeShort=${f.home_short} awayShort=${f.away_short} />
       </${Card}>
-      <${Deserved} report=${r} />
+      <${Contributors} players=${r.players} f=${f} scope=${{ league: scope.league, season: scope.season }} />
     </div>
 
-    <div class="grid cols-wide-narrow top">
-      <${Card} title="Shot map" sub="Home attacks right, away attacks left. Circle size is chance quality; a dark rim marks a goal.">
-        <${MatchPitch} home=${r.shots.home} away=${r.shots.away} />
-        <div class="legend" style=${{ marginTop: "10px" }}><span class="item"><span class="swatch dot" style=${{ background: "var(--c1)" }}></span>${f.home}</span><span class="item"><span class="swatch dot" style=${{ background: "var(--c2)" }}></span>${f.away}</span><span class="item">Bigger circle = better chance (xG)</span></div>
+    <div class=${"mrow " + (stats ? "m-n3" : "m-n2")}>
+      <${Card} title="When the chances came" sub="Expected goals in each period of the match.">
+        <${Buckets} b=${r.buckets} homeShort=${f.home_short} awayShort=${f.away_short} />
+        <div class="legend" style=${{ marginTop: "6px" }}><span class="item"><span class="swatch box" style=${{ background: "var(--c1)" }}></span>${f.home}</span><span class="item"><span class="swatch box" style=${{ background: "var(--c2)" }}></span>${f.away}</span></div>
       </${Card}>
       <${Card} title="Head to head">
         <div class="stack" style=${{ "--gap": "12px" }}>
@@ -164,14 +147,15 @@ function MatchView({ d }) {
           <${Tug} label="Goals" home=${s.home.goals} away=${s.away.goals} />
         </div>
       </${Card}>
+      ${stats ? html`<${HowPlayed} stats=${stats} f=${f} />` : null}
     </div>
 
-    ${stats ? html`<div class="grid cols-2 top"><${HowPlayed} stats=${stats} f=${f} /><${Card} title="When the chances came" sub="Expected goals in each period of the match.">
-        <${Buckets} b=${r.buckets} homeShort=${f.home_short} awayShort=${f.away_short} />
-        <div class="legend" style=${{ marginTop: "6px" }}><span class="item"><span class="swatch box" style=${{ background: "var(--c1)" }}></span>${f.home}</span><span class="item"><span class="swatch box" style=${{ background: "var(--c2)" }}></span>${f.away}</span></div>
-      </${Card}></div>` : null}
-    <div class="grid cols-2 top">
-      <${Card} flush title="The best chances" sub="The six shots with the highest xG.">
+    <div class="mrow m-5-7">
+      <${Card} title="Shot map" sub="Home attacks right, away attacks left. Circle size is chance quality; a dark rim marks a goal.">
+        <${MatchPitch} home=${r.shots.home} away=${r.shots.away} />
+        <div class="legend" style=${{ marginTop: "10px" }}><span class="item"><span class="swatch dot" style=${{ background: "var(--c1)" }}></span>${f.home}</span><span class="item"><span class="swatch dot" style=${{ background: "var(--c2)" }}></span>${f.away}</span><span class="item">Bigger circle = better chance (xG)</span></div>
+      </${Card}>
+      <${Card} flush title="The best chances" sub="The eight shots with the highest xG.">
         <div class="chancelist">${chances.map((c) => html`<div class="chance" key=${c.id}>
           <span class="cmp-dot" style=${{ background: c.side === "h" ? "var(--c1)" : "var(--c2)" }}></span>
           <span class="num muted" style=${{ width: "34px" }}>${c.minute}′</span>
@@ -180,16 +164,18 @@ function MatchView({ d }) {
           <b class="num" style=${{ width: "44px", textAlign: "right" }}>${nf(c.xg, 2)}</b>
         </div>`)}</div>
       </${Card}>
-      ${stats ? null : html`<${Card} title="When the chances came" sub="Expected goals in each period of the match.">
-        <${Buckets} b=${r.buckets} homeShort=${f.home_short} awayShort=${f.away_short} />
-        <div class="legend" style=${{ marginTop: "6px" }}><span class="item"><span class="swatch box" style=${{ background: "var(--c1)" }}></span>${f.home}</span><span class="item"><span class="swatch box" style=${{ background: "var(--c2)" }}></span>${f.away}</span></div>
-      </${Card}>`}
     </div>
 
-    <div class="grid cols-2 top">
-      <${PlayersTable} side="h" list=${r.players.home} team=${f.home} scope=${scope} />
-      <${PlayersTable} side="a" list=${r.players.away} team=${f.away} scope=${scope} />
+    <div class="row between top" style=${{ marginBottom: "10px" }}>
+      <${Tabs} label="Player view" value=${tab} onChange=${(t) => setQuery({ tab: t === "quick" ? null : t })} tabs=${[{ value: "quick", label: "Quick view" }, { value: "deep", label: "Deep analytics" }]} />
+      ${tab === "deep" ? html`<span class="muted small">Every player who played, with every Scout metric for this match alone.</span>` : null}
     </div>
+    ${tab === "deep"
+      ? html`<${MatchDeep} id=${f.id} scope=${scope} f=${f} />`
+      : html`<div class="grid cols-2">
+        <${PlayersTable} side="h" list=${r.players.home} team=${f.home} scope=${scope} />
+        <${PlayersTable} side="a" list=${r.players.away} team=${f.away} scope=${scope} />
+      </div>`}
   `;
 }
 

@@ -301,10 +301,6 @@ table.data td .cell-player .name .badge { margin-left: 6px; vertical-align: 1px;
 .tug-bars i { display: block; }
 .tug-bars i.h { background: var(--c1); border-radius: 4px 0 0 4px; }
 .tug-bars i.a { background: var(--c2); border-radius: 0 4px 4px 0; }
-.deserve { display: grid; grid-template-columns: minmax(96px, 150px) minmax(0, 1fr) 46px; align-items: center; gap: 12px; font-size: var(--fs-sm); }
-.deserve .track { height: 10px; background: var(--surface-3); border-radius: 5px; overflow: hidden; }
-.deserve .track i { display: block; height: 100%; border-radius: 5px; }
-.deserve b { text-align: right; }
 .chancelist { display: flex; flex-direction: column; }
 .chance { display: flex; align-items: center; gap: 12px; padding: 11px 20px; border-bottom: 1px solid var(--line); font-size: var(--fs-sm); }
 .chance:last-child { border-bottom: 0; }
@@ -462,3 +458,32 @@ ul.plain { margin: 6px 0 0; padding-left: 18px; display: grid; gap: 3px; }
 .review-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; padding: 10px 0; border-top: 1px solid var(--line); }
 .review-row > div:first-child { min-width: 0; flex: 1 1 260px; }
 .review-row .select { max-width: min(420px, 100%); }
+
+/* Match, Briefing and Data: balanced rows that use a wide screen. The page may grow past the usual width, and each row picks its columns by how many cards it holds. */
+.page:has(.wide-page) { max-width: min(1760px, 100%); }
+.mrow { display: grid; gap: 16px; align-items: stretch; min-width: 0; }
+.mrow > * { min-width: 0; }
+.mrow.m-7-5 { grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); }
+.mrow.m-5-7 { grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); }
+.mrow.m-n2, .mrow.m-race { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (max-width: 1700px) { .mrow.m-race { grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); } }
+.mrow.m-n3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+@media (max-width: 1500px) { .mrow.m-n3 { grid-template-columns: repeat(2, minmax(0, 1fr)); } .mrow.m-n3 > :last-child { grid-column: 1 / -1; } }
+@media (max-width: 1000px) { .mrow.m-5-7 { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 1000px) { .mrow.m-7-5 { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 1000px) { .mrow.m-race { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 860px) { .mrow, .mrow.m-n2, .mrow.m-n3 { grid-template-columns: minmax(0, 1fr); } .mrow.m-n3 > :last-child { grid-column: auto; } }
+
+.contrib { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px 22px; }
+@media (max-width: 1000px) and (min-width: 861px) { .contrib { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 560px) { .contrib { grid-template-columns: minmax(0, 1fr); } }
+.contrib-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 8px; }
+.contrib-head .muted { margin-left: auto; }
+.contrib-rows { display: flex; flex-direction: column; gap: 7px; }
+.contrib-row { display: grid; grid-template-columns: minmax(70px, 1.2fr) minmax(30px, 1fr) 34px 32px 32px; align-items: center; gap: 6px; font-size: var(--fs-sm); }
+.contrib-row .num { text-align: right; }
+.contrib-track { height: 10px; background: var(--surface-3); border-radius: 5px; overflow: hidden; }
+.contrib-track i { display: block; height: 100%; border-radius: 5px; }
+.contrib-cum { font-size: var(--fs-xs); }
+.contrib-colhead { font-weight: 600; margin-bottom: -2px; }
+.contrib-note { margin-top: 8px; }
