@@ -409,6 +409,30 @@ def test_match_pages_keep_to_todays_limit(tmp_path):
     run(go())
 
 
+def test_a_new_install_fills_up_to_todays_limit_then_sleeps_until_midnight(tmp_path):
+    async def go():
+        wb, provider = make(tmp_path)                                                    # nothing stored yet
+        now = [1_800_000_000.0]
+        wb.auto._clock = wb.auto.budget._clock = wb.repo._clock = wb.matchsync._clock = lambda: now[0]
+        try:
+            wb.auto.set_prefs({"limits": {"understat": 2}})
+            first = await wb.auto.run_once()
+            assert len([c for c in provider.calls if c[0] == "league"]) == 10              # every table at once: tables are never held back
+            assert wb.auto.budget.used("understat") == 2 and first["backlog"] > 0          # match pages: only today's share
+            second = await wb.auto.run_once()                                            # the backlog look 90 seconds later
+            assert second["backlog"] == 0 and len([c for c in provider.calls if c[0] == "match"]) == 2
+            options = [(next_midnight(now[0]), "today's match-page limit is used up"),   # the limit's reset,
+                       (now[0] + wb.settings.auto_longest_sleep, "routine check")]       # or the longest sleep (six hours)
+            assert wb.auto.next_wake() == min(options)                                   # no retrying all day: whichever comes first
+            now[0] = next_midnight(now[0]) + 1                                            # a new day: it carries on
+            await wb.auto.run_once()
+            assert len([c for c in provider.calls if c[0] == "match"]) == 3
+        finally:
+            await wb.close()
+
+    run(go())
+
+
 # ------------------------------------------------------------------ matchday reads
 
 ROUND_TWO = 1755961200.0     # 2025-08-23 15:00 UTC: fixtures 1002 (played) and 1003 (not yet) of the fake league kick off
