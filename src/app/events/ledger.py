@@ -4,6 +4,10 @@
 visit each time, for ever). It is retried by itself a few times, half a day apart; after that it waits for a person, who can ask for it
 again ("Retry now") or tell the fetcher to leave it alone ("Skip"). A match that is stored is forgotten here.
 
+**Matchday reads.** A match read at half time or full time (see :func:`app.events.fetch.read_targets`) leaves a note under its Understat
+fixture id: which WhoScored match it was, what the page said (``final`` or ``live``, the minute and the score) and when. The updater
+decides from it what to read next; the match page shows it.
+
 **Control.** ``paused`` stops new runs and the current one at the next match, and lasts until it is lifted (restarts included).
 ``stop_at`` ends the run in progress at the next match without pausing anything after it. The fetcher runs in its own process and
 reads these from the store between matches, so stopping is clean on every system (a hard kill on Windows could lose the match in hand).
@@ -14,6 +18,7 @@ from __future__ import annotations
 from typing import Any
 
 FAILED_PREFIX = "events:failed:"
+MATCHDAY_PREFIX = "events:matchday:"
 CONTROL_KEY = "events:control"
 MAX_ATTEMPTS = 3                 # automatic tries before a match waits for a person
 RETRY_AFTER = 12 * 3600.0        # seconds between automatic tries
@@ -85,3 +90,21 @@ def stop_reason(store: Any, run_started: float) -> str | None:
     if float(c.get("stop_at") or 0) >= run_started:
         return "stopped"
     return None
+
+
+# ------------------------------------------------------------------ matchday reads
+
+
+def _matchday_key(league: str, season: int, fixture: int) -> str:
+    return f"{MATCHDAY_PREFIX}{league}:{season}:{int(fixture)}"
+
+
+def matchday(store: Any, league: str, season: int, fixture: int) -> dict | None:
+    """What the last half-time or full-time read of this fixture found, or None."""
+    return store.kv_get(_matchday_key(league, season, fixture))
+
+
+def note_matchday(store: Any, league: str, season: int, fixture: int, **fields) -> dict:
+    entry = {**(matchday(store, league, season, fixture) or {}), **fields}
+    store.kv_set(_matchday_key(league, season, fixture), entry)
+    return entry

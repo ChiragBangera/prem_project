@@ -25,11 +25,13 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import importlib.util
+import json
 import logging
 import os
 import sys
 import time
 from collections import deque
+from datetime import date, datetime, time as dtime, timedelta
 from typing import TYPE_CHECKING, Any
 from collections.abc import Callable
 
@@ -38,7 +40,7 @@ from app.errors import AppError
 from app.events import ledger
 from app.events import raw as R
 from app.events.fetch import find_browser
-from app.sync.budget import CEILINGS, DEFAULT_LIMITS, Budget
+from app.sync.budget import CEILINGS, DEFAULT_LIMITS, SETTABLE, Budget
 from app.leagues import LEAGUES, current_season, season_label
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -62,6 +64,10 @@ EVENT_RETRY_KEY = "autosync:events:retry"   # matches a person asked to have rea
 STOP_GRACE = 60.0              # seconds a run that was asked to stop gets to reach the end of its match, before it is ended
 EVENT_RECHECK = 3 * 3600.0     # a season the fetcher found nothing more to do for is not run again sooner than this
 STOP_WAIT = 5.0                # seconds the event fetcher gets to stop cleanly when the app stops, before it is killed
+FT_RETRY = 10 * 60.0           # a match WhoScored does not call finished yet at its full time is read again this much later ...
+FT_GIVE_UP = 4 * 3600.0        # ... until this long after kickoff; after that catching up takes care of it
+NOT_FOUND_TRIES = 3            # a fixture WhoScored's match list does not have is looked for this many times
+CLEARANCE = 15 * 60.0          # catching up does not start a run when a matchday read is due within this (a run takes about ten minutes)
 
 def _days(left: int, per_day: int) -> int | None:
     """About how many days ``left`` takes at ``per_day`` (None when nothing is left or nothing is allowed)."""
@@ -72,8 +78,6 @@ def _days(left: int, per_day: int) -> int | None:
 
 def next_midnight(now: float) -> float:
     """The start of the next local calendar day (when the daily limits start again)."""
-    from datetime import date, datetime, time as dtime, timedelta
-
     return datetime.combine(date.fromtimestamp(now) + timedelta(days=1), dtime()).timestamp()
 
 
@@ -87,7 +91,7 @@ DEFAULT_PREFS: dict[str, Any] = {
     "enabled": True,
     "seasons_back": 1,                         # previous seasons whose league data and match pages are kept complete
     "events": {"enabled": None, "leagues": list(LEAGUES), "seasons_back": 0},   # enabled None: on once event data has been used before
-    "limits": dict(DEFAULT_LIMITS),            # most pages or matches fetched in the background per day, per source
+    "limits": {s: DEFAULT_LIMITS[s] for s in SETTABLE},   # most pages or matches fetched in the background per day, per source
 }
 
 
@@ -103,12 +107,13 @@ class AutoSync:
         self._stop = False
         self._proc: Any = None
         self._proc_label: str | None = None
+        self._proc_kind: str | None = None
         self._reapers: set[asyncio.Task] = set()      # tasks that wait for the fetcher to end; kept so they are not collected mid-wait
         self._log: deque[dict] = deque(maxlen=40)
         self.running = False
         self.next_at: float | None = None
         self.next_reason: str | None = None
-        self.budget = Budget(wb.store, lambda: self.prefs()["limits"], clock=clock)
+        self.budget = Budget(wb.store, lambda: {**self.prefs()["limits"], "matchday": self.matchday_allowance()}, clock=clock)
 
     # ------------------------------------------------------------------ preferences
 
@@ -133,7 +138,7 @@ class AutoSync:
         if isinstance(patch.get("limits"), dict):
             limits = dict(current["limits"])
             for source, value in patch["limits"].items():
-                if source in DEFAULT_LIMITS and value is not None:
+                if source in SETTABLE and value is not None:
                     limits[source] = max(0, min(int(value), CEILINGS[source]))
             merged["limits"] = limits
         merged["seasons_back"] = max(0, min(int(merged["seasons_back"]), 4))
@@ -363,16 +368,35 @@ class AutoSync:
         cap = self.events_capability()
         enabled = self.events_enabled()
         result["events"] = {"enabled": enabled, "available": cap["available"], "reason": cap.get("reason"), "running": self._proc_label if self._proc_alive() else None, "started": None}
-        if not enabled or not cap["available"] or self._proc_alive():
+        if not enabled or not cap["available"]:
             return
         if ledger.control(self.store).get("paused"):
             result["events"]["held"] = "paused"
             return
+        now = self._clock()
+        due, later = self.matchday(now)
+        if self._proc_alive():
+            if due and self._proc_kind == "backfill":   # a match has finished: the catching-up run ends at its next match, then it is read
+                ledger.set_control(self.store, stop_at=now)
+                self._end_run_soon()
+                result["events"]["held"] = "making way for a match that has finished"
+            return
+        if due:
+            left = self.budget.left("matchday")
+            if left <= 0:
+                result["events"]["matchday_held"] = "today's matchday reads are used up"
+            else:
+                (code, season), targets = next(iter(due.items()))
+                await self._start_events(code, season, None, result, targets=targets[:left])
+                return
         retry = self.store.kv_get(EVENT_RETRY_KEY) or []
         if retry:                                    # a person asked for these: no rest, no limit
             first = retry[0]
             self.store.kv_set(EVENT_RETRY_KEY, retry[1:])
             await self._start_events(first["league"], first["season"], None, result, games=[first["game"]])
+            return
+        if due or any(at - now < CLEARANCE for at, _why in later):
+            result["events"]["held"] = "matches are being played: catching up waits"
             return
         if self._clock() - float(self.store.kv_get(EVENT_LAST_END) or 0) < EVENT_REST:
             result["events"]["held"] = "resting between runs"
@@ -385,6 +409,49 @@ class AutoSync:
             if not_before <= self._clock():
                 await self._start_events(code, season, played, result, limit=min(EVENT_BATCH, allowed))
                 return
+
+    # ------------------------------------------------------------------ matchday reads
+
+    def _event_fixtures(self):
+        """``(league, season, fixtures)`` for this season of every event league whose fixture list is stored."""
+        season = current_season(self.wb.today)
+        for code in self.prefs()["events"]["leagues"]:
+            ls = self.wb.repo.cached_league(code, season)
+            if ls is not None:
+                yield code, season, ls.fixtures
+
+    def matchday_allowance(self) -> int:
+        """How many matchday reads today allows: two for every match of the event leagues played today (half time and full time), and a
+        few to spare for a match read again. Worked out from the fixture list, so a busy Saturday gets more than a quiet Tuesday."""
+        today = date.fromtimestamp(self._clock())
+        n = sum(1 for _code, _season, fixtures in self._event_fixtures() for f in fixtures
+                if (k := matchclock.kickoff(f)) is not None and date.fromtimestamp(k) == today)
+        return 2 * n + 10
+
+    def matchday(self, now: float) -> tuple[dict[tuple[str, int], list[dict]], list[tuple[float, str]]]:
+        """The matchday reads due now, by league season, and when the next ones fall due (with why).
+
+        Every match of the event leagues is read once WhoScored can call it finished: at its full time (kickoff + 112 minutes), and again
+        every ten minutes while its page still says it is in play, for up to four hours after kickoff."""
+        due: dict[tuple[str, int], list[dict]] = {}
+        later: list[tuple[float, str]] = []
+        for code, season, fixtures in self._event_fixtures():
+            for f in fixtures:
+                k = matchclock.kickoff(f)
+                if k is None or now >= k + FT_GIVE_UP or k > now + 2 * 86400:
+                    continue
+                note = ledger.matchday(self.store, code, season, f.id) or {}
+                if note.get("state") == "final" or int(note.get("not_found", 0)) >= NOT_FOUND_TRIES:
+                    continue
+                full_time = k + matchclock.FULL_TIME
+                if now < full_time:
+                    later.append((full_time, f"full-time event data of {f.home} v {f.away}"))
+                    continue
+                if note.get("moment") == "ft" and now - float(note.get("at", 0)) < FT_RETRY:
+                    later.append((float(note["at"]) + FT_RETRY, f"full-time event data of {f.home} v {f.away}, again"))
+                    continue
+                due.setdefault((code, season), []).append({"fixture": f.id, "kickoff": f.dt, "home": f.home, "away": f.away, "moment": "ft"})
+        return due, later
 
     def _backfill(self) -> list[tuple[str, int, int, float]]:
         """League seasons with finished matches whose event data is still missing, in the order they are fetched:
@@ -416,22 +483,35 @@ class AutoSync:
     def _events_wake(self, now: float) -> list[tuple[float, str]]:
         """When the event fetcher next has something to do (nothing when it is off, unavailable, paused or already running: its end wakes
         the updater by itself)."""
-        if not self.events_enabled() or self._proc_alive() or ledger.control(self.store).get("paused"):
+        if not self.events_enabled() or ledger.control(self.store).get("paused"):
             return []
+        due, later = self.matchday(now)
+        if self._proc_alive():   # its end wakes the updater by itself; a match finishing meanwhile still does
+            return later if self._proc_kind == "backfill" else []
+        if due:
+            return [(now, "reading matches that have finished") if self.budget.left("matchday") > 0 else (next_midnight(now), "today's matchday reads are used up")]
+        if later and not self.events_capability()["available"]:
+            later = []
         if self.store.kv_get(EVENT_RETRY_KEY):
             return [(now, "reading again the matches you asked for")]
         waiting = [not_before for *_rest, not_before in self._backfill()]
         if not waiting or not self.events_capability()["available"]:
-            return []
-        at = max(min(waiting), float(self.store.kv_get(EVENT_LAST_END) or 0) + EVENT_REST)
+            return later
+        at = max(now, min(waiting), float(self.store.kv_get(EVENT_LAST_END) or 0) + EVENT_REST)
         if self.budget.left("whoscored") <= 0:
-            return [(next_midnight(now), "today's event-data limit is used up")]
-        return [(at, "catching up on event data")]
+            return [*later, (next_midnight(now), "today's event-data limit is used up")]
+        if any(t - at < CLEARANCE for t, _why in later):
+            return later   # held for a matchday read: that read wakes the updater, and its end wakes it again
+        return [*later, (at, "catching up on event data")]
 
-    async def _start_events(self, code: str, season: int, played: int | None, result: dict, *, limit: int = EVENT_BATCH, games: list[int] | None = None) -> None:
+    async def _start_events(self, code: str, season: int, played: int | None, result: dict, *, limit: int = EVENT_BATCH, games: list[int] | None = None,
+                            targets: list[dict] | None = None) -> None:
         label = pretty(code, season)
         cmd = [sys.executable, "-m", "app.cli", "events", "sync", "--league", code, "--seasons", str(season), "--data-dir", str(self.settings.data_dir)]
-        cmd += ["--game", ",".join(str(g) for g in games)] if games else ["--limit", str(limit), "--budget"]
+        if targets:
+            cmd += ["--targets", json.dumps(targets)]
+        else:
+            cmd += ["--game", ",".join(str(g) for g in games)] if games else ["--limit", str(limit), "--budget"]
         logs = self.settings.data_dir / "logs"
         logs.mkdir(parents=True, exist_ok=True)
         handle = None
@@ -446,8 +526,12 @@ class AutoSync:
             result["errors"].append(f"could not start the event fetcher: {type(exc).__name__}")
             return
         self._proc_label = label
+        self._proc_kind = "matchday" if targets else "retry" if games else "backfill"
         result["events"]["started"] = label
-        if games:
+        if targets:
+            names = ", ".join(f"{t['home']} v {t['away']}" for t in targets[:3]) + (f" and {len(targets) - 3} more" if len(targets) > 3 else "")
+            self._note("info", f"reading {names} ({label}) at {'half time' if targets[0]['moment'] == 'ht' else 'full time'}")
+        elif games:
             self._note("info", f"reading {len(games)} match{'es' if len(games) > 1 else ''} of {label} again, as asked")
         else:
             self.store.kv_set(EVENT_RUN_PREFIX + f"{code}:{season}", {"played": played, "at": self._clock()})
@@ -562,6 +646,7 @@ class AutoSync:
             "auto": self.settings.auto, "prefs": self.prefs(), "running": self.running, "next_at": self.next_at, "next_reason": self.next_reason,
             "last": saved.get("last"), "log": list(self._log) or saved.get("log", []),
             "events": {"capability": cap, "enabled": self.events_enabled(), "process": self._proc_label if self._proc_alive() else None,
+                       "process_kind": self._proc_kind if self._proc_alive() else None,
                        "control": ledger.control(self.store), "retry": self.store.kv_get(EVENT_RETRY_KEY) or [],
                        "rest_until": float(self.store.kv_get(EVENT_LAST_END) or 0) + EVENT_REST},
             "budget": self.budget.summary(), "plan": self.plan(),

@@ -36,9 +36,9 @@ function Usage({ label, used, limit }) {
 function fetcherState(auto) {
   const ev = auto.events, budget = auto.budget;
   if (ev.control?.paused) return { text: "Paused: nothing is fetched until you resume.", tone: "warn" };
-  if (ev.process) return { text: `Fetching ${ev.process} now.`, tone: "accent" };
+  if (ev.process) return { text: ev.process_kind === "matchday" ? `Reading ${ev.process} matches that have just reached half time or full time.` : `Fetching ${ev.process} now.`, tone: "accent" };
   if (ev.retry?.length) return { text: `${plural(ev.retry.length, "match", "matches")} you asked for will be read next.`, tone: "accent" };
-  if (budget.whoscored.left <= 0) return { text: "Today's limit is reached: it carries on tomorrow.", tone: "outline" };
+  if (budget.whoscored.left <= 0) return { text: "Today's catching-up limit is reached: it carries on tomorrow. Matches played today are still read at full time.", tone: "outline" };
   if (ev.rest_until > nowSec()) return { text: `Resting between runs until ${new Date(ev.rest_until * 1000).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}.`, tone: "outline" };
   return { text: "Waiting for the next check.", tone: "outline" };
 }
@@ -50,8 +50,10 @@ export function FetchControls({ auto, reload }) {
   const eventsOn = Boolean(auto.events.enabled);
   const state = fetcherState(auto);
   const options = (list, current) => [...new Set([...list, current])].sort((a, b) => a - b).map((n) => ({ value: String(n), label: n.toLocaleString("en-GB") }));
+  const md = budget.matchday;
+  const todays = md ? Math.max(0, Math.round((md.limit - 10) / 2)) : 0;
   return html`<${Card} title="Fetching: limits and pace"
-    sub="The sources are public websites, so the updater reads like a patient person, not a crawler: a little each day, one page at a time, with pauses. A new install fills its seasons over days. Pages you open yourself load at once.">
+    sub="The sources are public websites, so the updater reads like a patient person, not a crawler: one page at a time, with pauses. Each number below counts pages read by the updater since midnight; pages you open yourself load at once and are never held back.">
     <div class="stack" style=${{ "--gap": "16px" }}>
       <div class="fetch-limits">
         <div class="stack" style=${{ "--gap": "8px" }}>
@@ -59,13 +61,19 @@ export function FetchControls({ auto, reload }) {
           <label class="row" style=${{ gap: "8px" }}><span class="xsmall muted">At most</span>
             <${Select} compact label="Understat match pages per day" value=${String(limits.understat)} options=${options(UNDERSTAT_LIMITS, limits.understat)} onChange=${(v) => setLimit("understat", v)} />
             <span class="xsmall muted">a day, one every 1.5 s</span></label>
+          <span class="xsmall muted">One page per finished match: its scorers, shots and positions. League tables are not counted. A matchday across five leagues needs about 20 to 60 (a page is read after the match, and once more when its numbers have settled), so the limit only matters while a new install fills earlier seasons.</span>
         </div>
         <div class="stack" style=${{ "--gap": "8px" }}>
-          <${Usage} label="Event data matches (WhoScored)" used=${budget.whoscored.used} limit=${budget.whoscored.limit} />
+          <${Usage} label="Event data, catching up (WhoScored)" used=${budget.whoscored.used} limit=${budget.whoscored.limit} />
           <label class="row" style=${{ gap: "8px" }}><span class="xsmall muted">At most</span>
-            <${Select} compact label="Event matches per day" value=${String(limits.whoscored)} options=${options(WHOSCORED_LIMITS, limits.whoscored)} onChange=${(v) => setLimit("whoscored", v)} />
-            <span class="xsmall muted">a day, 20 a run, 10–20 s apart</span></label>
+            <${Select} compact label="Event matches caught up per day" value=${String(limits.whoscored)} options=${options(WHOSCORED_LIMITS, limits.whoscored)} onChange=${(v) => setLimit("whoscored", v)} />
+            <span class="xsmall muted">matches a day, 20 a run, 10–20 s apart</span></label>
+          <span class="xsmall muted">Older finished matches whose event data is missing. One match is one page read in the browser (about 15 s). It waits while matches are being played.</span>
         </div>
+        ${md ? html`<div class="stack" style=${{ "--gap": "8px" }}>
+          <${Usage} label="Event data on matchday (WhoScored)" used=${md.used} limit=${md.limit} />
+          <span class="xsmall muted">Set by the fixture list, not by you: two reads for each of today's ${plural(todays, "match", "matches")} in your event leagues, and ten to spare. Each match is read at its full time (again ten minutes later if it is still going). These go first, and do not use the catching-up limit.</span>
+        </div>` : null}
       </div>
       ${eventsOn ? html`<div class="row between wrap fetch-state" style=${{ gap: "10px" }}>
         <span class="row" style=${{ gap: "8px" }}><${Badge} tone=${state.tone}>${auto.events.control?.paused ? "Paused" : auto.events.process ? "Running" : "Idle"}</${Badge}><span class="small">${state.text}</span></span>

@@ -16,8 +16,11 @@ from collections.abc import Callable
 from typing import Any
 
 PREFIX = "budget:"
-DEFAULT_LIMITS = {"understat": 300, "whoscored": 40}   # Understat match pages, WhoScored matches (about 15 s of browsing each)
-CEILINGS = {"understat": 5000, "whoscored": 400}
+# Understat match pages, WhoScored matches caught up on (about 15 s of browsing each), and WhoScored matches read at half time or full
+# time on the day they are played. The last one is not a setting: the updater works it out from the day's fixtures (see AutoSync).
+DEFAULT_LIMITS = {"understat": 300, "whoscored": 40, "matchday": 20}
+CEILINGS = {"understat": 5000, "whoscored": 400, "matchday": 400}
+SETTABLE = ("understat", "whoscored")
 KEEP_DAYS = 7
 
 

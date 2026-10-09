@@ -17,8 +17,11 @@ import random
 import shutil
 import sys
 import time
+from datetime import UTC, datetime
 from pathlib import Path
 from collections.abc import Callable
+
+from app.data.people import plays_for
 
 from . import ledger as L
 from . import raw as R
@@ -139,17 +142,103 @@ def _finished(rows: list[dict]) -> list[dict]:
     return [r for r in rows if done(r)]
 
 
-def _read_page(reader, row: dict) -> dict | None:
+def _read_page(reader, row: dict, *, live: bool = False) -> dict | None:
     """Read one match through the browser and return its page.
 
     soccerdata keeps every page it reads and, by default, hands back that copy next time. A copy read before the final whistle would then
-    come back forever, so when the copy on disk is not a finished match the page is read from the site again (``live``)."""
+    come back forever, so when the copy on disk is not a finished match (or ``live`` says the match is being followed right now) the page
+    is read from the site again."""
     path = _page_path(reader, row)
     cached = R.read_match_file(path) if path.is_file() else None
     stale = path.is_file() and (cached is None or R.match_state(cached) != "final")
     # force_cache: for the current season soccerdata otherwise re-downloads the whole match list on every call (minutes each time)
-    reader.read_events(match_id=int(row["game_id"]), output_fmt=None, force_cache=True, live=stale)
+    reader.read_events(match_id=int(row["game_id"]), output_fmt=None, force_cache=True, live=live or stale)
     return R.read_match_file(path)
+
+
+def _when(value) -> float | None:
+    """A kickoff as WhoScored's match list or Understat's fixture gives it ("2026-10-10 14:00:00", a pandas Timestamp; both UTC)."""
+    try:
+        return datetime.fromisoformat(str(value)[:19].replace("T", " ")).replace(tzinfo=UTC).timestamp()
+    except ValueError:
+        return None
+
+
+KICKOFF_SLACK = 3 * 3600.0   # the two sources may disagree on a kickoff by this much (a late change one of them has not picked up)
+
+
+def _find(rows: list[dict], target: dict) -> dict | None:
+    """The WhoScored match that is this Understat fixture: kicked off at about the same time, with the same clubs (by name, or the only match
+    at that time). None when it cannot be told for sure."""
+    kickoff = _when(target["kickoff"])
+    if kickoff is None:
+        return None
+    near = [r for r in rows if (k := _when(r.get("date"))) is not None and abs(k - kickoff) <= KICKOFF_SLACK]
+    named = [r for r in near if plays_for([str(r.get("home_team"))], [target["home"]]) and plays_for([str(r.get("away_team"))], [target["away"]])]
+    if len(named) == 1:
+        return named[0]
+    return near[0] if not named and len(near) == 1 else None
+
+
+def read_targets(
+    events: EventStore, league: str, season: int, targets: list[dict], *, data_dir: Path, browser: str | None = None, headless: bool = True,
+    pause: float = 10.0, reader=None, log: Callable[[str], None] = print, sleep: Callable[[float], None] = time.sleep,
+    stop: Callable[[], str | None] | None = None, on_fetched: Callable[[], None] | None = None, clock: Callable[[], float] = time.time,
+) -> dict:
+    """Read a few matches of a league season *now*, at half time or full time, whatever state they are in.
+
+    ``targets`` are Understat fixtures (``{"fixture", "kickoff", "home", "away", "moment"}``, moment ``ht`` or ``ft``). Each is found in
+    WhoScored's match list by kickoff and clubs, read from the site (never from the download cache: it may hold an earlier read) and stored:
+    as finished when the page says full time, as provisional otherwise. What each read found is noted under the fixture (see
+    :func:`app.events.ledger.note_matchday`). Returns ``{"read", "final", "live", "not_found", "failed"}``."""
+    out = {"read": 0, "final": 0, "live": 0, "not_found": 0, "failed": 0}
+    reader = reader or make_reader(league, season, data_dir=data_dir, browser=browser, headless=headless)
+    rows = _records(reader.read_schedule(force_cache=True))
+    found = {t["fixture"]: _find(rows, t) for t in targets}
+    if any(row is None for row in found.values()):   # a fixture moved since the match list was read: read the list again, once
+        log("A match is not in the stored match list; reading the list again (this takes a few minutes)...")
+        rows = _records(reader.read_schedule())
+        events.set_status(league, season, schedule_at=time.time())
+        found = {t["fixture"]: _find(rows, t) for t in targets}
+    for i, target in enumerate(targets, start=1):
+        label = f"{target['home']} v {target['away']}"
+        reason = stop() if stop is not None else None
+        if reason is not None:
+            log(f"Stopping before {label}: {reason}.")
+            break
+        row = found[target["fixture"]]
+        if row is None:
+            out["not_found"] += 1
+            tries = int((L.matchday(events.store, league, season, target["fixture"]) or {}).get("not_found", 0)) + 1
+            L.note_matchday(events.store, league, season, target["fixture"], state="not found", not_found=tries, at=clock(), moment=target["moment"])
+            log(f"  {label}: not found in WhoScored's match list")
+            continue
+        gid = int(row["game_id"])
+        try:
+            doc = _read_page(reader, row, live=True)
+            state = events.ingest(league, season, gid, doc, fetched_at=clock()) if doc is not None else None
+        except KeyboardInterrupt:
+            raise
+        except Exception as exc:  # noqa: BLE001 - one bad page must not stop the others; the updater tries again in a few minutes
+            doc, state = None, None
+            log(f"  {label}: FAILED ({str(exc)[:100]})")
+        if on_fetched is not None:
+            on_fetched()
+        out["read"] += 1
+        if doc is None or state is None:
+            out["failed"] += 1
+            L.note_matchday(events.store, league, season, target["fixture"], game=gid, state="failed", at=clock(), moment=target["moment"])
+        else:
+            out[state] += 1
+            L.note_matchday(events.store, league, season, target["fixture"], game=gid, state=state, at=clock(), moment=target["moment"],
+                            elapsed=str(doc.get("elapsed") or ""), score=str(doc.get("score") or ""))
+            if state == "final":
+                L.forget(events.store, league, season, gid)
+            minute = doc.get("elapsed") or "in play"
+            log(f"  {label}: full time, stored" if state == "final" else f"  {label}: read at {minute}, kept as provisional")
+        if i < len(targets):
+            sleep(pause * (1.0 + random.random()))
+    return out
 
 
 def _page_path(reader, row: dict) -> Path:

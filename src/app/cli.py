@@ -6,6 +6,7 @@ import argparse
 import asyncio
 import contextlib
 import io
+import json
 import logging
 import logging.handlers
 import os
@@ -228,7 +229,7 @@ def cmd_events_sync(args: argparse.Namespace) -> int:
     _apply_env(args)
     from app.data.store import Store
     from app.events import ledger
-    from app.events.fetch import FetchUnavailable, sync_season
+    from app.events.fetch import FetchUnavailable, read_targets, sync_season
     from app.events.store import EventStore
     from app.sync.autosync import PREFS_KEY
     from app.sync.budget import Budget
@@ -250,6 +251,18 @@ def cmd_events_sync(args: argparse.Namespace) -> int:
             budget.spend("whoscored")
 
     try:
+        if args.targets:   # the updater's matchday reads: these matches, now, at half time or full time
+            targets = json.loads(args.targets)
+            matchday = Budget(store)
+
+            def read_one() -> None:
+                matchday.spend("matchday")
+
+            print(f"\n{args.league} {seasons[0]}: reading {len(targets)} match{'es' if len(targets) != 1 else ''} now")
+            result = read_targets(events, args.league, seasons[0], targets, data_dir=settings.data_dir, browser=args.browser, headless=not args.visible,
+                                  pause=args.pause, stop=lambda: ledger.stop_reason(store, run_started), on_fetched=read_one)
+            print(f"{args.league} {seasons[0]}: {result['final']} at full time, {result['live']} still in play, {result['not_found']} not found, {result['failed']} failed.")
+            return 0
         for season in seasons:
             print(f"\n{args.league} {season}: fetching event data from WhoScored (a match takes about 15 seconds; Ctrl+C is safe, run it again to carry on)")
             status = sync_season(events, args.league, season, data_dir=settings.data_dir, browser=args.browser, headless=not args.visible, limit=args.limit, pause=args.pause,
@@ -429,6 +442,7 @@ def build_parser() -> argparse.ArgumentParser:
     esync.add_argument("--pause", type=float, default=10.0, help="wait this to twice this many seconds between matches (default 10)")
     esync.add_argument("--game", help="only these WhoScored match ids, comma-separated (to try a failed match again)")
     esync.add_argument("--budget", action="store_true", help="stop at today's limit for WhoScored, as the background updater does")
+    esync.add_argument("--targets", help=argparse.SUPPRESS)   # the updater's matchday reads, as JSON: [{"fixture", "kickoff", "home", "away", "moment"}]
     esync.add_argument("--browser", help="path to Chrome, Chromium or Brave (found automatically if omitted; Edge does not work)")
     esync.add_argument("--visible", action="store_true", help="show the browser window; can help if the site blocks the hidden one")
     estatus = esub.add_parser("status", help="show what event data is stored")

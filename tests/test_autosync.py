@@ -10,7 +10,9 @@ import pytest
 
 from app.config import Settings
 from app.errors import UpstreamError
-from app.sync.autosync import BACKOFF_BASE, EVENT_BATCH, EVENT_RECHECK, FAIL_PREFIX, AutoSync
+from app.data import matchclock
+from app.events import ledger
+from app.sync.autosync import BACKOFF_BASE, CLEARANCE, EVENT_BATCH, EVENT_RECHECK, EVENT_REST, FAIL_PREFIX, FT_RETRY, AutoSync, next_midnight
 from app.workbench import Workbench
 
 from .events_kit import AWAY, end, ev, match, player
@@ -402,6 +404,102 @@ def test_match_pages_keep_to_todays_limit(tmp_path):
             plan = {(p["league"], p["season"]): p for p in wb.auto.plan()}
             assert plan[("EPL", 2026)]["pages_left"] == result["leagues"]["EPL:2026"]["remaining"]
         finally:
+            await wb.close()
+
+    run(go())
+
+
+# ------------------------------------------------------------------ matchday reads
+
+ROUND_TWO = 1755961200.0     # 2025-08-23 15:00 UTC: fixtures 1002 (played) and 1003 (not yet) of the fake league kick off
+
+
+def _targets(cmd):
+    return json.loads(cmd[cmd.index("--targets") + 1]) if "--targets" in cmd else None
+
+
+def test_every_match_is_read_at_its_full_time_before_any_catching_up(tmp_path, monkeypatch):
+    async def go():
+        wb, _provider = make(tmp_path)
+        spawned = []
+        _events_on(wb, monkeypatch, spawned)
+        now = [ROUND_TWO + matchclock.FULL_TIME - CLEARANCE + 60]
+        wb.auto._clock = wb.auto.budget._clock = lambda: now[0]
+        try:
+            first = await wb.auto.run_once()                                             # nearly full time: nothing to read yet, and catching up waits
+            assert spawned == [] and first["events"]["held"] == "matches are being played: catching up waits"
+            when, why = wb.auto.next_wake()
+            assert when == ROUND_TWO + matchclock.FULL_TIME and why.startswith(("full time of ", "full-time event data of "))
+            now[0] = ROUND_TWO + matchclock.FULL_TIME + 30
+            await wb.auto.run_once()
+            assert [t["fixture"] for t in _targets(spawned[0])] == [1002, 1003] and {t["moment"] for t in _targets(spawned[0])} == {"ft"}
+            assert "--limit" not in spawned[0] and "--budget" not in spawned[0]          # a matchday read is not a catching-up run
+            for _ in range(3):
+                await asyncio.sleep(0)
+            # what the fetcher found: one finished, one still in stoppage time
+            ledger.note_matchday(wb.store, "EPL", 2026, 1002, game=1, state="final", at=now[0], moment="ft")
+            ledger.note_matchday(wb.store, "EPL", 2026, 1003, game=2, state="live", at=now[0], moment="ft", elapsed="94")
+            now[0] += 60
+            held = await wb.auto.run_once()
+            assert len(spawned) == 1 and held["events"]["held"] == "matches are being played: catching up waits"
+            assert wb.auto.next_wake()[0] == now[0] - 60 + FT_RETRY                     # ten minutes after the last read
+            now[0] += FT_RETRY
+            await wb.auto.run_once()
+            assert [t["fixture"] for t in _targets(spawned[1])] == [1003]                # only the one still in play
+            for _ in range(3):
+                await asyncio.sleep(0)
+            ledger.note_matchday(wb.store, "EPL", 2026, 1003, game=2, state="final", at=now[0], moment="ft")
+            now[0] += EVENT_REST + 60                                                    # the usual rest after a run, then
+            later = await wb.auto.run_once()
+            assert later["events"]["started"] == "Premier League 2026/27" and _targets(spawned[2]) is None   # now it catches up
+        finally:
+            await wb.close()
+
+    run(go())
+
+
+def test_the_matchday_allowance_follows_the_days_fixtures_and_holds_when_used_up(tmp_path, monkeypatch):
+    async def go():
+        wb, _provider = make(tmp_path)
+        spawned = []
+        _events_on(wb, monkeypatch, spawned)
+        now = [ROUND_TWO + matchclock.FULL_TIME + 30]
+        wb.auto._clock = wb.auto.budget._clock = lambda: now[0]
+        try:
+            assert wb.auto.matchday_allowance() == 10                                    # no fixture list stored yet: just the ones to spare
+            await wb.repo.league("EPL", 2026)
+            assert wb.auto.matchday_allowance() == 2 * 2 + 10                           # two matches today: half and full time each, and ten to spare
+            assert wb.auto.budget.summary()["matchday"]["limit"] == 14
+            wb.auto.set_prefs({"limits": {"matchday": 1}})
+            assert "matchday" not in wb.auto.prefs()["limits"]                           # not a setting: worked out from the fixtures
+            wb.auto.budget.spend("matchday", 14)
+            held = await wb.auto.run_once()
+            assert spawned == [] and held["events"]["matchday_held"] == "today's matchday reads are used up"
+            assert wb.auto.next_wake() == (next_midnight(now[0]), "today's matchday reads are used up")
+        finally:
+            await wb.close()
+
+    run(go())
+
+
+def test_a_catching_up_run_makes_way_when_a_match_finishes(tmp_path, monkeypatch):
+    async def go():
+        wb, _provider = make(tmp_path)
+        spawned = []
+        _events_on(wb, monkeypatch, spawned, proc=Stubborn())
+        now = [ROUND_TWO - 3 * 3600]
+        wb.auto._clock = wb.auto.budget._clock = lambda: now[0]
+        try:
+            await wb.auto.run_once()
+            assert len(spawned) == 1 and _targets(spawned[0]) is None                    # hours before kickoff: catching up runs
+            assert wb.auto.next_wake()[0] <= ROUND_TWO + matchclock.FULL_TIME            # it still wakes for the full time while that runs
+            now[0] = ROUND_TWO + matchclock.FULL_TIME + 30
+            result = await wb.auto.run_once()
+            assert result["events"]["held"] == "making way for a match that has finished" and ledger.control(wb.store)["stop_at"] == now[0]
+        finally:
+            spawned_proc = wb.auto._proc
+            if spawned_proc is not None:
+                spawned_proc.returncode = 0
             await wb.close()
 
     run(go())

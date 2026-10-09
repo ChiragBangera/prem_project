@@ -9,7 +9,7 @@ import pytest
 
 from app.data.store import Store
 from app.events import raw as R
-from app.events.fetch import FetchUnavailable, _finished, find_browser, make_reader, sync_season
+from app.events.fetch import FetchUnavailable, _finished, find_browser, make_reader, read_targets, sync_season
 from app.events.store import EventStore
 
 from .events_kit import AWAY, end, ev, match, player
@@ -282,3 +282,50 @@ def test_match_state_reads_the_page_itself():
     assert R.match_state({"statusCode": 6, "elapsed": "FT"}) == "final" and R.match_state({"elapsed": "FT"}) == "final"
     assert R.match_state({"statusCode": 3, "elapsed": "HT"}) == "live" and R.match_state({"statusCode": 2, "elapsed": "67"}) == "live"
     assert R.match_state({}) == "final"                                          # pages stored before these checks were all read after the match
+
+
+def matchday_rows():
+    """Three matches kicking off together, as WhoScored's list has them (its own club names, UTC kickoffs)."""
+    return [{"game_id": 501, "home_team": "Man Utd", "away_team": "Wolves", "date": "2025-08-23 14:00:00", "status": 3},
+            {"game_id": 502, "home_team": "Everton", "away_team": "Arsenal", "date": "2025-08-23 14:00:00", "status": 3},
+            {"game_id": 503, "home_team": "Leeds", "away_team": "Fulham", "date": "2025-08-23 16:30:00", "status": 1}]
+
+
+def target(fixture, home, away, kickoff="2025-08-23 14:00:00", moment="ft"):
+    return {"fixture": fixture, "kickoff": kickoff, "home": home, "away": away, "moment": moment}
+
+
+def read(events, reader, tmp_path, targets, **kw):
+    lines = []
+    out = read_targets(events, "EPL", 2025, targets, data_dir=tmp_path, reader=reader, pause=0, sleep=lambda s: None, log=lines.append, clock=lambda: 1000.0, **kw)
+    return out, lines
+
+
+def test_matchday_reads_find_each_fixture_by_kickoff_and_clubs_and_go_to_the_site(events, tmp_path):
+    reader = FakeReader(matchday_rows(), tmp_path, half=[502])
+    spent = []
+    out, _ = read(events, reader, tmp_path, [target(11, "Manchester United", "Wolverhampton Wanderers"), target(12, "Everton", "Arsenal")],
+                  on_fetched=lambda: spent.append(1))
+    assert out == {"read": 2, "final": 1, "live": 1, "not_found": 0, "failed": 0} and len(spent) == 2
+    assert reader.live_calls == [501, 502]                              # never the download cache: it may hold an earlier read
+    assert events.match_ids("EPL", 2025) == [501] and events.live("EPL", 2025, 502) is not None
+    assert L.matchday(events.store, "EPL", 2025, 11) == {"game": 501, "state": "final", "at": 1000.0, "moment": "ft", "elapsed": "FT", "score": "1 : 0"}
+    assert L.matchday(events.store, "EPL", 2025, 12)["state"] == "live" and L.matchday(events.store, "EPL", 2025, 12)["elapsed"] == "HT"
+    read(events, reader, tmp_path, [target(12, "Everton", "Arsenal")])  # read again at its full time: the page replaces the provisional one
+    assert events.match_ids("EPL", 2025) == [501, 502] and events.live("EPL", 2025, 502) is None
+
+
+def test_a_fixture_the_match_list_does_not_have_is_looked_for_in_a_fresh_list_once_and_noted(events, tmp_path):
+    reader = FakeReader(matchday_rows(), tmp_path)
+    out, _ = read(events, reader, tmp_path, [target(13, "Chelsea", "Spurs", kickoff="2025-08-24 13:00:00")])
+    assert out["not_found"] == 1 and reader.event_calls == [] and reader.schedule_calls == [True, False]   # the stored list, then a fresh one
+    assert L.matchday(events.store, "EPL", 2025, 13)["not_found"] == 1
+    read(events, reader, tmp_path, [target(13, "Chelsea", "Spurs", kickoff="2025-08-24 13:00:00")])
+    assert L.matchday(events.store, "EPL", 2025, 13)["not_found"] == 2
+
+
+def test_with_no_name_to_go_on_the_only_match_at_that_kickoff_is_taken_and_two_are_never_guessed(events, tmp_path):
+    reader = FakeReader(matchday_rows(), tmp_path)
+    out, _ = read(events, reader, tmp_path, [target(14, "Leeds United", "Fulham FC", kickoff="2025-08-23 16:30:00"),
+                                             target(15, "Somebody", "Else", kickoff="2025-08-23 14:00:00")])
+    assert reader.event_calls == [503] and out["not_found"] == 1      # two matches kicked off at 14:00: no guessing which
