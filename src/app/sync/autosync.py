@@ -438,12 +438,25 @@ class AutoSync:
                 yield code, season, ls.fixtures
 
     def matchday_allowance(self) -> int:
-        """How many matchday reads today allows: two for every match of the event leagues played today (half time and full time), and a
-        few to spare for a match read again. Worked out from the fixture list, so a busy Saturday gets more than a quiet Tuesday."""
+        """How many matchday reads today allows: two for every match of the event leagues played today (half time and full time), the
+        extra half-time reads a favourite team's match can take (one every three minutes until the page says HT), and ten to spare (a
+        match still in play at full time, one opened while it is played). Worked out from the fixture list, so a busy Saturday gets more
+        than a quiet Tuesday."""
+        today = self.todays_matches()
+        return 2 * today["matches"] + (matchclock.HT_READS_MAX - 1) * today["favourites"] + 10
+
+    def todays_matches(self) -> dict:
+        """How many matches of the event leagues are played today (local calendar day), and how many of them a favourite team plays."""
         today = date.fromtimestamp(self._clock())
-        n = sum(1 for _code, _season, fixtures in self._event_fixtures() for f in fixtures
-                if (k := matchclock.kickoff(f)) is not None and date.fromtimestamp(k) == today)
-        return 2 * n + 10
+        n = favourites = 0
+        for code, _season, fixtures in self._event_fixtures():
+            for f in fixtures:
+                k = matchclock.kickoff(f)
+                if k is None or date.fromtimestamp(k) != today:
+                    continue
+                n += 1
+                favourites += self.wb.favourites.follows(code, f.home) or self.wb.favourites.follows(code, f.away)
+        return {"matches": n, "favourites": favourites}
 
     def follow(self, league: str, season: int, fixture: int, until: float) -> bool:
         """Someone opened this match while it is being played: read it at half time too, until ``until`` (the end of its matchday window).
@@ -709,7 +722,7 @@ class AutoSync:
                        "process_kind": self._proc_kind if self._proc_alive() else None,
                        "control": ledger.control(self.store), "retry": self.store.kv_get(EVENT_RETRY_KEY) or [],
                        "rest_until": float(self.store.kv_get(EVENT_LAST_END) or 0) + EVENT_REST},
-            "budget": self.budget.summary(), "plan": self.plan(),
+            "budget": self.budget.summary(), "today": self.todays_matches(), "plan": self.plan(),
             "failures": {k[len(FAIL_PREFIX):]: v for k, v in self.store.kv_prefix(FAIL_PREFIX).items() if v},
             "tracked": [{"league": c, "season": s} for c, s in self.tracked()],
         }

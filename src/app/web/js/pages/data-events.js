@@ -51,7 +51,7 @@ export function FetchControls({ auto, reload }) {
   const state = fetcherState(auto);
   const options = (list, current) => [...new Set([...list, current])].sort((a, b) => a - b).map((n) => ({ value: String(n), label: n.toLocaleString("en-GB") }));
   const md = budget.matchday;
-  const todays = md ? Math.max(0, Math.round((md.limit - 10) / 2)) : 0;
+  const today = auto.today || { matches: 0, favourites: 0 };
   return html`<${Card} title="Fetching: limits and pace"
     sub="The sources are public websites, so the updater reads like a patient person, not a crawler: one page at a time, with pauses. Each number below counts pages read by the updater since midnight; pages you open yourself load at once and are never held back.">
     <div class="stack" style=${{ "--gap": "16px" }}>
@@ -72,7 +72,7 @@ export function FetchControls({ auto, reload }) {
         </div>
         ${md ? html`<div class="stack" style=${{ "--gap": "8px" }}>
           <${Usage} label="Event data on matchday (WhoScored)" used=${md.used} limit=${md.limit} />
-          <span class="xsmall muted">Set by the fixture list, not by you: two reads for each of today's ${plural(todays, "match", "matches")} in your event leagues, and ten to spare. Each match is read at its full time (again ten minutes later if it is still going), and the ones you follow during the half-time break too. These go first, and do not use the catching-up limit.</span>
+          <span class="xsmall muted">Set by the fixture list, not by you: two reads for each of today's ${plural(today.matches, "match", "matches")} in your event leagues${today.favourites ? `, six more for each of the ${plural(today.favourites, "one", "ones")} a favourite team plays (half-time reads every three minutes until the break)` : ""}, and ten to spare. Each match is read at its full time (again ten minutes later if it is still going), and the ones you follow during the half-time break too. These go first, and do not use the catching-up limit.</span>
         </div>` : null}
       </div>
       ${eventsOn ? html`<div class="row between wrap fetch-state" style=${{ gap: "10px" }}>

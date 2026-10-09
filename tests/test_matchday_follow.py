@@ -208,18 +208,18 @@ def test_with_event_data_off_the_live_view_says_so_and_follows_nothing(tmp_path)
 
 
 def test_a_half_time_read_that_caught_the_end_of_the_first_half_is_made_again_in_the_break(tmp_path, monkeypatch):
-    """Seen on the first real match: read at 47 minutes, WhoScored's page still said "45+" (stoppage time). Read at 50 minutes, and again
+    """Seen on the first real match: read at 47 minutes, WhoScored's page still said "45+" (stoppage time). Read at 45 minutes, and again
     every three minutes while the page says first half, until it says HT or the second half starts."""
     async def go():
         wb = make(tmp_path)
         spawned = []
         events_on(wb, monkeypatch, spawned)
-        now = [ROUND_TWO + 48 * 60]
+        now = [ROUND_TWO + 44 * 60]
         wb.auto._clock = wb.auto.budget._clock = lambda: now[0]
         try:
             await wb.repo.league("EPL", 2026)
             wb.favourites.set("EPL", fixture(wb, 1003).home, True)
-            assert wb.auto.matchday(now[0])[0] == {}                                     # 48 minutes: too early, the half may still be on
+            assert wb.auto.matchday(now[0])[0] == {}                                     # 44 minutes: the first half is still on
             now[0] = ROUND_TWO + matchclock.HT_READ
             assert [t["moment"] for t in wb.auto.matchday(now[0])[0][("EPL", 2026)]] == ["ht"]
             ledger.note_matchday(wb.store, "EPL", 2026, 1003, game=7, state="live", at=now[0], moment="ht", elapsed="45+")
@@ -233,6 +233,7 @@ def test_a_half_time_read_that_caught_the_end_of_the_first_half_is_made_again_in
             ledger.note_matchday(wb.store, "EPL", 2026, 1003, elapsed="45+")
             now[0] = ROUND_TWO + matchclock.HT_READ_LAST
             assert wb.auto.matchday(now[0])[0] == {}                                     # and never once the second half has started
+            assert wb.auto.matchday_allowance() == 2 * 2 + 6 + 10                         # room for a favourite's extra half-time reads
         finally:
             await wb.close()
 

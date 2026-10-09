@@ -25,9 +25,10 @@ HOUR = 3600.0
 
 HALF_TIME = 47 * MIN          # kickoff to the half-time whistle: 45 minutes and a little stoppage
 HALF_TIME_END = 62 * MIN      # the break lasts fifteen minutes
-HT_READ = 50 * MIN            # a half-time read waits this long: a first half with long stoppage time is still running at 47 minutes
-HT_READ_LAST = 64 * MIN       # ... and is tried again (every HT_RETRY) while the page still says first half, until the second half starts
+HT_READ = 45 * MIN            # the first half-time read: at 45 minutes (stoppage time is decided on the pitch, nobody knows it ahead) ...
+HT_READ_LAST = 64 * MIN       # ... then again every HT_RETRY while the page still says first half, until it says HT or the second half starts
 HT_RETRY = 3 * MIN
+HT_READS_MAX = 7              # 45, 48 ... 63 minutes: the most half-time reads one match can take
 FULL_TIME = 112 * MIN         # kickoff to the final whistle: two halves, the break and stoppage time
 RESULT_POLL = 20 * MIN        # a finished match not yet in the league table: look this often ...
 RESULT_SLOW_AFTER = 6 * HOUR  # ... for this long after full time, then
