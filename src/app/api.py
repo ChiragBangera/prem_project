@@ -295,6 +295,10 @@ def create_app(settings: Settings | None = None, *, provider=None, today: date |
     async def matches(request: Request, league: str = "EPL", season: str = "auto"):
         return ok(await wb(request).matches.season(league, season))
 
+    @app.get("/api/match/{match_id}/players")
+    async def match_players(request: Request, match_id: int, league: str = "EPL", season: str = "auto"):
+        return ok(await wb(request).matches.players(match_id, league, season))
+
     @app.get("/api/match/{match_id}")
     async def match(request: Request, match_id: int, league: str = "EPL", season: str = "auto"):
         return ok(await wb(request).matches.report(match_id, league, season))

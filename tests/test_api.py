@@ -268,6 +268,45 @@ def test_matches_and_match_report(client):
     assert get(client, "/api/match/1", league="EPL", season="2020").status_code == 404
 
 
+def test_match_players_carry_every_metric_for_that_match_alone(client):
+    body = get(client, "/api/matches", league="EPL", season="2020").json()
+    played = next(m for r in body["rounds"] for m in r["matches"] if m["played"])
+    mid = played["id"]
+    d = get(client, f"/api/match/{mid}/players", league="EPL", season="2020").json()
+    assert d["rows"] and {r["side"] for r in d["rows"]} == {"h", "a"}
+    assert all(r["minutes"] > 0 and len(r["v"]) == len(d["keys"]) == len(r["p"]) for r in d["rows"])
+    keys = d["keys"]
+    assert "age" not in keys and "games" not in keys                 # season-long figures mean nothing for one match
+    i = {k: n for n, k in enumerate(keys)}
+    report = get(client, f"/api/match/{mid}", league="EPL", season="2020").json()["report"]
+    # goals and xG of the match, added up over the players, are the match's
+    for side, key in (("h", "home"), ("a", "away")):
+        rows = [r for r in d["rows"] if r["side"] == side]
+        assert sum(r["v"][i["goals"]] or 0 for r in rows) == sum(p["goals"] for p in report["players"][key])
+    # a count has no percentile; a percentile is 0-100 and absent for a cameo
+    assert all(r["p"][i["goals"]] is None for r in d["rows"])
+    assert all(0 <= p <= 100 for r in d["rows"] for p in r["p"] if p is not None)
+    assert all(not r["in_pool"] and all(p is None for p in r["p"]) for r in d["rows"] if r["minutes"] < 30)
+    assert get(client, "/api/match/1/players", league="EPL", season="2020").status_code == 404
+
+
+def test_match_players_are_the_trend_arithmetic(client):
+    """A player's number for a match is the number his match trend shows for that match: one set of formulas."""
+    body = get(client, "/api/matches", league="EPL", season="2020").json()
+    mid = next(m for r in body["rounds"] for m in r["matches"] if m["played"])["id"]
+    d = get(client, f"/api/match/{mid}/players", league="EPL", season="2020").json()
+    keys = d["keys"]
+    starter = max((r for r in d["rows"] if r["minutes"] >= 90 and r["group"] != "GK"), key=lambda r: r["v"][keys.index("shots")] or 0)
+    trend = get(client, f"/api/player/{starter['id']}/trend", league="EPL", season="2020").json()
+    at = next(i for i, m in enumerate(trend["matches"]) if m["match_id"] == mid)
+    checked = 0
+    for k in keys:
+        if k in trend["series"]:
+            assert trend["series"][k]["m"][at] == pytest.approx(starter["v"][keys.index(k)], abs=1e-9), k
+            checked += 1
+    assert checked > 20
+
+
 def test_forecasting_has_been_retired(client):
     for path in ("/api/forecast/fixtures", "/api/forecast/match", "/api/forecast/season", "/api/forecast/calibration"):
         assert get(client, path).status_code == 404

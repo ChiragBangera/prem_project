@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from app.analytics import matchsum
 from app.analytics.match import match_report
+from app.analytics.match_players import build_match_players
 from app.errors import BadRequest, NotFound
 from app.insights.briefing import recent_matches
 from app.insights.core import dicts, rank
@@ -46,6 +47,45 @@ class MatchesPage(Part):
         insights = rank(match_insights(report))
         return {"scope": scope, "meta": page.meta.to_dict(), "report": report, "insights": dicts(insights),
                 "stats": (await self.summaries(code, s, fetched.data)).get(match_id, {}).get("stats")}
+
+    async def players(self, match_id: int, league: str, season) -> dict:
+        """Every player who played in the match with every Scout metric for that match alone, ranked against the season numbers of role peers."""
+        wb = self.wb
+        code, s, fetched, scope = await wb.seasons.scope(league, season)
+        ls = fetched.data
+        fixture = next((f for f in ls.fixtures if f.id == match_id), None)
+        if fixture is None:
+            raise NotFound(f"Match {match_id} is not in {scope['league_name']} {scope['label']}.", hint="Check the league and season.")
+        if not fixture.played:
+            raise BadRequest("That match has not been played yet: there are no players to analyse.")
+        page = await self.repo.match(match_id, final=wb.matchsync.is_final(fixture), expect_shots=bool((fixture.hxg or 0) + (fixture.axg or 0) > 0))
+        ds, _fetched = await wb.datasets.players([(code, s)])
+        version = (wb.seasons.version((code, s)), self.events.version(code, s), self.repo.epochs.get("match", 0), page.meta.fetched_at)
+
+        def compute():
+            return build_match_players(fixture, page.data, ds.rows, league=code, season=s, event_counters=self._event_reader(ls, fixture, code, s))
+
+        out = await wb.memo(("match-players", code, s, match_id), version, compute)
+        return {"scope": scope, "meta": page.meta.to_dict(), "pool_minutes": ds.pool_minutes, "group_sizes": ds.group_sizes, **out}
+
+    def _event_reader(self, ls, fixture, code: str, season: int):
+        """``Understat player id -> his event counters in this match``; ``None`` for everyone when the match has no event data."""
+        wb = self.wb
+        info = wb.links.for_season(ls, wb.matchbook.pages(ls))
+        if info is None:
+            return None
+        game = next((g for g, f in info["fixtures"].items() if f.id == fixture.id), None)
+        gold = self.events.gold(code, season, game) if game is not None else None
+        if gold is None:
+            return None
+        by_ws = {r["id"]: r["c"] for r in gold["players"]}
+        to_ws = info["players"]
+
+        def read(player_id: int) -> dict | None:
+            wid = to_ws.get(player_id)
+            return by_ws.get(wid) if wid is not None else None
+
+        return read
 
     # ------------------------------------------------------------------ the numbers behind each fixture (also used by the briefing)
 
