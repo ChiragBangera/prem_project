@@ -465,6 +465,18 @@ class AutoSync:
         until = (self.store.kv_get(FOLLOWED_KEY) or {}).get(f"{league}:{season}:{fixture.id}", 0.0)
         return "opened" if until > self._clock() else None
 
+    @staticmethod
+    def _half_time_wanted(note: dict) -> bool:
+        """Whether a followed match still needs its half-time read: none yet, or the last one caught the end of the first half (the page
+        said "45+" or a first-half minute, not "HT") and the break may still be on."""
+        if note.get("moment") == "ft":
+            return False
+        if note.get("moment") != "ht":
+            return True
+        elapsed = str(note.get("elapsed") or "").strip().upper()
+        first_half = elapsed.endswith("+") or (elapsed.isdigit() and int(elapsed) <= 45)
+        return note.get("state") == "failed" or (note.get("state") == "live" and first_half)
+
     def matchday(self, now: float) -> tuple[dict[tuple[str, int], list[dict]], list[tuple[float, str]]]:
         """The matchday reads due now, by league season (half-time reads first), and when the next ones fall due (with why).
 
@@ -482,9 +494,10 @@ class AutoSync:
                 if note.get("state") == "final" or int(note.get("not_found", 0)) >= NOT_FOUND_TRIES:
                     continue
                 target = {"fixture": f.id, "kickoff": f.dt, "home": f.home, "away": f.away}
-                if note.get("moment") not in ("ht", "ft") and now < k + matchclock.HALF_TIME_END and self.followed(code, season, f):
-                    if now < k + matchclock.HALF_TIME:
-                        later.append((k + matchclock.HALF_TIME, f"half-time event data of {f.home} v {f.away}"))
+                if now < k + matchclock.HT_READ_LAST and self._half_time_wanted(note) and self.followed(code, season, f):
+                    at = k + matchclock.HT_READ if note.get("moment") != "ht" else float(note.get("at", 0)) + matchclock.HT_RETRY
+                    if now < at:
+                        later.append((at, f"half-time event data of {f.home} v {f.away}"))
                     else:
                         due.setdefault((code, season), []).insert(0, {**target, "moment": "ht"})
                     continue

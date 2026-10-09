@@ -117,15 +117,16 @@ class MatchesPage(Part):
             else:
                 found = self.events.live(code, s, game)
                 gold, at, final = (found["gold"], found["fetched_at"], False) if found else (None, None, False)
+            doc = self.events.raw.get(code, s, game) if final else (found or {}).get("doc")
             if gold is not None:
                 read = {"at": at, "final": final, "elapsed": note.get("elapsed") or ("FT" if final else ""), "score": note.get("score") or "",
-                        "moment": note.get("moment"), "stats": _live_stats(gold), "players": _live_players(gold)}
+                        "moment": note.get("moment"), "stats": _live_stats(gold), "players": _live_players(gold), **(_live_detail(doc) if doc else {})}
         followed = wb.auto.followed(code, s, fixture) if events_on else None
         nxt = None
         if events_on and kickoff is not None and not (read and read["final"]):
-            ht, ft = kickoff + matchclock.HALF_TIME, kickoff + matchclock.FULL_TIME
-            if followed and note.get("moment") not in ("ht", "ft") and now < kickoff + matchclock.HALF_TIME_END:
-                nxt = {"at": max(ht, now), "moment": "ht"}
+            ht, ft = kickoff + matchclock.HT_READ, kickoff + matchclock.FULL_TIME
+            if followed and wb.auto._half_time_wanted(note) and now < kickoff + matchclock.HT_READ_LAST:
+                nxt = {"at": max(ht if note.get("moment") != "ht" else float(note.get("at", now)) + matchclock.HT_RETRY, now), "moment": "ht"}
             elif now < kickoff + FT_GIVE_UP:
                 nxt = {"at": max(ft, now) if note.get("moment") != "ft" else max(now, float(note.get("at", now)) + FT_RETRY), "moment": "ft"}
         return {"scope": scope, "fixture": self.card(fixture, {}, {}), "phase": matchclock.phase(fixture, now), "now": now,
@@ -199,13 +200,62 @@ def _live_stats(gold: dict) -> dict:
     }
 
 
-def _live_players(gold: dict, n: int = 5) -> dict:
-    """Each side's most involved players so far (by touches), with their shots, key passes and tackles."""
-    home, away = _sides(gold)
-    out: dict[str, list] = {"home": [], "away": []}
-    for side, team in (("home", home), ("away", away)):
-        rows = [p for p in gold["players"] if gold["teams"][p.get("tm", 0)] is team and p["c"].get("touches", 0) > 0]
-        rows.sort(key=lambda p: -p["c"].get("touches", 0))
-        out[side] = [{"name": p["name"], "pos": p.get("pos"), "touches": p["c"].get("touches", 0), "shots": p["c"].get("shots", 0),
-                      "key_passes": p["c"].get("key_passes", 0), "tackles": p["c"].get("tackles", 0)} for p in rows[:n]]
+def _live_players(gold: dict) -> list[dict]:
+    """Every player who has touched the ball so far, both sides, with the numbers a person reads during a match."""
+    home, _away = _sides(gold)
+    out = []
+    for p in gold["players"]:
+        c = p["c"]
+        if not c.get("touches"):
+            continue
+        passes = c.get("passes", 0)
+        out.append({"name": p["name"], "side": "home" if gold["teams"][p.get("tm", 0)] is home else "away", "pos": p.get("pos"), "start": p.get("start"),
+                    "touches": c.get("touches", 0), "passes": passes, "pass_acc": round(100 * c.get("pass_ok", 0) / passes) if passes else None,
+                    "key_passes": c.get("key_passes", 0), "shots": c.get("shots", 0), "sot": c.get("sot", 0), "goals": c.get("goals", 0),
+                    "takeons_won": c.get("takeons_won", 0), "tackles": c.get("tackles", 0), "interceptions": c.get("interceptions", 0),
+                    "recoveries": c.get("recoveries", 0), "fouls": c.get("fouls", 0)})
+    out.sort(key=lambda r: -r["touches"])
     return out
+
+
+SHOT_TYPES = {"Goal", "SavedShot", "MissedShots", "ShotOnPost", "BlockedShot"}
+SITUATION = {"Penalty": "Penalty", "FromCorner": "From a corner", "SetPiece": "Set piece", "DirectFreekick": "Direct free kick", "RegularPlay": "Open play",
+             "FastBreak": "Counter-attack"}
+BODY = {"Head": "Head", "RightFoot": "Right foot", "LeftFoot": "Left foot", "OtherBodyPart": "Other"}
+
+
+def _live_detail(doc: dict) -> dict:
+    """What WhoScored's page itself says, read straight from it: every shot with its position, the goals, cards and substitutions in
+    order, and both line-ups. No xG: that is Understat's, and arrives after the match."""
+    names = {int(k): v for k, v in (doc.get("playerIdNameDictionary") or {}).items() if str(k).isdigit()}
+    home_id = (doc.get("home") or {}).get("teamId")
+    shots: dict[str, list] = {"home": [], "away": []}
+    timeline = []
+    for e in doc.get("events") or []:
+        kind = (e.get("type") or {}).get("displayName")
+        quals = {(q.get("type") or {}).get("displayName") for q in e.get("qualifiers") or []}
+        side = "home" if e.get("teamId") == home_id else "away"
+        minute = int(e.get("minute", 0)) + 1
+        player = names.get(int(e["playerId"]), "") if e.get("playerId") is not None else ""
+        if kind in SHOT_TYPES and "OwnGoal" not in quals and e.get("x") is not None:
+            result = "BlockedShot" if kind == "SavedShot" and "Blocked" in quals else kind
+            shots[side].append({"id": e.get("eventId") or e.get("id"), "minute": minute, "player": player, "result": result, "xg": None,
+                                "x": float(e["x"]) / 100, "y": 1 - float(e.get("y", 50)) / 100,
+                                "situation": next((v for k, v in SITUATION.items() if k in quals), "Open play"),
+                                "type": next((v for k, v in BODY.items() if k in quals), "")})
+        if kind == "Goal":
+            own = "OwnGoal" in quals
+            timeline.append({"minute": minute, "kind": "own_goal" if own else "penalty" if "Penalty" in quals else "goal",
+                             "side": ("away" if side == "home" else "home") if own else side, "player": player})
+        elif kind == "Card":
+            card = "red" if quals & {"Red", "SecondYellow"} else "yellow"
+            timeline.append({"minute": minute, "kind": card, "side": side, "player": player})
+        elif kind == "SubstitutionOn":
+            timeline.append({"minute": minute, "kind": "sub", "side": side, "player": player})
+    lineups = {}
+    for side in ("home", "away"):
+        team = doc.get(side) or {}
+        players = sorted(team.get("players") or [], key=lambda p: (not p.get("isFirstEleven"), p.get("shirtNo") or 99))
+        lineups[side] = [{"name": p.get("name"), "shirt": p.get("shirtNo"), "pos": p.get("position"), "start": bool(p.get("isFirstEleven"))} for p in players]
+    timeline.sort(key=lambda t: t["minute"])
+    return {"shots": shots, "timeline": timeline, "lineups": lineups}

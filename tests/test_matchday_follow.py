@@ -103,10 +103,10 @@ def test_a_favourite_teams_match_is_read_at_half_time_first_and_again_at_full_ti
             f = fixture(wb, 1003)
             wb.favourites.set("EPL", f.home, True)
             due, later = wb.auto.matchday(now[0])
-            assert due == {} and (ROUND_TWO + matchclock.HALF_TIME, f"half-time event data of {f.home} v {f.away}") in later
+            assert due == {} and (ROUND_TWO + matchclock.HT_READ, f"half-time event data of {f.home} v {f.away}") in later
             other = fixture(wb, 1002)
             assert not any(why == f"half-time event data of {other.home} v {other.away}" for _at, why in later)   # not followed: full time only
-            now[0] = ROUND_TWO + matchclock.HALF_TIME + 60
+            now[0] = ROUND_TWO + matchclock.HT_READ + 60
             await wb.auto.run_once()
             assert targets(spawned[0]) == [{"fixture": 1003, "kickoff": f.dt, "home": f.home, "away": f.away, "moment": "ht"}]   # only the followed one
             for _ in range(3):
@@ -137,8 +137,8 @@ def test_opening_a_match_while_it_is_played_follows_it_and_only_then(tmp_path, m
             now[0] = ROUND_TWO + 10 * 60
             view = await wb.matches.live(1003, "EPL", "2026", follow=True)
             assert view["followed"] == "opened" and view["phase"] == "first_half"
-            assert view["next_read"] == {"at": ROUND_TWO + matchclock.HALF_TIME, "moment": "ht"}
-            now[0] = ROUND_TWO + matchclock.HALF_TIME + 30
+            assert view["next_read"] == {"at": ROUND_TWO + matchclock.HT_READ, "moment": "ht"}
+            now[0] = ROUND_TWO + matchclock.HT_READ + 30
             due, _later = wb.auto.matchday(now[0])
             assert [(t["fixture"], t["moment"]) for t in due[("EPL", 2026)]] == [(1003, "ht")]
             plain = await wb.matches.live(1002, "EPL", "2026")                 # looked at without following
@@ -175,7 +175,10 @@ def test_the_live_view_shows_the_provisional_half_time_read_and_then_the_final_o
             read = view["read"]
             assert read["final"] is False and read["elapsed"] == "HT" and read["score"] == "1 : 0"
             assert read["stats"]["poss"] == [67, 33] and {r["key"]: (r["home"], r["away"]) for r in read["stats"]["rows"]}["tackles"] == (0, 1)
-            assert read["players"]["home"][0]["name"] == "Home Ten" and read["players"]["away"][0]["tackles"] == 1
+            players = {r["name"]: r for r in read["players"]}
+            assert players["Home Ten"]["side"] == "home" and players["Away Six"]["side"] == "away" and players["Away Six"]["tackles"] == 1
+            assert read["lineups"]["home"][0]["name"] == "Home Ten" and read["lineups"]["away"][0]["start"] is True
+            assert read["shots"] == {"home": [], "away": []} and read["timeline"] == []
             assert wb.events.match_ids("EPL", 2026) == []                      # nothing counted anywhere else
             now[0] = ROUND_TWO + matchclock.FULL_TIME + 60
             assert wb.events.ingest("EPL", 2026, 77, ht_doc("FT", 6, "2 : 0")) == "final"
@@ -202,3 +205,55 @@ def test_with_event_data_off_the_live_view_says_so_and_follows_nothing(tmp_path)
             await wb.close()
 
     run(go())
+
+
+def test_a_half_time_read_that_caught_the_end_of_the_first_half_is_made_again_in_the_break(tmp_path, monkeypatch):
+    """Seen on the first real match: read at 47 minutes, WhoScored's page still said "45+" (stoppage time). Read at 50 minutes, and again
+    every three minutes while the page says first half, until it says HT or the second half starts."""
+    async def go():
+        wb = make(tmp_path)
+        spawned = []
+        events_on(wb, monkeypatch, spawned)
+        now = [ROUND_TWO + 48 * 60]
+        wb.auto._clock = wb.auto.budget._clock = lambda: now[0]
+        try:
+            await wb.repo.league("EPL", 2026)
+            wb.favourites.set("EPL", fixture(wb, 1003).home, True)
+            assert wb.auto.matchday(now[0])[0] == {}                                     # 48 minutes: too early, the half may still be on
+            now[0] = ROUND_TWO + matchclock.HT_READ
+            assert [t["moment"] for t in wb.auto.matchday(now[0])[0][("EPL", 2026)]] == ["ht"]
+            ledger.note_matchday(wb.store, "EPL", 2026, 1003, game=7, state="live", at=now[0], moment="ht", elapsed="45+")
+            now[0] += 60
+            assert wb.auto.matchday(now[0])[0] == {}                                     # not every minute ...
+            now[0] += matchclock.HT_RETRY
+            assert [t["moment"] for t in wb.auto.matchday(now[0])[0][("EPL", 2026)]] == ["ht"]   # ... but again three minutes on
+            ledger.note_matchday(wb.store, "EPL", 2026, 1003, state="live", at=now[0], moment="ht", elapsed="HT")
+            now[0] += matchclock.HT_RETRY
+            assert wb.auto.matchday(now[0])[0] == {}                                     # the page said HT: that is the half-time read
+            ledger.note_matchday(wb.store, "EPL", 2026, 1003, elapsed="45+")
+            now[0] = ROUND_TWO + matchclock.HT_READ_LAST
+            assert wb.auto.matchday(now[0])[0] == {}                                     # and never once the second half has started
+        finally:
+            await wb.close()
+
+    run(go())
+
+
+def test_the_live_view_reads_shots_goals_cards_substitutions_and_line_ups_from_the_page(tmp_path, monkeypatch):
+    from app.workbench.pages.matches import _live_detail
+
+    doc = ht_doc()
+    q = lambda *names: [{"type": {"displayName": n}} for n in names]   # noqa: E731
+    doc["playerIdNameDictionary"] = {"1": "Home Ten", "2": "Away Six"}
+    doc["events"] += [
+        {**ev("SavedShot", 1, minute=20, x=88.0, y=40.0), "qualifiers": q("Head", "FromCorner")},
+        {**ev("Goal", 1, minute=33, x=94.0, y=52.0), "qualifiers": q("RightFoot", "RegularPlay")},
+        {**ev("Goal", 2, team=AWAY, minute=40, x=5.0, y=50.0), "qualifiers": q("OwnGoal")},
+        {**ev("Card", 2, team=AWAY, minute=41, x=None, y=None), "qualifiers": q("Yellow")},
+        {**ev("SubstitutionOn", 2, team=AWAY, minute=44, x=None, y=None)},
+    ]
+    out = _live_detail(doc)
+    assert [(s["minute"], s["result"], s["situation"], s["type"]) for s in out["shots"]["home"]] == [(21, "SavedShot", "From a corner", "Head"), (34, "Goal", "Open play", "Right foot")]
+    assert out["shots"]["away"] == [] and out["shots"]["home"][1]["x"] == 0.94 and out["shots"]["home"][1]["xg"] is None   # an own goal is not a shot
+    assert [(t["minute"], t["kind"], t["side"], t["player"]) for t in out["timeline"]] == [
+        (34, "goal", "home", "Home Ten"), (41, "own_goal", "home", "Away Six"), (42, "yellow", "away", "Away Six"), (45, "sub", "away", "Away Six")]

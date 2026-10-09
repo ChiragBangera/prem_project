@@ -5,6 +5,7 @@ import { nf } from "../lib/format.js";
 import { PHASE_LABEL, kickoff } from "../lib/matchfmt.js";
 import { Badge, Card, Crest, FavouriteButton, Notice, PageHead, teamHref } from "./common.js";
 import { DataTable } from "./table.js";
+import { MatchPitch } from "../charts/pitch.js";
 
 /** A tug-of-war row: home value grows left, away value grows right. */
 export function Tug({ label, home, away, format = (v) => String(v), inverse = false }) {
@@ -52,17 +53,43 @@ function followLine(d) {
   return "Every match is read at full time. Make one of these teams a favourite to have its matches read at half time too.";
 }
 
-function Players({ rows, team }) {
-  if (!rows?.length) return null;
-  const cols = [
-    { key: "name", label: team, sortable: false, className: "strong" },
-    { key: "touches", label: "Touches", num: true, sortable: false },
-    { key: "shots", label: "Shots", num: true, sortable: false },
-    { key: "key_passes", label: "Key passes", num: true, sortable: false },
-    { key: "tackles", label: "Tackles", num: true, sortable: false },
-  ];
-  return html`<${DataTable} columns=${cols} rows=${rows} rowKey=${(r) => r.name} dense caption=${`${team}: most involved so far`} />`;
+const TIMELINE_WORD = { goal: "Goal", penalty: "Penalty", own_goal: "Own goal", yellow: "Yellow card", red: "Red card", sub: "On" };
+
+/** Goals, cards and substitutions in order, each under its side. */
+function Timeline({ items, f }) {
+  if (!items?.length) return html`<p class="small muted">No goals, cards or substitutions yet.</p>`;
+  return html`<div class="live-timeline">${items.map((t, i) => html`<div key=${i} class=${"live-ev " + t.side}>
+    <span class="num live-min">${t.minute}'</span>
+    <span class=${"live-kind " + t.kind}>${TIMELINE_WORD[t.kind] || t.kind}</span>
+    <span class="live-who">${t.player || "–"}<span class="muted xsmall"> · ${t.side === "home" ? f.home : f.away}</span></span>
+  </div>`)}</div>`;
 }
+
+function Lineup({ rows, team, formation }) {
+  if (!rows?.length) return null;
+  const starters = rows.filter((p) => p.start), bench = rows.filter((p) => !p.start);
+  return html`<div class="stack" style=${{ "--gap": "6px" }}>
+    <div class="row between"><b>${team}</b><span class="muted small">${formation ? formation.split("").join("-") : ""}</span></div>
+    <ol class="live-xi">${starters.map((p) => html`<li key=${p.name}><span class="num muted">${p.shirt ?? ""}</span> ${p.name} <span class="muted xsmall">${p.pos || ""}</span></li>`)}</ol>
+    ${bench.length ? html`<div class="xsmall muted">Bench: ${bench.map((p) => p.name).join(", ")}</div>` : null}
+  </div>`;
+}
+
+const PLAYER_COLS = (f) => [
+  { key: "name", label: "Player", className: "strong", render: (r) => html`<span class="row" style=${{ gap: "6px" }}><i class=${"deep-side " + r.side} style=${{ background: r.side === "home" ? "var(--c1)" : "var(--c2)" }} title=${r.side === "home" ? f.home : f.away}></i>${r.name}</span>` },
+  { key: "pos", label: "Pos" },
+  { key: "touches", label: "Touches", num: true },
+  { key: "passes", label: "Passes", num: true },
+  { key: "pass_acc", label: "Pass %", num: true, render: (r) => (r.pass_acc == null ? "–" : `${r.pass_acc}%`) },
+  { key: "key_passes", label: "Key passes", num: true },
+  { key: "shots", label: "Shots", num: true },
+  { key: "sot", label: "On target", num: true },
+  { key: "takeons_won", label: "Dribbles won", num: true },
+  { key: "tackles", label: "Tackles", num: true },
+  { key: "interceptions", label: "Interceptions", num: true },
+  { key: "recoveries", label: "Recoveries", num: true },
+  { key: "fouls", label: "Fouls", num: true },
+];
 
 export function LiveView({ d }) {
   const f = d.fixture, read = d.read, st = read?.stats;
@@ -95,10 +122,17 @@ export function LiveView({ d }) {
           ${st.rows.map((r) => html`<${Tug} key=${r.key} label=${r.label} home=${r.home} away=${r.away} format=${(v) => nf(v, 0)} inverse=${r.key === "fouls" || r.key === "yellow"} />`)}
         </div>
       </${Card}>
-      <${Card} flush title="Most involved" sub="Each side's five players with the most touches so far.">
-        <${Players} rows=${read.players.home} team=${f.home} />
-        <${Players} rows=${read.players.away} team=${f.away} />
+      <${Card} title="Shots" sub=${`From WhoScored's page: where each shot was taken (filled: scored). Not sized by xG: Understat's xG arrives after the match.`}>
+        <${MatchPitch} home=${read.shots?.home || []} away=${read.shots?.away || []} />
+        <div class="row between xsmall muted"><span>${f.home} attack →</span><span>← ${f.away} attack</span></div>
       </${Card}>
-    </div>` : null}
+    </div>
+    <div class="mrow m-n2">
+      <${Card} title="Goals, cards and substitutions"><${Timeline} items=${read.timeline} f=${f} /></${Card}>
+      <${Card} title="Line-ups"><div class="mrow m-n2"><${Lineup} rows=${read.lineups?.home} team=${f.home} formation=${st.formations[0]} /><${Lineup} rows=${read.lineups?.away} team=${f.away} formation=${st.formations[1]} /></div></${Card}>
+    </div>
+    <${Card} flush title="Every player so far" sub="Both teams, from the event data. Click a column to sort.">
+      <${DataTable} columns=${PLAYER_COLS(f)} rows=${read.players || []} rowKey=${(r) => r.side + r.name} dense caption="Every player so far" />
+    </${Card}>` : null}
   `;
 }

@@ -347,3 +347,15 @@ kbd { font: 600 var(--fs-2xs) var(--font); border: 1px solid var(--line-2); bord
   .search-trigger span, .search-trigger kbd { display: none; }
   .pbar { grid-template-columns: minmax(84px, 118px) minmax(0, 1fr) 26px 46px; gap: 8px; }
 }
+
+/* Live match: goals, cards and substitutions in order (home on the left, away on the right), and the line-ups */
+.live-timeline { display: flex; flex-direction: column; gap: 6px; }
+.live-ev { display: grid; grid-template-columns: 38px 92px minmax(0, 1fr); align-items: baseline; gap: 8px; font-size: var(--fs-sm); }
+.live-ev.away { border-left: 3px solid var(--c2); padding-left: 8px; }
+.live-ev.home { border-left: 3px solid var(--c1); padding-left: 8px; }
+.live-kind { font-weight: 600; }
+.live-kind.goal, .live-kind.penalty { color: var(--good); }
+.live-kind.own_goal, .live-kind.red { color: var(--crit); }
+.live-kind.yellow { color: var(--warn); }
+.live-xi { margin: 0; padding-left: 0; list-style: none; display: grid; gap: 3px; font-size: var(--fs-sm); }
+.live-xi .num { display: inline-block; width: 22px; }

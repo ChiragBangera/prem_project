@@ -28,16 +28,16 @@ function shotStyle(s, color) {
     : { fill: color, stroke: color, strokeWidth: 1.4, fillOpacity: 0.2 };
 }
 
-const radius = (xg) => 0.7 + Math.sqrt(Math.max(0, xg)) * 2.1;
+const radius = (xg) => (xg == null ? 1.5 : 0.7 + Math.sqrt(Math.max(0, xg)) * 2.1);   // no xG (a live read): one size for every shot
 
 const RESULT_WORD = { Goal: "Goal", SavedShot: "Saved", BlockedShot: "Blocked", MissedShots: "Off target", ShotOnPost: "Hit the post", OwnGoal: "Own goal" };
 
 export function shotTip(s) {
   return html`<div>
-    <div class="tt-title">${RESULT_WORD[s.result] || s.result} · ${nf(s.xg, 2)} xG</div>
+    <div class="tt-title">${RESULT_WORD[s.result] || s.result}${s.xg != null ? ` · ${nf(s.xg, 2)} xG` : ""}</div>
     <div class="tt-sub">${s.minute}'${s.opponent ? ` vs ${s.opponent}` : ""}${s.date ? ` · ${s.date}` : ""}</div>
-    <div class="tt-row"><span class="k">Situation</span><span class="v">${s.situation}</span></div>
-    <div class="tt-row"><span class="k">Body part</span><span class="v">${(s.type || "").replace(/([a-z])([A-Z])/g, "$1 $2")}</span></div>
+    ${s.situation ? html`<div class="tt-row"><span class="k">Situation</span><span class="v">${s.situation}</span></div>` : null}
+    ${s.type ? html`<div class="tt-row"><span class="k">Body part</span><span class="v">${(s.type || "").replace(/([a-z])([A-Z])/g, "$1 $2")}</span></div>` : null}
     ${s.assisted_by ? html`<div class="tt-row"><span class="k">Assisted by</span><span class="v">${s.assisted_by}</span></div>` : null}
   </div>`;
 }
@@ -68,7 +68,7 @@ export function ShotLegend({ color = "var(--c1)" }) {
 
 /** Full pitch, both teams. The home side attacks right, the away side is mirrored to attack left. */
 export function MatchPitch({ home, away, homeColor = "var(--c1)", awayColor = "var(--c2)", onPick }) {
-  const draw = (list, color, mirror) => [...list].sort((a, b) => (a.result === "Goal") - (b.result === "Goal") || b.xg - a.xg).map((s) => {
+  const draw = (list, color, mirror) => [...list].sort((a, b) => (a.result === "Goal") - (b.result === "Goal") || (b.xg ?? 0) - (a.xg ?? 0)).map((s) => {
     const cx = (mirror ? 1 - s.x : s.x) * L, cy = (mirror ? 1 - s.y : s.y) * W;
     return html`<circle key=${s.id} cx=${cx} cy=${cy} r=${radius(s.xg)} style=${shotStyle(s, color)} class="shot"
       onMouseMove=${(e) => tooltip.move(e, html`<div><div class="tt-sub" style=${{ fontWeight: 650, color: "var(--ink)" }}>${s.player}</div>${shotTip({ ...s, opponent: null, date: null })}</div>`)} onMouseLeave=${tooltip.hide}
