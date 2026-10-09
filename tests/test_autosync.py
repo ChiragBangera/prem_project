@@ -12,7 +12,7 @@ from app.config import Settings
 from app.errors import UpstreamError
 from app.data import matchclock
 from app.events import ledger
-from app.sync.autosync import BACKOFF_BASE, CLEARANCE, EVENT_BATCH, EVENT_RECHECK, EVENT_REST, FAIL_PREFIX, FT_RETRY, AutoSync, next_midnight
+from app.sync.autosync import BACKOFF_BASE, CLEARANCE, EVENT_BATCH, EVENT_RECHECK, EVENT_REST, FAIL_PREFIX, AutoSync, next_midnight
 from app.workbench import Workbench
 
 from .events_kit import AWAY, end, ev, match, player
@@ -447,14 +447,14 @@ def test_every_match_is_read_at_its_full_time_before_any_catching_up(tmp_path, m
         wb, _provider = make(tmp_path)
         spawned = []
         _events_on(wb, monkeypatch, spawned)
-        now = [ROUND_TWO + matchclock.FULL_TIME - CLEARANCE + 60]
+        now = [ROUND_TWO + matchclock.FT_READ - CLEARANCE + 60]
         wb.auto._clock = wb.auto.budget._clock = lambda: now[0]
         try:
             first = await wb.auto.run_once()                                             # nearly full time: nothing to read yet, and catching up waits
             assert spawned == [] and first["events"]["held"] == "matches are being played: catching up waits"
             when, why = wb.auto.next_wake()
-            assert when == ROUND_TWO + matchclock.FULL_TIME and why.startswith(("full time of ", "full-time event data of "))
-            now[0] = ROUND_TWO + matchclock.FULL_TIME + 30
+            assert when == ROUND_TWO + matchclock.FT_READ and why.startswith(("full time of ", "full-time event data of "))
+            now[0] = ROUND_TWO + matchclock.FT_READ + 30
             await wb.auto.run_once()
             assert [t["fixture"] for t in _targets(spawned[0])] == [1002, 1003] and {t["moment"] for t in _targets(spawned[0])} == {"ft"}
             assert "--limit" not in spawned[0] and "--budget" not in spawned[0]          # a matchday read is not a catching-up run
@@ -466,8 +466,8 @@ def test_every_match_is_read_at_its_full_time_before_any_catching_up(tmp_path, m
             now[0] += 60
             held = await wb.auto.run_once()
             assert len(spawned) == 1 and held["events"]["held"] == "matches are being played: catching up waits"
-            assert wb.auto.next_wake()[0] == now[0] - 60 + FT_RETRY                     # ten minutes after the last read
-            now[0] += FT_RETRY
+            assert wb.auto.next_wake()[0] == now[0] - 60 + matchclock.FT_RETRY                     # three minutes after the last read
+            now[0] += matchclock.FT_RETRY
             await wb.auto.run_once()
             assert [t["fixture"] for t in _targets(spawned[1])] == [1003]                # only the one still in play
             for _ in range(3):
@@ -487,16 +487,16 @@ def test_the_matchday_allowance_follows_the_days_fixtures_and_holds_when_used_up
         wb, _provider = make(tmp_path)
         spawned = []
         _events_on(wb, monkeypatch, spawned)
-        now = [ROUND_TWO + matchclock.FULL_TIME + 30]
+        now = [ROUND_TWO + matchclock.FT_READ + 30]
         wb.auto._clock = wb.auto.budget._clock = lambda: now[0]
         try:
             assert wb.auto.matchday_allowance() == 10                                    # no fixture list stored yet: just the ones to spare
             await wb.repo.league("EPL", 2026)
-            assert wb.auto.matchday_allowance() == 2 * 2 + 10                           # two matches today: half and full time each, and ten to spare
-            assert wb.auto.budget.summary()["matchday"]["limit"] == 14
+            assert wb.auto.matchday_allowance() == 4 * 2 + 10                           # two matches today: four reads each, and ten to spare
+            assert wb.auto.budget.summary()["matchday"]["limit"] == 18
             wb.auto.set_prefs({"limits": {"matchday": 1}})
             assert "matchday" not in wb.auto.prefs()["limits"]                           # not a setting: worked out from the fixtures
-            wb.auto.budget.spend("matchday", 14)
+            wb.auto.budget.spend("matchday", 18)
             held = await wb.auto.run_once()
             assert spawned == [] and held["events"]["matchday_held"] == "today's matchday reads are used up"
             assert wb.auto.next_wake() == (next_midnight(now[0]), "today's matchday reads are used up")
@@ -516,8 +516,8 @@ def test_a_catching_up_run_makes_way_when_a_match_finishes(tmp_path, monkeypatch
         try:
             await wb.auto.run_once()
             assert len(spawned) == 1 and _targets(spawned[0]) is None                    # hours before kickoff: catching up runs
-            assert wb.auto.next_wake()[0] <= ROUND_TWO + matchclock.FULL_TIME            # it still wakes for the full time while that runs
-            now[0] = ROUND_TWO + matchclock.FULL_TIME + 30
+            assert wb.auto.next_wake()[0] <= ROUND_TWO + matchclock.FT_READ            # it still wakes for the full time while that runs
+            now[0] = ROUND_TWO + matchclock.FT_READ + 30
             result = await wb.auto.run_once()
             assert result["events"]["held"] == "making way for a match that has finished" and ledger.control(wb.store)["stop_at"] == now[0]
         finally:

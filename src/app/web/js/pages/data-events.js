@@ -72,7 +72,7 @@ export function FetchControls({ auto, reload }) {
         </div>
         ${md ? html`<div class="stack" style=${{ "--gap": "8px" }}>
           <${Usage} label="Event data on matchday (WhoScored)" used=${md.used} limit=${md.limit} />
-          <span class="xsmall muted">Set by the fixture list, not by you: two reads for each of today's ${plural(today.matches, "match", "matches")} in your event leagues${today.favourites ? `, six more for each of the ${plural(today.favourites, "one", "ones")} a favourite team plays (half-time reads every three minutes until the break)` : ""}, and ten to spare. Each match is read at its full time (again ten minutes later if it is still going), and the ones you follow during the half-time break too. These go first, and do not use the catching-up limit.</span>
+          <span class="xsmall muted">Set by the fixture list, not by you: four reads for each of today's ${plural(today.matches, "match", "matches")} in your event leagues${today.favourites ? `, six more for each of the ${plural(today.favourites, "one", "ones")} a favourite team plays (half-time reads every three minutes until the break)` : ""}, and ten to spare. Each match is read at its 90th minute and every three minutes until WhoScored says full time; the ones you follow from the 45th minute too, every three minutes until half time. These go first, and do not use the catching-up limit.</span>
         </div>` : null}
       </div>
       ${eventsOn ? html`<div class="row between wrap fetch-state" style=${{ gap: "10px" }}>

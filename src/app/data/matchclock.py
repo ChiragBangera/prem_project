@@ -4,8 +4,9 @@ Every fixture carries its kickoff in UTC, so the app knows ahead of time when ea
 looking every few minutes whether something changed, the updater works out the next moment something *can* have changed and sleeps
 until then:
 
-* a league table is read again shortly after a match's full time (Understat lists the result once it has the shots), then every
-  twenty minutes until the result is there, more slowly after six hours, and not at all after two days (a postponed match);
+* a league table is read again at a match's 90th minute of play (kickoff + 105 minutes), then every three minutes until Understat lists the result (it does
+  once it has the shots, a little after the final whistle), more slowly after three hours, and not at all after two days (a postponed
+  match). A table is about 40 KB, so this is cheap;
 * while a finished match's xG can still move (about a day and a half), the table is read every six hours;
 * with no match in sight it is still read twice a day, so a fixture moved to a new date is noticed.
 
@@ -29,9 +30,16 @@ HT_READ = 45 * MIN            # the first half-time read: at 45 minutes (stoppag
 HT_READ_LAST = 64 * MIN       # ... then again every HT_RETRY while the page still says first half, until it says HT or the second half starts
 HT_RETRY = 3 * MIN
 HT_READS_MAX = 7              # 45, 48 ... 63 minutes: the most half-time reads one match can take
-FULL_TIME = 112 * MIN         # kickoff to the final whistle: two halves, the break and stoppage time
-RESULT_POLL = 20 * MIN        # a finished match not yet in the league table: look this often ...
-RESULT_SLOW_AFTER = 6 * HOUR  # ... for this long after full time, then
+FULL_TIME = 112 * MIN         # kickoff to the final whistle, usually: two halves, the break and stoppage time (the phase shown by the clock)
+FT_READ = 105 * MIN           # the 90th minute of play (45 + the 15-minute break + 45): the first full-time read, of WhoScored and Understat ...
+FT_RETRY = 3 * MIN            # ... then every three minutes until WhoScored's page says FT ...
+FT_FAST_UNTIL = 150 * MIN     # ... until this long after kickoff (extra time, a long stoppage), then
+FT_RETRY_SLOW = 10 * MIN      # every ten minutes
+UNDERSTAT_FIRST = FT_READ     # Understat's table is first looked at at the 90th minute of play ...
+RESULT_POLL = 3 * MIN         # ... then this often until it lists the result ...
+RESULT_FAST_FOR = 3 * HOUR    # ... for this long, then
+RESULT_POLL_MID = 20 * MIN    # this often until
+RESULT_SLOW_AFTER = 6 * HOUR  # six hours after kickoff, then
 RESULT_POLL_SLOW = 2 * HOUR   # this often, until
 RESULT_GIVE_UP = 48 * HOUR    # this long after kickoff (it was postponed or abandoned; the quiet check notices a new date)
 SETTLE = 36 * HOUR            # Understat revises a match's shots for about this long after kickoff
@@ -55,7 +63,7 @@ class Due(NamedTuple):
 
 
 WHY = {
-    "full_time": "full time",
+    "full_time": "the result (90th minute)",
     "result": "waiting for the result",
     "settle": "xG still settling",
     "quiet": "the twice-daily check for moved fixtures",
@@ -74,11 +82,13 @@ def league_due(fixtures: Iterable[Fixture], fetched_at: float, *, complete: bool
         if fixture.played:
             candidate = Due(fetched_at + SETTLE_POLL, "settle", fixture) if fetched_at - k < SETTLE else None
         else:
-            end = k + FULL_TIME
-            if end > fetched_at:
-                candidate = Due(end, "full_time", fixture)                      # first look once it can be over
-            elif fetched_at - end < RESULT_SLOW_AFTER:
+            first = k + UNDERSTAT_FIRST
+            if first > fetched_at:
+                candidate = Due(first, "full_time", fixture)                    # first look at 90 minutes
+            elif fetched_at - first < RESULT_FAST_FOR:
                 candidate = Due(fetched_at + RESULT_POLL, "result", fixture)
+            elif fetched_at - k < RESULT_SLOW_AFTER:
+                candidate = Due(fetched_at + RESULT_POLL_MID, "result", fixture)
             elif fetched_at - k < RESULT_GIVE_UP:
                 candidate = Due(fetched_at + RESULT_POLL_SLOW, "result", fixture)
             else:

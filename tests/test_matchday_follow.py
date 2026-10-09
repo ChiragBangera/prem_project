@@ -114,7 +114,7 @@ def test_a_favourite_teams_match_is_read_at_half_time_first_and_again_at_full_ti
             ledger.note_matchday(wb.store, "EPL", 2026, 1003, game=7, state="live", at=now[0], moment="ht", elapsed="HT")
             now[0] += 5 * 60
             assert wb.auto.matchday(now[0])[0] == {}                           # one half-time read is enough
-            now[0] = ROUND_TWO + matchclock.FULL_TIME + 60
+            now[0] = ROUND_TWO + matchclock.FT_READ + 60
             await wb.auto.run_once()
             assert {(t["fixture"], t["moment"]) for t in targets(spawned[1])} == {(1002, "ft"), (1003, "ft")}   # and every match at full time
         finally:
@@ -180,7 +180,7 @@ def test_the_live_view_shows_the_provisional_half_time_read_and_then_the_final_o
             assert read["lineups"]["home"][0]["name"] == "Home Ten" and read["lineups"]["away"][0]["start"] is True
             assert read["shots"] == {"home": [], "away": []} and read["timeline"] == []
             assert wb.events.match_ids("EPL", 2026) == []                      # nothing counted anywhere else
-            now[0] = ROUND_TWO + matchclock.FULL_TIME + 60
+            now[0] = ROUND_TWO + matchclock.FT_READ + 60
             assert wb.events.ingest("EPL", 2026, 77, ht_doc("FT", 6, "2 : 0")) == "final"
             ledger.note_matchday(wb.store, "EPL", 2026, 1003, state="final", at=now[0], moment="ft", elapsed="FT", score="2 : 0")
             final = await wb.matches.live(1003, "EPL", "2026")
@@ -233,7 +233,7 @@ def test_a_half_time_read_that_caught_the_end_of_the_first_half_is_made_again_in
             ledger.note_matchday(wb.store, "EPL", 2026, 1003, elapsed="45+")
             now[0] = ROUND_TWO + matchclock.HT_READ_LAST
             assert wb.auto.matchday(now[0])[0] == {}                                     # and never once the second half has started
-            assert wb.auto.matchday_allowance() == 2 * 2 + 6 + 10                         # room for a favourite's extra half-time reads
+            assert wb.auto.matchday_allowance() == 4 * 2 + 6 + 10                         # room for a favourite's extra half-time reads
         finally:
             await wb.close()
 
@@ -258,3 +258,4 @@ def test_the_live_view_reads_shots_goals_cards_substitutions_and_line_ups_from_t
     assert out["shots"]["away"] == [] and out["shots"]["home"][1]["x"] == 0.94 and out["shots"]["home"][1]["xg"] is None   # an own goal is not a shot
     assert [(t["minute"], t["kind"], t["side"], t["player"]) for t in out["timeline"]] == [
         (34, "goal", "home", "Home Ten"), (41, "own_goal", "home", "Away Six"), (42, "yellow", "away", "Away Six"), (45, "sub", "away", "Away Six")]
+

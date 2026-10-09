@@ -65,8 +65,7 @@ EVENT_RETRY_KEY = "autosync:events:retry"   # matches a person asked to have rea
 STOP_GRACE = 60.0              # seconds a run that was asked to stop gets to reach the end of its match, before it is ended
 EVENT_RECHECK = 3 * 3600.0     # a season the fetcher found nothing more to do for is not run again sooner than this
 STOP_WAIT = 5.0                # seconds the event fetcher gets to stop cleanly when the app stops, before it is killed
-FT_RETRY = 10 * 60.0           # a match WhoScored does not call finished yet at its full time is read again this much later ...
-FT_GIVE_UP = 4 * 3600.0        # ... until this long after kickoff; after that catching up takes care of it
+FT_GIVE_UP = 4 * 3600.0        # full-time reads stop this long after kickoff; after that catching up takes care of it
 NOT_FOUND_TRIES = 3            # a fixture WhoScored's match list does not have is looked for this many times
 CLEARANCE = 15 * 60.0          # catching up does not start a run when a matchday read is due within this (a run takes about ten minutes)
 FOLLOWED_KEY = "autosync:followed"   # live matches someone opened: {"LEAGUE:SEASON:FIXTURE": followed until}
@@ -76,6 +75,11 @@ def _days(left: int, per_day: int) -> int | None:
     if left <= 0 or per_day <= 0:
         return None
     return -(-left // per_day)
+
+
+def ft_retry(kickoff: float, now: float) -> float:
+    """How soon a full-time read that found the match still in play is made again: three minutes, ten once it has gone on unusually long."""
+    return matchclock.FT_RETRY if now < kickoff + matchclock.FT_FAST_UNTIL else matchclock.FT_RETRY_SLOW
 
 
 def next_midnight(now: float) -> float:
@@ -268,7 +272,7 @@ class AutoSync:
         league = LEAGUES[code].name if code in LEAGUES else code
         f = due.fixture
         if due.why == "full_time" and f is not None:
-            return f"full time of {f.home} v {f.away} ({league})"
+            return f"Understat's result of {f.home} v {f.away} ({league}), from the 90th minute"
         if due.why == "result" and f is not None:
             return f"the result of {f.home} v {f.away} ({league})"
         return f"{league}: {matchclock.WHY[due.why]}"
@@ -438,12 +442,13 @@ class AutoSync:
                 yield code, season, ls.fixtures
 
     def matchday_allowance(self) -> int:
-        """How many matchday reads today allows: two for every match of the event leagues played today (half time and full time), the
+        """How many matchday reads today allows: four for every match of the event leagues played today (the full-time read at the 90th
+        minute and the ones three minutes apart until WhoScored's page says FT, and a half-time read), the
         extra half-time reads a favourite team's match can take (one every three minutes until the page says HT), and ten to spare (a
         match still in play at full time, one opened while it is played). Worked out from the fixture list, so a busy Saturday gets more
         than a quiet Tuesday."""
         today = self.todays_matches()
-        return 2 * today["matches"] + (matchclock.HT_READS_MAX - 1) * today["favourites"] + 10
+        return 4 * today["matches"] + (matchclock.HT_READS_MAX - 1) * today["favourites"] + 10
 
     def todays_matches(self) -> dict:
         """How many matches of the event leagues are played today (local calendar day), and how many of them a favourite team plays."""
@@ -493,8 +498,8 @@ class AutoSync:
     def matchday(self, now: float) -> tuple[dict[tuple[str, int], list[dict]], list[tuple[float, str]]]:
         """The matchday reads due now, by league season (half-time reads first), and when the next ones fall due (with why).
 
-        Every match of the event leagues is read once WhoScored can call it finished: at its full time (kickoff + 112 minutes), and again
-        every ten minutes while its page still says it is in play, for up to four hours after kickoff. A followed match (a favourite team's,
+        Every match of the event leagues is read at its 90th minute of play (kickoff + 105 minutes), and again every three minutes while
+        its page still says it is in play (every ten after two and a half hours), for up to four hours after kickoff. A followed match (a favourite team's,
         or one someone opened while it is being played) is also read during the half-time break."""
         due: dict[tuple[str, int], list[dict]] = {}
         later: list[tuple[float, str]] = []
@@ -514,12 +519,13 @@ class AutoSync:
                     else:
                         due.setdefault((code, season), []).insert(0, {**target, "moment": "ht"})
                     continue
-                full_time = k + matchclock.FULL_TIME
+                full_time = k + matchclock.FT_READ
                 if now < full_time:
                     later.append((full_time, f"full-time event data of {f.home} v {f.away}"))
                     continue
-                if note.get("moment") == "ft" and now - float(note.get("at", 0)) < FT_RETRY:
-                    later.append((float(note["at"]) + FT_RETRY, f"full-time event data of {f.home} v {f.away}, again"))
+                retry = ft_retry(k, now)
+                if note.get("moment") == "ft" and now - float(note.get("at", 0)) < retry:
+                    later.append((float(note["at"]) + retry, f"full-time event data of {f.home} v {f.away}, again"))
                     continue
                 due.setdefault((code, season), []).append({**target, "moment": "ft"})
         first = sorted(due.items(), key=lambda item: not any(t["moment"] == "ht" for t in item[1]))   # the break is short: half time goes first

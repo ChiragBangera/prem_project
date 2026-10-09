@@ -11,7 +11,7 @@ from app.events import ledger
 from app.insights.briefing import recent_matches
 from app.insights.core import dicts, rank
 from app.insights.match import match_insights
-from app.sync.autosync import FT_GIVE_UP, FT_RETRY
+from app.sync.autosync import FT_GIVE_UP, ft_retry
 from app.workbench.part import Part
 
 
@@ -124,12 +124,13 @@ class MatchesPage(Part):
         followed = wb.auto.followed(code, s, fixture) if events_on else None
         nxt = None
         if events_on and kickoff is not None and not (read and read["final"]):
-            ht, ft = kickoff + matchclock.HT_READ, kickoff + matchclock.FULL_TIME
+            ht, ft = kickoff + matchclock.HT_READ, kickoff + matchclock.FT_READ
             if followed and wb.auto._half_time_wanted(note) and now < kickoff + matchclock.HT_READ_LAST:
                 nxt = {"at": max(ht if note.get("moment") != "ht" else float(note.get("at", now)) + matchclock.HT_RETRY, now), "moment": "ht"}
             elif now < kickoff + FT_GIVE_UP:
-                nxt = {"at": max(ft, now) if note.get("moment") != "ft" else max(now, float(note.get("at", now)) + FT_RETRY), "moment": "ft"}
-        return {"scope": scope, "fixture": self.card(fixture, {}, {}), "phase": matchclock.phase(fixture, now), "now": now,
+                nxt = {"at": max(ft, now) if note.get("moment") != "ft" else max(now, float(note.get("at", now)) + ft_retry(kickoff, now)), "moment": "ft"}
+        phase = "full_time" if read and read["final"] and not fixture.played else matchclock.phase(fixture, now)   # the page beats the clock
+        return {"scope": scope, "fixture": self.card(fixture, {}, {}), "phase": phase, "now": now,
                 "events_on": events_on, "followed": followed, "favourite": {"home": wb.favourites.follows(code, fixture.home), "away": wb.favourites.follows(code, fixture.away)},
                 "read": read, "next_read": nxt}
 

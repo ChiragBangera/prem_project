@@ -22,18 +22,20 @@ def fx(dt: str, played: bool = False, fid: int = 1) -> Fixture:
     return Fixture(id=fid, dt=dt, home="Reds", away="Blues", home_short="RED", away_short="BLU", played=played)
 
 
-def test_a_table_read_before_a_match_is_due_again_at_its_full_time():
+def test_a_table_read_before_a_match_is_due_again_at_its_90th_minute_of_play():
     due = M.league_due([fx("2026-10-10 14:00:00"), fx("2026-10-17 14:00:00", fid=2)], at("2026-10-10 09:00:00"))
-    assert due.why == "full_time" and due.fixture.id == 1 and due.at == at("2026-10-10 14:00:00") + M.FULL_TIME
+    assert due.why == "full_time" and due.fixture.id == 1 and due.at == at("2026-10-10 14:00:00") + M.UNDERSTAT_FIRST == at("2026-10-10 15:45:00")   # 45 + 15 + 45
 
 
-def test_a_finished_match_missing_from_the_table_is_looked_for_often_then_slowly_then_not_at_all():
+def test_a_finished_match_missing_from_the_table_is_looked_for_every_three_minutes_then_slowly_then_not_at_all():
     match = fx("2026-10-10 14:00:00")
-    end = at("2026-10-10 14:00:00") + M.FULL_TIME
-    soon = M.league_due([match], end + 60)
-    assert soon.why == "result" and soon.at == end + 60 + M.RESULT_POLL
-    later = M.league_due([match], end + 7 * 3600)
-    assert later.why == "result" and later.at == end + 7 * 3600 + M.RESULT_POLL_SLOW
+    k = at("2026-10-10 14:00:00")
+    soon = M.league_due([match], k + M.UNDERSTAT_FIRST + 60)
+    assert soon.why == "result" and soon.at == k + M.UNDERSTAT_FIRST + 60 + 3 * 60
+    mid = M.league_due([match], k + 5 * 3600)                      # three hours of looking every three minutes are over
+    assert mid.why == "result" and mid.at == k + 5 * 3600 + M.RESULT_POLL_MID
+    later = M.league_due([match], k + 8 * 3600)
+    assert later.why == "result" and later.at == k + 8 * 3600 + M.RESULT_POLL_SLOW
     gone = M.league_due([match], at("2026-10-13 14:00:00"))      # three days on: postponed; only the twice-daily check is left
     assert gone.why == "quiet" and gone.at == at("2026-10-13 14:00:00") + M.QUIET
 
@@ -61,17 +63,17 @@ def test_the_repository_reads_a_live_table_after_full_time_not_every_few_hours(s
 
     async def go():
         await repo.league("EPL", 2025)
-        for hour in ("09", "12", "15", "16"):                 # a whole matchday morning and the match itself: nothing to read
-            clock.now = at(f"2025-09-06 {hour}:30:00")
+        for when in ("09:30", "12:30", "15:30", "16:44"):      # a whole matchday morning and the match itself, up to its 90th minute: nothing
+            clock.now = at(f"2025-09-06 {when}:00")
             await repo.league("EPL", 2025)
         assert len(provider.calls) == 1
-        clock.now = at("2025-09-06 15:00:00") + M.FULL_TIME + 1  # the final whistle: look
+        clock.now = at("2025-09-06 15:00:00") + M.UNDERSTAT_FIRST + 1   # the 90th minute of play: look
         await repo.league("EPL", 2025)
         assert len(provider.calls) == 2
-        clock.advance(10 * 60)
+        clock.advance(2 * 60)
         await repo.league("EPL", 2025)
-        assert len(provider.calls) == 2                       # not listed yet: look again in twenty minutes, not before
-        clock.advance(11 * 60)
+        assert len(provider.calls) == 2                       # not listed yet: look again in three minutes, not before
+        clock.advance(61)
         await repo.league("EPL", 2025)
         assert len(provider.calls) == 3
         due = repo.league_due("EPL", 2025)
@@ -90,10 +92,10 @@ def test_the_updater_sleeps_until_the_next_full_time_and_says_so(tmp_path):
         try:
             await wb.auto.run_once()
             when, why = wb.auto.next_wake()
-            assert when == at("2025-09-06 15:00:00") + M.FULL_TIME                # hours away, not fifteen minutes
-            assert why.startswith("full time of ") and why.endswith("(Premier League)")
+            assert when == at("2025-09-06 15:00:00") + M.UNDERSTAT_FIRST          # hours away, not fifteen minutes
+            assert why.startswith("Understat's result of ") and why.endswith("(Premier League), from the 90th minute")
             clock.now = at("2025-09-06 07:00:00")
-            assert wb.auto.next_wake()[0] == at("2025-09-06 15:00:00") + M.FULL_TIME     # ten hours away: no wake-up in between
+            assert wb.auto.next_wake()[0] == at("2025-09-06 15:00:00") + M.UNDERSTAT_FIRST   # hours away: no wake-up in between
         finally:
             await wb.close()
 
