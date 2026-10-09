@@ -134,6 +134,10 @@ While the app runs, the updater sleeps until the **next due moment** and then ru
 
 | Situation | Handling |
 | --- | --- |
+| WhoScored is read while a match is being played (its list shows the score during play too) | The list's status decides what is finished (6 is full time), and the page says what it is (`statusCode`, `elapsed`). A page read before the final whistle goes to `ws_live`, never `ws_raw`: season totals, links and the cache clean-up never see it, and soccerdata's own copy of it is not handed back (the match is read from the site again). The full-time read replaces it |
+| A fixture moves (a new kickoff) or WhoScored's match list does not have it yet | A matchday read finds the match by kickoff (within three hours) and clubs; if one is missing the list is read again once. Not found three times: left to catching up. Understat's table is read twice a day even with nothing in sight, so a new date is picked up |
+| Two matches of a league kick off at the same minute | A matchday read takes a match only when the clubs' names agree, or when it is the only match at that time; it never guesses between two |
+| A match never gets a result (postponed, abandoned) | Its table is looked at every 20 minutes for six hours after full time, every 2 hours until two days after kickoff, then no more; matchday reads stop four hours after kickoff |
 | A request fails or times out | The stored copy is served, flagged stale; the failure is recorded and retried with a growing delay; other work continues |
 | A match page is read too soon after the whistle | Stored as not final; looked at again after 36 hours (or the open-match window) |
 | The event fetcher is killed mid-run | Status turns "stalled" after ten minutes; matches already stored remain; the next run skips them |
