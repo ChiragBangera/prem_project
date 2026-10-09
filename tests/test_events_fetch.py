@@ -8,6 +8,7 @@ import math
 import pytest
 
 from app.data.store import Store
+from app.events import raw as R
 from app.events.fetch import FetchUnavailable, _finished, find_browser, make_reader, sync_season
 from app.events.store import EventStore
 
@@ -37,24 +38,34 @@ def match_events(pid=1):
 class FakeReader:
     """Stands in for soccerdata's reader: it "downloads" a match by writing its raw page into the download cache, as the real one does."""
 
-    def __init__(self, games, data_dir, broken=(), empty=()):
+    def __init__(self, games, data_dir, broken=(), empty=(), half=()):
         self.games, self.broken, self.empty = games, set(broken), set(empty)
-        self.event_calls, self.schedule_calls = [], []
+        self.half = dict.fromkeys(half, 1)      # game id -> how many more reads still find the match at half time
+        self.event_calls, self.schedule_calls, self.live_calls = [], [], []
         self.data_dir = data_dir / "fake-cache"
 
     def read_schedule(self, force_cache=False):
         self.schedule_calls.append(force_cache)
         return Frame([{**g, "league": "ENG-Premier League", "season": "2526"} for g in self.games])
 
-    def read_events(self, match_id, output_fmt=None, force_cache=False):
-        assert force_cache, "finished matches are final: never let soccerdata re-download the season's match list per match"
+    def read_events(self, match_id, output_fmt=None, force_cache=False, live=False):
+        assert force_cache, "never let soccerdata re-download the season's match list per match"
         assert output_fmt is None, "only the page is wanted: the app keeps the whole raw document, not a DataFrame"
         self.event_calls.append(match_id)
+        if live:
+            self.live_calls.append(match_id)
         if match_id in self.broken:
             raise RuntimeError("blocked")
         folder = self.data_dir / "events" / "ENG-Premier League_2526"
         folder.mkdir(parents=True, exist_ok=True)
-        (folder / f"{match_id}.json").write_text("null" if match_id in self.empty else json.dumps(raw_doc(passes=1)))
+        page = folder / f"{match_id}.json"
+        if page.is_file() and not live:
+            return                                   # soccerdata hands back the copy it kept, whatever it holds
+        if self.half.get(match_id):
+            self.half[match_id] -= 1
+            page.write_text(json.dumps({**raw_doc(passes=1), "elapsed": "HT", "statusCode": 3}))
+            return
+        page.write_text("null" if match_id in self.empty else json.dumps(raw_doc(passes=1)))
 
 
 def raw_doc(passes=1):
@@ -246,3 +257,28 @@ def test_budget_limits_are_clamped_and_old_days_are_dropped(tmp_path):
         assert list(store.kv_prefix("budget:understat:")) == [f"budget:understat:{b.day()}"] and b.used("understat") == 1
     finally:
         store.close()
+
+
+def test_a_score_in_the_match_list_is_not_full_time_when_the_list_says_the_match_is_in_play():
+    rows = [{"game_id": 1, "home_score": 1, "away_score": 0, "status": 3}, {"game_id": 2, "home_score": 2, "away_score": 2, "status": 6},
+            {"game_id": 3, "home_score": math.nan, "away_score": math.nan, "status": 1}, {"game_id": 4, "home_score": 0, "away_score": 0}]
+    assert [r["game_id"] for r in _finished(rows)] == [2, 4]   # without a status (an older list) the score still decides
+
+
+def test_a_page_read_at_half_time_is_provisional_and_the_next_read_goes_back_to_the_site(events, tmp_path):
+    reader = reader_for(tmp_path, 2, half=[100])
+    status, lines = run(events, reader, tmp_path)
+    assert status["done"] == 1 and events.match_ids("EPL", 2025) == [101]       # the half-time page is not a stored match ...
+    assert events.season("EPL", 2025)["players"][1]["matches"] == 1              # ... and adds nothing to the season
+    live = events.live("EPL", 2025, 100)
+    assert live is not None and live["doc"]["elapsed"] == "HT" and live["gold"]["players"]       # it is kept apart, its numbers worked out on the spot
+    assert any("not finished yet (HT)" in line for line in lines) and L.failures(events.store, "EPL", 2025) == {}   # not a failure
+    run(events, reader, tmp_path)
+    assert reader.live_calls == [100]                                            # soccerdata's half-time copy is not handed back: read again
+    assert events.match_ids("EPL", 2025) == [100, 101] and events.live("EPL", 2025, 100) is None   # the full-time page replaced it
+
+
+def test_match_state_reads_the_page_itself():
+    assert R.match_state({"statusCode": 6, "elapsed": "FT"}) == "final" and R.match_state({"elapsed": "FT"}) == "final"
+    assert R.match_state({"statusCode": 3, "elapsed": "HT"}) == "live" and R.match_state({"statusCode": 2, "elapsed": "67"}) == "live"
+    assert R.match_state({}) == "final"                                          # pages stored before these checks were all read after the match

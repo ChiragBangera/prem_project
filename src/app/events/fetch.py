@@ -124,11 +124,32 @@ def _records(frame) -> list[dict]:
     return frame.reset_index().to_dict("records")
 
 
-def _finished(rows: list[dict]) -> list[dict]:
-    def scored(v):
-        return v is not None and not (isinstance(v, float) and math.isnan(v))
+def _known(v) -> bool:
+    return v is not None and not (isinstance(v, float) and math.isnan(v))
 
-    return [r for r in rows if scored(r.get("home_score")) and scored(r.get("away_score"))]
+
+def _finished(rows: list[dict]) -> list[dict]:
+    """The matches WhoScored's match list calls finished. A score alone is not enough: the list shows the score while a match is in play,
+    so where it says the match's status (6 is full time), that decides."""
+    def done(r: dict) -> bool:
+        if _known(r.get("status")):
+            return int(r["status"]) == R.FINAL_STATUS
+        return _known(r.get("home_score")) and _known(r.get("away_score"))
+
+    return [r for r in rows if done(r)]
+
+
+def _read_page(reader, row: dict) -> dict | None:
+    """Read one match through the browser and return its page.
+
+    soccerdata keeps every page it reads and, by default, hands back that copy next time. A copy read before the final whistle would then
+    come back forever, so when the copy on disk is not a finished match the page is read from the site again (``live``)."""
+    path = _page_path(reader, row)
+    cached = R.read_match_file(path) if path.is_file() else None
+    stale = path.is_file() and (cached is None or R.match_state(cached) != "final")
+    # force_cache: for the current season soccerdata otherwise re-downloads the whole match list on every call (minutes each time)
+    reader.read_events(match_id=int(row["game_id"]), output_fmt=None, force_cache=True, live=stale)
+    return R.read_match_file(path)
 
 
 def _page_path(reader, row: dict) -> Path:
@@ -194,15 +215,17 @@ def sync_season(
             label = f"{match.get('home_team', '?')} v {match.get('away_team', '?')}"
             started = time.monotonic()
             try:
-                # force_cache: for the current season soccerdata otherwise re-downloads the whole match list on every call (minutes each time);
-                # a finished match never changes, and we only ask for finished ones
-                reader.read_events(match_id=gid, output_fmt=None, force_cache=True)
-                doc = R.read_match_file(_page_path(reader, match))
-                if doc is None or not events.ingest(league, season, gid, doc, fetched_at=time.time()):
+                doc = _read_page(reader, match)
+                state = events.ingest(league, season, gid, doc, fetched_at=time.time()) if doc is not None else None
+                if doc is None or state is None:
                     raise ValueError("no events returned")
-                done, consecutive = done + 1, 0
-                L.forget(events.store, league, season, gid)
-                log(f"  [{i}/{len(todo)}] {label}: stored")
+                consecutive = 0
+                if state == "final":
+                    done += 1
+                    L.forget(events.store, league, season, gid)
+                    log(f"  [{i}/{len(todo)}] {label}: stored")
+                else:   # WhoScored's list called it finished but its page does not yet: kept as provisional, read again later
+                    log(f"  [{i}/{len(todo)}] {label}: not finished yet ({doc.get('elapsed') or 'in play'}), kept as provisional")
             except KeyboardInterrupt:
                 raise
             except Exception as exc:  # noqa: BLE001 - one bad match must not stop the run (it is counted and logged below); a wall of them means we are blocked

@@ -56,6 +56,7 @@ def test_pages_soccerdata_left_in_its_download_cache_are_adopted_without_the_net
     folder.mkdir(parents=True)
     (folder / "1903117.json").write_text(json.dumps(raw_doc(passes=30)))
     (folder / "1903118.json").write_text("null")                       # soccerdata writes null for a page it could not read
+    (folder / "1903119.json").write_text(json.dumps({**raw_doc(passes=30), "elapsed": "HT", "statusCode": 3}))   # read at half time
     (folder / "notes.txt").write_text("ignored")
     other = tmp_path / "soccerdata" / "data" / "WhoScored" / "events" / "XXX-Unknown League_2526"
     other.mkdir()
@@ -63,12 +64,12 @@ def test_pages_soccerdata_left_in_its_download_cache_are_adopted_without_the_net
     store = Store(tmp_path / "s.sqlite")
     try:
         result = R.import_soccerdata_cache(store, tmp_path)
-        assert result == {"imported": 1, "already": 0, "rejected": 1, "files": 2}
+        assert result == {"imported": 1, "already": 0, "rejected": 1, "provisional": 1, "files": 3}   # a half-time copy is not adopted
         assert R.RawStore(store).ids("EPL", 2025) == [1903117]
         assert R.import_soccerdata_cache(store, tmp_path)["imported"] == 0   # idempotent
         assert R.reclaimable_bytes(store, tmp_path) > 0
         freed = R.reclaim(store, tmp_path)                                    # the duplicate is safe to delete: the store has it
-        assert freed["deleted"] == 1 and not (folder / "1903117.json").exists() and (folder / "1903118.json").exists()
+        assert freed["deleted"] == 1 and not (folder / "1903117.json").exists() and (folder / "1903118.json").exists() and (folder / "1903119.json").exists()
         assert R.RawStore(store).get("EPL", 2025, 1903117) is not None
     finally:
         store.close()

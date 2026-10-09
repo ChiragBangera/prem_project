@@ -278,7 +278,7 @@ def cmd_events_import(args: argparse.Namespace) -> int:
     store = Store(settings.db_path)
     try:
         result = R.import_soccerdata_cache(store, settings.data_dir, log=print)
-        print(f"{result['imported']} matches imported, {result['already']} already stored, {result['rejected']} unusable, from {result['files']} cached pages.")
+        print(f"{result['imported']} matches imported, {result['already']} already stored, {result['rejected']} unusable, {result['provisional']} read before full time (left to be read again), from {result['files']} cached pages.")
         rebuilt = EventStore(store).ensure_current(progress=lambda a, b: print(f"  derived {a} of {b}"))
         print(f"Derived layers: {rebuilt['rebuilt']} rebuilt, {rebuilt['skipped']} already current.")
         print(f"The download cache's copies can now be deleted to reclaim {R.reclaimable_bytes(store, settings.data_dir) / 1e6:.0f} MB (prem events reclaim --yes).")

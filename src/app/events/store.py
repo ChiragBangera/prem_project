@@ -47,17 +47,28 @@ class EventStore:
 
     # ------------------------------------------------------------------ writing a match
 
-    def ingest(self, league: str, season: int, game_id: int, doc: dict, *, fetched_at: float | None = None) -> bool:
-        """Store a raw match and derive silver and gold from it at once. False if the document is not a usable match."""
+    def ingest(self, league: str, season: int, game_id: int, doc: dict, *, fetched_at: float | None = None) -> str | None:
+        """Store a raw match and derive silver and gold from it at once: ``"final"``. A page read before the final whistle is kept apart as
+        provisional and derives nothing (season totals never see half a match): ``"live"``. None if the document is not a usable match."""
         # the first match into a store that holds none: it, and every match added after it, is derived by this code, so say so
         # (otherwise the next start would take a store that was never out of date for one that needs rebuilding)
         first = self.store.kv_get(DERIVED_MARK) is None and not self.raw.seasons()
-        if not self.raw.put(league, season, game_id, doc, fetched_at=fetched_at):
-            return False
+        state = self.raw.put(league, season, game_id, doc, fetched_at=fetched_at)
+        if state != "final":
+            return state
         self.derive(league, season, game_id, doc)
         if first:
             self.store.kv_set(DERIVED_MARK, self._derived_versions())
-        return True
+        return state
+
+    def live(self, league: str, season: int, game_id: int | str) -> dict | None:
+        """A match read before the final whistle: its page, when it was read, and its counters worked out on the spot (never stored)."""
+        found = self.raw.live(league, season, game_id)
+        if found is None:
+            return None
+        doc, fetched_at = found
+        silver = SV.parse_match(doc, league=league, season=season, game_id=int(game_id))
+        return {"doc": doc, "fetched_at": fetched_at, "gold": C.derive_match(SV.Match(silver)) if silver is not None else None}
 
     def derive(self, league: str, season: int, game_id: int, doc: dict | None = None) -> bool:
         """(Re)build silver and gold for one stored match from its raw document."""
@@ -77,6 +88,7 @@ class EventStore:
     # ------------------------------------------------------------------ reading a match
 
     def has_match(self, league: str, season: int, game_id: int | str) -> bool:
+        """Whether the finished match is stored (a provisional half-time page does not count)."""
         return self.raw.has(league, season, game_id)
 
     def match_ids(self, league: str, season: int) -> list[int]:
