@@ -54,6 +54,7 @@ from app.workbench.pages.scout import ScoutPage
 from app.workbench.pages.search import SearchPage
 from app.workbench.pages.team import TeamPage
 from app.workbench.seasons import Seasons
+from app.workbench.favourites import Favourites
 from app.workbench.shortlist import Shortlist
 
 log = logging.getLogger("prem.workbench")
@@ -102,6 +103,7 @@ class Workbench:
         self.links = EventLinks(self)
         self.datasets = Datasets(self)
         self.shortlist = Shortlist(self)
+        self.favourites = Favourites(self)
         self.diagnostics = Diagnostics(self)
         # one part per page
         self.briefing = BriefingPage(self)
@@ -116,7 +118,7 @@ class Workbench:
         self.data = DataPage(self)
 
     def _refresh_demo_world(self) -> None:
-        """The demo world is made from code, so a copy stored by an older version of it would disagree with this one: start it afresh. Your shortlist stays."""
+        """The demo world is made from code, so a copy stored by an older version of it would disagree with this one: start it afresh. Your shortlist and favourite teams stay."""
         if self.store.kv_get("demo:world") == WORLD_VERSION:
             return
         self.store.clear()

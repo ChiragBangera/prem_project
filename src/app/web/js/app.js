@@ -1,7 +1,7 @@
 // Application shell: rail navigation, top bar, routing, theme, command palette.
 import { html, useEffect, useRef, useState } from "./lib/html.js";
 import { Icon } from "./lib/icons.js";
-import { ui, metaStore, pending, shortlistStore, useStore } from "./lib/store.js";
+import { ui, metaStore, pending, shortlistStore, favouritesStore, useStore } from "./lib/store.js";
 import { useApi } from "./lib/api.js";
 import { compile, match, useLocation, href, navigate, entryState, stampEntry, pushEntry } from "./lib/router.js";
 import { TooltipHost } from "./lib/tooltip.js";
@@ -180,6 +180,7 @@ export function App() {
   const metaQ = useApi("/api/meta", null, { pollMs: 60000, staleMs: 30000 });
   const catQ = useApi("/api/catalog", null, { staleMs: 3600000 });
   const shortlistQ = useApi("/api/shortlist", null, { staleMs: 5000 });
+  const favouritesQ = useApi("/api/favourites", null, { staleMs: 5000 });
   const meta = metaQ.data;
   const [paletteOpen, setPaletteOpen] = useState(false);
   const mainRef = useRef(null);
@@ -187,6 +188,7 @@ export function App() {
   useEffect(() => applyTheme(theme), [theme]);
   useEffect(() => { if (metaQ.data || catQ.data) metaStore.set({ meta: metaQ.data, catalog: catQ.data, error: null }); }, [metaQ.data, catQ.data]);
   useEffect(() => { if (shortlistQ.data) shortlistStore.set({ items: shortlistQ.data.items || [], loaded: true }); }, [shortlistQ.data]);
+  useEffect(() => { if (favouritesQ.data) favouritesStore.set({ teams: favouritesQ.data.teams || [], loaded: true }); }, [favouritesQ.data]);
 
   // keyboard: Cmd/Ctrl+K or "/" opens search
   useEffect(() => {

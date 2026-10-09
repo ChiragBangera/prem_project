@@ -4,7 +4,7 @@ import { useApi } from "../lib/api.js";
 import { useScope, useMeta } from "../lib/scope.js";
 import { navigate, setQuery, useLocation } from "../lib/router.js";
 import { formation, nf, ordinal, plural, signed } from "../lib/format.js";
-import { Async, Crest, DataNotices, Form, PageHead, Select, Stat, Tabs, useDocumentTitle, teamHref } from "../ui/common.js";
+import { Async, Crest, DataNotices, FavouriteButton, Form, PageHead, Select, Stat, Tabs, useDocumentTitle, teamHref } from "../ui/common.js";
 import { rememberVisit } from "../ui/palette.js";
 import { buildContext } from "../ui/explore/model.js";
 import Overview from "./team-overview.js";
@@ -42,7 +42,7 @@ function TeamView({ d, team, tab }) {
 
   return html`
     <${PageHead} lead=${html`<${Crest} team=${t.team} short=${t.short} size=${46} />`} eyebrow=${`${scope.league_name} · ${scope.label}`} title=${t.team} sub=${sub}
-      actions=${html`<${Select} compact label="Compare with another team" value="" options=${[{ value: "", label: "Compare with…" }, ...others]} onChange=${(v) => v && navigate("/compare", { mode: "teams", a: team, b: v })} />`} />
+      actions=${html`<${FavouriteButton} league=${scope.league} team=${team} /><${Select} compact label="Compare with another team" value="" options=${[{ value: "", label: "Compare with…" }, ...others]} onChange=${(v) => v && navigate("/compare", { mode: "teams", a: team, b: v })} />`} />
     <${DataNotices} scope=${scope} meta=${dm} />
     <div class="tiles">
       <${Stat} label="Position" value=${ordinal(t.rank)} sub=${`${ordinal(t.rank_xpts)} on expected points`} />

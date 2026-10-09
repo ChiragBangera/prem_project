@@ -4,7 +4,8 @@ import { api, invalidate, useApi } from "../lib/api.js";
 import { useMeta, leagueName } from "../lib/scope.js";
 import { bytes, cls, plural, relTime } from "../lib/format.js";
 import { Icon } from "../lib/icons.js";
-import { Async, Badge, Button, Card, Notice, PageHead, Select, Switch, useDocumentTitle } from "../ui/common.js";
+import { Async, Badge, Button, Card, Notice, PageHead, Select, Switch, toggleFavourite, useDocumentTitle } from "../ui/common.js";
+import { favouritesStore, useStore } from "../lib/store.js";
 import { DataTable } from "../ui/table.js";
 import { Birthdates, CheckCard, Enrichment, EventData, Progress, SyncCard } from "./data-tools.js";
 import { EventReview, FetchControls, FetchPlan } from "./data-events.js";
@@ -24,8 +25,8 @@ function until(ts) {
 /** "16:52", or "Sat 16:52" when it is not today: a moment in the reader's own time zone. */
 function clockTime(ts) {
   const d = new Date(ts * 1000);
-  const time = d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
-  return d.toDateString() === new Date().toDateString() ? time : `${d.toLocaleDateString(undefined, { weekday: "short" })} ${time}`;
+  const time = d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+  return d.toDateString() === new Date().toDateString() ? time : `${d.toLocaleDateString("en-GB", { weekday: "short" })} ${time}`;
 }
 
 /** What the updater waits for: "Next: full time of Arsenal v Chelsea (Premier League), at 16:52 (in 3 h)." */
@@ -59,7 +60,7 @@ function AutoCard({ auto, mode, reload }) {
         : `${auto.next_at ? nextLine(auto) : last?.finished ? "The next check happens shortly after the app starts." : "The first check happens shortly after the app starts."}${last?.finished ? ` Last cycle finished ${relTime(nowSec() - last.finished)}: ${plural(fetched, "match page")} fetched${last.errors?.length ? `, ${plural(last.errors.length, "problem")}` : ", no problems"}${last.backlog ? `, ${last.backlog} still to fetch (carried on next cycle)` : ""}.` : ""}`;
   const eventsOn = Boolean(ev.enabled);
   const evLeagues = prefs.events.leagues;
-  return html`<${Card} title="Automatic updates" sub="While the app is open it follows the fixture list and wakes up only when a match can have changed something: shortly after each full time, and while a result or its xG is still coming. A match page is fetched once and kept for good; finished seasons are never fetched again."
+  return html`<${Card} title="Automatic updates" sub="While the app is open it follows the fixture list and wakes up only when a match can have changed something: shortly after each full time (and at half time for the matches you follow), and while a result or its xG is still coming. A match page is fetched once and kept for good; finished seasons are never fetched again."
     actions=${html`<${Button} icon="refresh" disabled=${busy || !auto.auto || !prefs.enabled || auto.running} onClick=${runNow} title="Run a cycle now instead of waiting for the next one">Update now</${Button}>`}>
     <div class="stack" style=${{ "--gap": "16px" }}>
       <div class="row between wrap" style=${{ gap: "12px" }}>
@@ -76,7 +77,7 @@ function AutoCard({ auto, mode, reload }) {
         </div>
         <div class="stack" style=${{ "--gap": "8px" }}>
           <span class="label">Event data (passes, duels, carries, maps)</span>
-          <${Switch} checked=${eventsOn} onChange=${(v) => save({ events: { enabled: v } })}>Fetch event data for finished matches</${Switch}>
+          <${Switch} checked=${eventsOn} onChange=${(v) => save({ events: { enabled: v } })}>Fetch event data: every match at full time, and older ones bit by bit</${Switch}>
           <span class="xsmall muted">${prefs.events.enabled === null ? "On because event data is already stored here. " : ""}Slow by design (about 15 seconds a match), so it runs in a separate process, a few dozen matches at a time, and carries on from where it stopped.</span>
           ${ev.process ? html`<span class="small"><b>Fetching now:</b> ${ev.process}</span>` : null}
         </div>
@@ -86,10 +87,22 @@ function AutoCard({ auto, mode, reload }) {
           <div class="chipgroup">${["EPL", "La_liga", "Bundesliga", "Serie_A", "Ligue_1"].map((l) => html`<button type="button" key=${l} class="chip" aria-pressed=${String(evLeagues.includes(l))} onClick=${() => { const next = evLeagues.includes(l) ? evLeagues.filter((x) => x !== l) : [...evLeagues, l]; if (next.length) save({ events: { leagues: next } }); }}>${leagueNames[l]}</button>`)}</div></div>
         <div class="stack" style=${{ "--gap": "6px" }}><span class="label">Event seasons</span>
           <${Select} compact label="Event seasons" value=${String(prefs.events.seasons_back)} options=${[0, 1, 2, 3].map((n) => ({ value: String(n), label: n === 0 ? "This season only" : `This and the previous ${n === 1 ? "season" : `${n} seasons`}` }))} onChange=${(v) => save({ events: { seasons_back: Number(v) } })} /></div>
-      </div>` : null}
+      </div>
+      <${Favourites} />` : null}
       ${!ev.capability.available ? html`<${Notice} tone="warn" icon="alert"><b>Event data cannot be fetched on this computer.</b> ${ev.capability.reason} ${ev.capability.hint || ""}</${Notice}>` : html`<p class="xsmall muted">Event fetching uses the browser found at <code>${ev.capability.browser}</code>. It reads WhoScored's public pages for personal use only, which that site's terms may not allow, so it only runs while the switch above is on.</p>`}
     </div>
   </${Card}>`;
+}
+
+/** The favourite teams, each removable here; a team page's star adds one. */
+function Favourites() {
+  const teams = useStore(favouritesStore, (s) => s.teams);
+  return html`<div class="stack" style=${{ "--gap": "6px" }}>
+    <span class="label">Followed at half time</span>
+    ${teams.length ? html`<div class="chipgroup">${teams.map((t) => html`<button type="button" key=${t.league + t.team} class="chip" aria-pressed="true"
+      title=${`Remove ${t.team} from your favourites`} onClick=${() => toggleFavourite(t.league, t.team)}>${t.team} ×</button>`)}</div>` : null}
+    <span class="xsmall muted">${teams.length ? "Your favourite teams, " : "No favourite teams yet: add one with the button on its team page. Followed are your favourite teams "}and any match you open while it is being played: their event data is read during the half-time break as well as at full time. Favourites are kept in the app's database, like the shortlist: restarts, updates and clearing the cache keep them.</span>
+  </div>`;
 }
 
 const leagueNames = { EPL: "Premier League", La_liga: "La Liga", Bundesliga: "Bundesliga", Serie_A: "Serie A", Ligue_1: "Ligue 1" };

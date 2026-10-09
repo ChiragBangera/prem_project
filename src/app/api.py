@@ -57,7 +57,7 @@ class ETagMiddleware:
     an unchanged answer costs a few bytes and no re-parse. Things that must always be live (status, jobs, search) are left alone.
     """
 
-    SKIP = ("/api/data", "/api/health", "/api/search", "/api/shortlist", "/api/docs", "/api/openapi")
+    SKIP = ("/api/data", "/api/health", "/api/search", "/api/shortlist", "/api/favourites", "/api/docs", "/api/openapi")
 
     def __init__(self, app: ASGIApp) -> None:
         self.app = app
@@ -102,6 +102,12 @@ class ShortlistItem(BaseModel):
     team: str = ""
     league: str = "EPL"
     note: str | None = None
+
+
+class FavouriteTeam(BaseModel):
+    league: str
+    team: str
+    favourite: bool = True
 
 
 class SyncRequest(BaseModel):
@@ -299,6 +305,10 @@ def create_app(settings: Settings | None = None, *, provider=None, today: date |
     async def match_players(request: Request, match_id: int, league: str = "EPL", season: str = "auto"):
         return ok(await wb(request).matches.players(match_id, league, season))
 
+    @app.get("/api/match/{match_id}/live")
+    async def match_live(request: Request, match_id: int, league: str = "EPL", season: str = "auto", follow: bool = False):
+        return ok(await wb(request).matches.live(match_id, league, season, follow=follow))
+
     @app.get("/api/match/{match_id}")
     async def match(request: Request, match_id: int, league: str = "EPL", season: str = "auto"):
         return ok(await wb(request).matches.report(match_id, league, season))
@@ -319,6 +329,14 @@ def create_app(settings: Settings | None = None, *, provider=None, today: date |
     @app.delete("/api/shortlist/{player_id}")
     async def shortlist_delete(request: Request, player_id: int):
         return ok({"items": wb(request).shortlist.remove(player_id)})
+
+    @app.get("/api/favourites")
+    async def favourites(request: Request):
+        return ok({"teams": wb(request).favourites.teams()})
+
+    @app.put("/api/favourites/teams")
+    async def favourite_team(request: Request, item: FavouriteTeam):
+        return ok({"teams": wb(request).favourites.set(item.league, item.team, item.favourite)})
 
     @app.get("/api/data/status")
     async def data_status(request: Request):

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { kickoff, scorerLines, shortName, verdict } from "../../src/app/web/js/lib/matchfmt.js";
+import { kickoff, phaseOf, scorerLines, shortName, verdict } from "../../src/app/web/js/lib/matchfmt.js";
 import { blank, direction, fmtMetric, fmtPct } from "../../src/app/web/js/lib/metricfmt.js";
 import { formation } from "../../src/app/web/js/lib/format.js";
 
@@ -69,4 +69,12 @@ test("a formation is written with dashes", () => {
   assert.equal(formation("4231"), "4-2-3-1");
   assert.equal(formation("433"), "4-3-3");
   assert.equal(formation(null), null);
+});
+
+test("an unplayed fixture's phase follows the clock from its kickoff, as the server's match clock does", () => {
+  const m = { played: false, utc: "2026-10-10T14:00:00Z" };
+  const at = (minutes) => Date.parse("2026-10-10T14:00:00Z") + minutes * 60000;
+  assert.deepEqual([-5, 10, 50, 70, 115].map((x) => phaseOf(m, at(x))), ["upcoming", "first_half", "half_time", "second_half", "full_time"]);
+  assert.equal(phaseOf({ ...m, played: true }, at(10)), "played");
+  assert.equal(phaseOf({ played: false }, at(10)), "upcoming");    // no kickoff time: nothing to say
 });

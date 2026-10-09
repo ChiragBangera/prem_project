@@ -1,5 +1,5 @@
 // Match report: the score, what the chances say it should have been, and how the game unfolded.
-import { html } from "../lib/html.js";
+import { html, useEffect, useState } from "../lib/html.js";
 import { useApi } from "../lib/api.js";
 import { useScope } from "../lib/scope.js";
 import { dateLong, formation, nf, timeOf, weekday } from "../lib/format.js";
@@ -14,22 +14,10 @@ import { XgRace } from "../charts/race.js";
 import { Frame, AxisY, niceTicks, scaleBand, scaleLinear } from "../charts/core.js";
 import { tooltip } from "../lib/tooltip.js";
 import { scorerLines } from "../ui/matchcard.js";
+import { LiveView, Tug } from "../ui/matchlive.js";
 
 const RESULT = { Goal: "Goal", SavedShot: "Saved", BlockedShot: "Blocked", MissedShots: "Off target", ShotOnPost: "Hit the post", OwnGoal: "Own goal" };
 const SITUATION = { OpenPlay: "Open play", FromCorner: "Corners", SetPiece: "Set pieces", DirectFreekick: "Free kicks", Penalty: "Penalties" };
-
-/** A tug-of-war row: home value grows left, away value grows right. */
-function Tug({ label, home, away, format = (v) => String(v), inverse = false }) {
-  const total = (home + away) || 1;
-  const homeBetter = inverse ? home < away : home > away;
-  const awayBetter = inverse ? away < home : away > home;
-  return html`<div class="tug">
-    <b class=${"num " + (homeBetter ? "lead" : "")}>${format(home)}</b>
-    <div class="tug-mid"><span class="tug-label">${label}</span>
-      <span class="tug-bars"><i class="h" style=${{ width: (home / total) * 100 + "%" }}></i><i class="a" style=${{ width: (away / total) * 100 + "%" }}></i></span></div>
-    <b class=${"num " + (awayBetter ? "lead" : "")}>${format(away)}</b>
-  </div>`;
-}
 
 function Buckets({ b, homeShort, awayShort }) {
   const max = Math.max(0.2, ...b.home, ...b.away);
@@ -182,7 +170,14 @@ function MatchView({ d }) {
 export default function MatchPage({ params }) {
   const { league, season } = useScope();
   const id = Number(params.id);
-  const q = useApi(`/api/match/${id}`, { league, season });
-  useDocumentTitle("Match report");
-  return html`<${Async} q=${q}>${(d) => html`<${MatchView} d=${d} />`}</${Async}>`;
+  // Where the match is first: a match Understat has not listed yet (being played, or just finished) has no report, only what WhoScored's
+  // page said at half time or full time. Asking with follow=1 tells the updater someone is watching it (read at half time too).
+  const [unlisted, setUnlisted] = useState(false);   // asked again every minute only while Understat has not listed the match
+  const live = useApi(`/api/match/${id}/live`, { league, season, follow: 1 }, { staleMs: 0, persist: false, pollMs: unlisted ? 60000 : 0 });
+  const played = live.data?.fixture?.id === id ? Boolean(live.data.fixture.played) : null;   // never the previous match's answer
+  useEffect(() => setUnlisted(played === false), [played]);
+  const q = useApi(`/api/match/${id}`, { league, season }, { enabled: played === true });
+  useDocumentTitle(played === false ? "Live match" : "Match report");
+  if (played === false) return html`<${Async} q=${live}>${(d) => html`<${LiveView} d=${d} />`}</${Async}>`;
+  return html`<${Async} q=${played ? q : live}>${(d) => (played ? html`<${MatchView} d=${d} />` : null)}</${Async}>`;
 }

@@ -6,7 +6,7 @@ import { cls, hueOf, initials, nf, signed } from "../lib/format.js";
 import { tooltip } from "../lib/tooltip.js";
 import { helpFor } from "../lib/help.js";
 import { api, invalidate } from "../lib/api.js";
-import { shortlistStore, useStore } from "../lib/store.js";
+import { favouritesStore, shortlistStore, useStore } from "../lib/store.js";
 
 // ------------------------------------------------------------------ links
 
@@ -355,6 +355,35 @@ export function Star({ player }) {
   const on = items.some((i) => Number(i.id) === Number(player.id));
   return html`<button type="button" class="star" aria-pressed=${String(on)} aria-label=${(on ? "Remove " : "Add ") + player.name + (on ? " from shortlist" : " to shortlist")}
     title=${on ? "On your shortlist" : "Add to shortlist"} onClick=${(e) => { e.preventDefault(); e.stopPropagation(); toggleShortlist(player); }}><${Icon} name="star" /></button>`;
+}
+
+// ------------------------------------------------------------------ favourite teams
+
+/** Whether a team is a favourite (by league and name; without a league, by name in any league). */
+export function useFavourite(team, league) {
+  return useStore(favouritesStore, (s) => s.teams.some((t) => t.team === team && (!league || t.league === league)));
+}
+
+/** Toggles instantly and reconciles with the server; a failed save puts things back. */
+export async function toggleFavourite(league, team) {
+  const before = favouritesStore.get().teams;
+  const on = before.some((t) => t.league === league && t.team === team);
+  favouritesStore.set({ teams: on ? before.filter((t) => !(t.league === league && t.team === team)) : [...before, { league, team }], loaded: true });
+  try {
+    const res = await api.put("/api/favourites/teams", { league, team, favourite: !on });
+    favouritesStore.set({ teams: res.teams, loaded: true });
+    invalidate("/api/favourites");
+  } catch (_) {
+    favouritesStore.set({ teams: before, loaded: true });
+  }
+}
+
+/** "Favourite team" toggle: a favourite's matches are read at half time as well as full time, and marked on the match lists. */
+export function FavouriteButton({ league, team, compact = false }) {
+  const on = useFavourite(team, league);
+  return html`<button type="button" class=${cls("btn fav-btn", compact ? "sm" : "")} aria-pressed=${String(on)}
+    title=${on ? `${team} is a favourite: its matches are read at half time as well as full time. Click to remove.` : `Make ${team} a favourite: its matches are read at half time as well as full time`}
+    onClick=${(e) => { e.preventDefault(); e.stopPropagation(); toggleFavourite(league, team); }}><${Icon} name="star" size="sm" /><span>${on ? "Favourite" : "Add to favourites"}</span></button>`;
 }
 
 // ------------------------------------------------------------------ small formatting helpers for pages

@@ -45,6 +45,21 @@ export function kickoff(m) {
   return { day: `${weekday(m.date)} ${dateShort(m.date)}`, time: m.dt ? m.dt.slice(11, 16) : "", key: m.date, long: `${weekday(m.date)} ${dateShort(m.date)}` };
 }
 
+// The match clock, as app/data/matchclock.py has it: minutes from kickoff to the half-time whistle, the end of the break, and full time.
+export const HALF_TIME = 47, HALF_TIME_END = 62, FULL_TIME = 112;
+
+/** Where an unplayed fixture is by the clock: "upcoming", "first_half", "half_time", "second_half" or "full_time" (finished, waiting for
+ * Understat to list it); "played" once it has. `now` is in milliseconds. */
+export function phaseOf(m, now = Date.now()) {
+  if (m.played) return "played";
+  const k = m.utc ? new Date(m.utc).getTime() : NaN;
+  if (Number.isNaN(k) || now < k) return "upcoming";
+  const min = (now - k) / 60000;
+  return min < HALF_TIME ? "first_half" : min < HALF_TIME_END ? "half_time" : min < FULL_TIME ? "second_half" : "full_time";
+}
+
+export const PHASE_LABEL = { upcoming: "Upcoming", first_half: "Live", half_time: "Half time", second_half: "Live", full_time: "Full time", played: "FT" };
+
 /** One sentence on a result that went against the chances. */
 export function verdict(m) {
   if (!m.flag || m.hxg == null) return null;

@@ -54,3 +54,4 @@ export const ui = createStore({ league: "EPL", season: "auto", theme: "system", 
 export const metaStore = createStore({ meta: null, catalog: null, error: null });
 export const pending = createStore({ n: 0 });
 export const shortlistStore = createStore({ items: [], loaded: false });
+export const favouritesStore = createStore({ teams: [], loaded: false });   // favourite teams: their matches are read at half time too

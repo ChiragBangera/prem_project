@@ -68,6 +68,7 @@ FT_RETRY = 10 * 60.0           # a match WhoScored does not call finished yet at
 FT_GIVE_UP = 4 * 3600.0        # ... until this long after kickoff; after that catching up takes care of it
 NOT_FOUND_TRIES = 3            # a fixture WhoScored's match list does not have is looked for this many times
 CLEARANCE = 15 * 60.0          # catching up does not start a run when a matchday read is due within this (a run takes about ten minutes)
+FOLLOWED_KEY = "autosync:followed"   # live matches someone opened: {"LEAGUE:SEASON:FIXTURE": followed until}
 
 def _days(left: int, per_day: int) -> int | None:
     """About how many days ``left`` takes at ``per_day`` (None when nothing is left or nothing is allowed)."""
@@ -428,11 +429,32 @@ class AutoSync:
                 if (k := matchclock.kickoff(f)) is not None and date.fromtimestamp(k) == today)
         return 2 * n + 10
 
+    def follow(self, league: str, season: int, fixture: int, until: float) -> bool:
+        """Someone opened this match while it is being played: read it at half time too, until ``until`` (the end of its matchday window).
+        Kept in the store, so a restart in the middle of the match keeps following it. True when it was not followed before."""
+        now = self._clock()
+        followed = {k: v for k, v in (self.store.kv_get(FOLLOWED_KEY) or {}).items() if v > now}
+        key = f"{league}:{season}:{int(fixture)}"
+        new = key not in followed
+        followed[key] = max(until, followed.get(key, 0.0))
+        self.store.kv_set(FOLLOWED_KEY, followed)
+        if new:
+            self.wake()
+        return new
+
+    def followed(self, league: str, season: int, fixture) -> str | None:
+        """Why this fixture is followed (``favourite`` or ``opened``), or None."""
+        if self.wb.favourites.follows(league, fixture.home) or self.wb.favourites.follows(league, fixture.away):
+            return "favourite"
+        until = (self.store.kv_get(FOLLOWED_KEY) or {}).get(f"{league}:{season}:{fixture.id}", 0.0)
+        return "opened" if until > self._clock() else None
+
     def matchday(self, now: float) -> tuple[dict[tuple[str, int], list[dict]], list[tuple[float, str]]]:
-        """The matchday reads due now, by league season, and when the next ones fall due (with why).
+        """The matchday reads due now, by league season (half-time reads first), and when the next ones fall due (with why).
 
         Every match of the event leagues is read once WhoScored can call it finished: at its full time (kickoff + 112 minutes), and again
-        every ten minutes while its page still says it is in play, for up to four hours after kickoff."""
+        every ten minutes while its page still says it is in play, for up to four hours after kickoff. A followed match (a favourite team's,
+        or one someone opened while it is being played) is also read during the half-time break."""
         due: dict[tuple[str, int], list[dict]] = {}
         later: list[tuple[float, str]] = []
         for code, season, fixtures in self._event_fixtures():
@@ -443,6 +465,13 @@ class AutoSync:
                 note = ledger.matchday(self.store, code, season, f.id) or {}
                 if note.get("state") == "final" or int(note.get("not_found", 0)) >= NOT_FOUND_TRIES:
                     continue
+                target = {"fixture": f.id, "kickoff": f.dt, "home": f.home, "away": f.away}
+                if note.get("moment") not in ("ht", "ft") and now < k + matchclock.HALF_TIME_END and self.followed(code, season, f):
+                    if now < k + matchclock.HALF_TIME:
+                        later.append((k + matchclock.HALF_TIME, f"half-time event data of {f.home} v {f.away}"))
+                    else:
+                        due.setdefault((code, season), []).insert(0, {**target, "moment": "ht"})
+                    continue
                 full_time = k + matchclock.FULL_TIME
                 if now < full_time:
                     later.append((full_time, f"full-time event data of {f.home} v {f.away}"))
@@ -450,8 +479,9 @@ class AutoSync:
                 if note.get("moment") == "ft" and now - float(note.get("at", 0)) < FT_RETRY:
                     later.append((float(note["at"]) + FT_RETRY, f"full-time event data of {f.home} v {f.away}, again"))
                     continue
-                due.setdefault((code, season), []).append({"fixture": f.id, "kickoff": f.dt, "home": f.home, "away": f.away, "moment": "ft"})
-        return due, later
+                due.setdefault((code, season), []).append({**target, "moment": "ft"})
+        first = sorted(due.items(), key=lambda item: not any(t["moment"] == "ht" for t in item[1]))   # the break is short: half time goes first
+        return dict(first), later
 
     def _backfill(self) -> list[tuple[str, int, int, float]]:
         """League seasons with finished matches whose event data is still missing, in the order they are fetched:
@@ -530,7 +560,8 @@ class AutoSync:
         result["events"]["started"] = label
         if targets:
             names = ", ".join(f"{t['home']} v {t['away']}" for t in targets[:3]) + (f" and {len(targets) - 3} more" if len(targets) > 3 else "")
-            self._note("info", f"reading {names} ({label}) at {'half time' if targets[0]['moment'] == 'ht' else 'full time'}")
+            moments = {t["moment"] for t in targets}
+            self._note("info", f"reading {names} ({label}) at {'half time and full time' if len(moments) > 1 else 'half time' if 'ht' in moments else 'full time'}")
         elif games:
             self._note("info", f"reading {len(games)} match{'es' if len(games) > 1 else ''} of {label} again, as asked")
         else:

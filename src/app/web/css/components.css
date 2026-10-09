@@ -331,6 +331,14 @@ kbd { font: 600 var(--fs-2xs) var(--font); border: 1px solid var(--line-2); bord
 .star:hover { background: var(--surface-3); color: var(--ink); }
 .star[aria-pressed="true"] { color: var(--warn); }
 .star[aria-pressed="true"] .icon { fill: currentColor; }
+.fav-btn { gap: 6px; }
+.sb-col .fav-btn { align-self: flex-start; margin-top: 4px; }
+.sb-col.away .fav-btn { align-self: flex-end; }
+@media (max-width: 720px) { .sb-col .fav-btn, .sb-col.away .fav-btn { align-self: center; } }
+.fav-btn[aria-pressed="true"] { color: var(--warn); border-color: color-mix(in oklab, var(--warn) 45%, var(--line)); }
+.fav-btn[aria-pressed="true"] .icon { fill: currentColor; }
+.mc-fav { display: inline-flex; color: var(--warn); margin-left: 4px; vertical-align: -1px; }
+.mc-fav .icon { fill: currentColor; width: 12px; height: 12px; }
 .bar-inline { height: 6px; border-radius: 3px; background: var(--surface-3); position: relative; overflow: hidden; min-width: 60px; }
 .bar-inline > i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--accent); border-radius: 3px; }
 

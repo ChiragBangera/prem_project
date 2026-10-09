@@ -405,6 +405,26 @@ def test_shortlist_roundtrip_and_flag(client):
     assert client.delete(f"/api/shortlist/{r['id']}").json() == {"items": []}
 
 
+def test_favourite_teams_roundtrip(client):
+    assert get(client, "/api/favourites").json() == {"teams": []}
+    put = client.put("/api/favourites/teams", json={"league": "EPL", "team": "Arsenal"})
+    assert put.status_code == 200 and [(t["league"], t["team"]) for t in put.json()["teams"]] == [("EPL", "Arsenal")]
+    assert client.put("/api/favourites/teams", json={"league": "Nowhere", "team": "Arsenal"}).status_code == 422
+    assert get(client, "/api/favourites").headers.get("etag") is None            # always live, never answered from a cache
+    assert client.put("/api/favourites/teams", json={"league": "EPL", "team": "Arsenal", "favourite": False}).json() == {"teams": []}
+
+
+def test_the_live_view_of_a_match_answers_for_played_and_unplayed_fixtures(client):
+    rounds = get(client, "/api/matches", league="EPL", season="2020").json()["rounds"]
+    played = next(m for r in rounds for m in r["matches"] if m["played"])
+    upcoming = next(m for r in rounds for m in r["matches"] if not m["played"])
+    a = get(client, f"/api/match/{played['id']}/live", league="EPL", season="2020").json()
+    assert a["fixture"]["played"] is True and a["phase"] == "played"
+    b = get(client, f"/api/match/{upcoming['id']}/live", league="EPL", season="2020", follow=1).json()
+    assert b["fixture"]["played"] is False and b["read"] is None and b["events_on"] is False and b["followed"] is None   # the demo reads nothing live
+    assert client.get("/api/match/999999/live", params={"league": "EPL", "season": "2020"}).status_code == 404
+
+
 def test_data_status_and_sync_job(client):
     status = get(client, "/api/data/status").json()
     assert status["mode"]["demo"] and status["store"]["total_items"] > 0 and any(lg["league"] == "EPL" for lg in status["leagues"])
