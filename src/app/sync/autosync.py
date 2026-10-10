@@ -491,13 +491,13 @@ class AutoSync:
     @staticmethod
     def _half_time_wanted(note: dict) -> bool:
         """Whether a followed match still needs its half-time read: none yet, or the last one caught the end of the first half (the page
-        said "45+" or a first-half minute, not "HT") and the break may still be on."""
+        said a first-half minute such as "45'" or "45+2'", not "HT") and the break may still be on."""
         if note.get("moment") == "ft":
             return False
         if note.get("moment") != "ht":
             return True
-        elapsed = str(note.get("elapsed") or "").strip().upper()
-        first_half = elapsed.endswith("+") or (elapsed.isdigit() and int(elapsed) <= 45)
+        minute = str(note.get("elapsed") or "").strip().rstrip("'\u2032\u2019").split("+")[0].strip()   # WhoScored writes "45'"
+        first_half = minute.isdigit() and int(minute) <= 45
         return note.get("state") == "failed" or (note.get("state") == "live" and first_half)
 
     def matchday(self, now: float) -> tuple[dict[tuple[str, int], list[dict]], list[tuple[float, str]]]:

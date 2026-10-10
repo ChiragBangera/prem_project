@@ -34,7 +34,7 @@ const PHASE_SUB = {
 function readLine(read) {
   if (!read) return null;
   const when = read.at ? ` at ${clock(read.at)}` : "";
-  const what = read.final ? "Read at full time" : read.elapsed === "HT" ? "Read at half time" : `Read in play (${read.elapsed || "?"}')`;
+  const what = read.final ? "Read at full time" : read.elapsed === "HT" ? "Read at half time" : `Read in play (${String(read.elapsed || "?").replace(/['′’]+$/, "")}′)`;
   return `${what}${read.score ? ` (${read.score.replace(" : ", "–")})` : ""}${when}.${read.final ? " WhoScored's numbers are final." : " Provisional: the next read replaces them, and they count nowhere else until full time."}`;
 }
 
