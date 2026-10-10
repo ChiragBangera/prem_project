@@ -33,7 +33,7 @@ class MatchesPage(Part):
         for number, fixtures in sorted(by_round.items()):
             rounds.append({
                 "round": number, "from": fixtures[0].date, "to": fixtures[-1].date, "played": all(f.played for f in fixtures),
-                "matches": [self.card(f, summaries, recent) for f in fixtures],
+                "matches": [{**self.card(f, summaries, recent), **({"still_playing": True} if self._still_playing(code, s, f) else {})} for f in fixtures],
             })
         latest = max((r["round"] for r in rounds if any(m["played"] for m in r["matches"])), default=None)
         have = sum(1 for r in rounds for m in r["matches"] if "scorers" in m)
@@ -142,7 +142,7 @@ class MatchesPage(Part):
         kickoff = matchclock.kickoff(fixture)
         return {
             "final": src["final"], "elapsed": "FT" if src["final"] else str(note.get("elapsed") or src["doc"].get("elapsed") or ""),
-            "at": src["at"], "phase": matchclock.phase(fixture, now), "moment": note.get("moment"),
+            "at": src["at"], "phase": "second_half" if self._still_playing_note(fixture, note, now) else matchclock.phase(fixture, now), "moment": note.get("moment"),
             "understat_from": None if kickoff is None else kickoff + matchclock.UNDERSTAT_FIRST,
         }
 
@@ -204,7 +204,8 @@ class MatchesPage(Part):
                 nxt = {"at": max(ht if note.get("moment") != "ht" else float(note.get("at", now)) + matchclock.HT_RETRY, now), "moment": "ht"}
             elif now < kickoff + FT_GIVE_UP:
                 nxt = {"at": max(ft, now) if note.get("moment") != "ft" else max(now, float(note.get("at", now)) + ft_retry(kickoff, now)), "moment": "ft"}
-        phase = "full_time" if read and read["final"] and not fixture.played else matchclock.phase(fixture, now)   # the page beats the clock
+        phase = ("full_time" if read and read["final"] and not fixture.played    # the page beats the clock, both ways
+                 else "second_half" if self._still_playing_note(fixture, note, now) else matchclock.phase(fixture, now))
         return {"scope": scope, "fixture": self.card(fixture, {}, {}), "phase": phase, "now": now,
                 "events_on": events_on, "followed": followed, "favourite": {"home": wb.favourites.follows(code, fixture.home), "away": wb.favourites.follows(code, fixture.away)},
                 "read": read, "next_read": nxt}
@@ -215,6 +216,23 @@ class MatchesPage(Part):
         """Per fixture id: scorers and shot counts from the stored match page, and possession and passing from the event data. Remembered."""
         version = (self.repo.version("league", f"{code}:{season}"), self.repo.epochs.get("match", 0), self.events.version(code, season))
         return await self.wb.memo(("match-summaries", code, season), version, lambda: self._summarise(ls))
+
+    def _still_playing(self, code: str, season: int, fixture) -> bool:
+        """Past full time by the clock, but the last full-time read found the match still in play (long stoppage time, extra time)."""
+        if fixture.played:
+            return False
+        now = self.wb.auto._clock()
+        if matchclock.phase(fixture, now) != "full_time":
+            return False
+        return self._still_playing_note(fixture, ledger.matchday(self.store, code, season, fixture.id) or {}, now)
+
+    @staticmethod
+    def _still_playing_note(fixture, note: dict, now: float) -> bool:
+        """What :meth:`_still_playing` decides, from the fixture's matchday note. Full-time reads go on every few minutes while the page
+        says the match is in play, so a "live" note is fresh; after FT_GIVE_UP they stop and the clock is trusted again."""
+        k = matchclock.kickoff(fixture)
+        return (k is not None and not fixture.played and matchclock.phase(fixture, now) == "full_time" and now < k + FT_GIVE_UP
+                and note.get("moment") == "ft" and note.get("state") == "live" and str(note.get("elapsed") or "").strip().upper() != "FT")
 
     @staticmethod
     def card(f, summaries: dict, recent: dict) -> dict:
