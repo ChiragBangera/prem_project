@@ -74,6 +74,57 @@ fi
 
 cd "$PROJECT" || exit 1
 
+# Bring the project up to date before starting, the way `git pull` would, but only when that is safe, and never in the way of starting:
+# no Git (a downloaded ZIP), not on a branch that follows one on GitHub, files changed here, offline, or a history that has gone its own way
+# all mean "start the version you have". PREM_NO_UPDATE=1 skips it.
+update() {
+  [[ -z "$PREM_NO_UPDATE" && -e .git ]] || return 0
+  command -v git >/dev/null 2>&1 || return 0
+  git symbolic-ref -q HEAD >/dev/null && git rev-parse -q --verify '@{upstream}' >/dev/null 2>&1 || return 0
+  if [[ -n "$(git status --porcelain --untracked-files=no 2>/dev/null)" ]]; then
+    echo "Not looking for updates: files in $PROJECT have been changed here."
+    echo
+    return 0
+  fi
+  echo "Looking for updates ..."
+  # fetching is the only step that uses the network, so it gets a time limit (stopping a fetch is harmless); the merge after it is local
+  GIT_TERMINAL_PROMPT=0 git -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=10 fetch --quiet 2>/dev/null &
+  local fetch=$! waited=0
+  while kill -0 "$fetch" 2>/dev/null && (( waited < 40 )); do sleep 0.25; (( waited++ )); done
+  if kill -0 "$fetch" 2>/dev/null; then kill "$fetch" 2>/dev/null; wait "$fetch" 2>/dev/null
+    echo "No answer from GitHub, so starting the version you have."; echo; return 0
+  fi
+  if ! wait "$fetch"; then echo "Could not reach GitHub (offline?), so starting the version you have."; echo; return 0; fi
+  local before="$(git rev-parse HEAD)"
+  if git merge-base --is-ancestor '@{upstream}' HEAD; then echo "Up to date."; echo; return 0; fi
+  if ! git merge --ff-only --quiet '@{upstream}' >/dev/null 2>&1; then
+    echo "There is an update, but this copy has changes of its own, so it was not applied. Run git pull in $PROJECT to sort it out."
+    echo
+    return 0
+  fi
+  echo "Updated. What is new:"
+  git log --no-merges --format='  - %s' "$before..HEAD" | head -15
+  echo
+  # new or changed packages: uv run installs them by itself, unless event data is in use (only uv sync --extra events keeps those up to date);
+  # an environment made with pip needs pip again
+  if ! git diff --quiet "$before" HEAD -- pyproject.toml uv.lock; then
+    if command -v uv >/dev/null 2>&1; then
+      if [[ -n "$(echo .venv/lib/python*/site-packages/soccerdata(N))" ]]; then
+        echo "Updating the packages ..."; uv sync --inexact --extra events --quiet || echo "Updating the packages failed: run uv sync --extra events in $PROJECT."
+      fi
+    elif [[ -x .venv/bin/pip ]]; then
+      echo "Updating the packages ..."; .venv/bin/pip install --quiet -e . || echo "Updating the packages failed: run .venv/bin/pip install -e . in $PROJECT."
+    fi
+  fi
+  # the launcher itself may have changed: Git replaced the file, which loses its icon (macOS keeps that beside the file), so put the icon back
+  # and run the new launcher
+  if ! git diff --quiet "$before" HEAD -- tools/prem-lab.command; then
+    zsh tools/set-icon.sh >/dev/null 2>&1
+    exec env PREM_NO_UPDATE=1 /bin/zsh "$PROJECT/tools/prem-lab.command"
+  fi
+}
+update
+
 # what to run: uv (it also keeps the environment in step with the project), else the project's own environment (made by "python3 -m venv .venv"), else a prem on the PATH
 if command -v uv >/dev/null 2>&1; then PREM=(uv run prem)
 elif [[ -x .venv/bin/prem ]]; then PREM=(.venv/bin/prem)
