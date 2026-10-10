@@ -222,7 +222,7 @@ def test_a_half_time_read_that_caught_the_end_of_the_first_half_is_made_again_in
             assert wb.auto.matchday(now[0])[0] == {}                                     # 44 minutes: the first half is still on
             now[0] = ROUND_TWO + matchclock.HT_READ
             assert [t["moment"] for t in wb.auto.matchday(now[0])[0][("EPL", 2026)]] == ["ht"]
-            ledger.note_matchday(wb.store, "EPL", 2026, 1003, game=7, state="live", at=now[0], moment="ht", elapsed="45+")
+            ledger.note_matchday(wb.store, "EPL", 2026, 1003, game=7, state="live", at=now[0], moment="ht", elapsed="45'")   # WhoScored's own format
             now[0] += 60
             assert wb.auto.matchday(now[0])[0] == {}                                     # not every minute ...
             now[0] += matchclock.HT_RETRY
@@ -350,3 +350,12 @@ def test_a_half_time_page_that_never_got_its_full_time_read_is_deleted_after_two
         assert events.live("EPL", 2026, 77) is None and events.live("EPL", 2026, 78) is not None and events.match_ids("EPL", 2026) == []
     finally:
         store.close()
+
+
+def test_half_time_retry_reads_whoscored_minutes():
+    wanted = AutoSync._half_time_wanted
+    for minute in ("45'", "45+2'", "45+", "44", "45\u2032"):                 # the first half is still on: read again
+        assert wanted({"moment": "ht", "state": "live", "elapsed": minute}), minute
+    for minute in ("HT", "46'", "52'", ""):                                  # the break was caught, or the second half has begun
+        assert not wanted({"moment": "ht", "state": "live", "elapsed": minute}), minute
+
