@@ -158,9 +158,10 @@ jobs:
           git -C "$root\dev" -c init.defaultBranch=main init -q
           git -C "$root\dev" add -A
           git -C "$root\dev" -c user.name=CI -c user.email=ci@example.invalid commit -qm "the version the user has"
-          git init -q --bare "$root\origin.git"
+          git -c init.defaultBranch=main init -q --bare "$root\origin.git"   # the runner's default branch name is master
           git -C "$root\dev" push -q "$root\origin.git" main
-          git clone -q "$root\origin.git" "$root\user"
+          git clone -q -b main "$root\origin.git" "$root\user"
+          if (-not (Test-Path "$root\user\tools\prem-lab.bat")) { throw "the copy was not made" }
           $bat = "$root\dev\tools\prem-lab.bat"
           (Get-Content -Raw $bat).Replace("rem what to run:", "echo NEW LAUNCHER RUNNING& exit /b 0`r`nrem what to run:") | Set-Content -NoNewline $bat
           git -C "$root\dev" -c user.name=CI -c user.email=ci@example.invalid commit -qam "feat: the update"
