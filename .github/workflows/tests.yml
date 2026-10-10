@@ -74,6 +74,7 @@ jobs:
           $env:PREM_DATA_DIR = Join-Path $env:RUNNER_TEMP "prem-smoke"
           $env:PREM_NO_OPEN = "1"
           $env:PREM_PORT = "8766"
+          $env:PREM_NO_UPDATE = "1"   # test this commit; the update has its own check below
           $out = Join-Path $env:RUNNER_TEMP "launcher.out"
           $err = Join-Path $env:RUNNER_TEMP "launcher.err"
           $launcher = Start-Process -FilePath "cmd.exe" -ArgumentList "/c", "tools\prem-lab.bat", "--demo" -PassThru -RedirectStandardOutput $out -RedirectStandardError $err
@@ -129,6 +130,7 @@ jobs:
           $env:PREM_DATA_DIR = Join-Path $env:RUNNER_TEMP "prem-shortcut"
           $env:PREM_NO_OPEN = "1"
           $env:PREM_PORT = "8767"
+          $env:PREM_NO_UPDATE = "1"   # test this commit; the update has its own check below
           $env:PREM_DEMO = "1"
           Start-Process -FilePath (Join-Path $env:RUNNER_TEMP "shortcut\Prem Lab.lnk")
           try {
@@ -144,6 +146,41 @@ jobs:
             Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like "*prem-lab.bat*" } | ForEach-Object { taskkill /PID $_.ProcessId /T /F 2>&1 | Out-Null }
           }
           $global:LASTEXITCODE = 0   # as above
+      - name: The launcher takes an update first, and runs the new launcher
+        # A copy of the project with a "GitHub" of its own (a local repository): publish an update that also changes the launcher, then start it.
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $root = Join-Path $env:RUNNER_TEMP "update"
+          New-Item -ItemType Directory -Force "$root\dev" | Out-Null
+          git archive -o "$root\project.tar" HEAD
+          tar -xf "$root\project.tar" -C "$root\dev"
+          git -C "$root\dev" -c init.defaultBranch=main init -q
+          git -C "$root\dev" add -A
+          git -C "$root\dev" -c user.name=CI -c user.email=ci@example.invalid commit -qm "the version the user has"
+          git init -q --bare "$root\origin.git"
+          git -C "$root\dev" push -q "$root\origin.git" main
+          git clone -q "$root\origin.git" "$root\user"
+          $bat = "$root\dev\tools\prem-lab.bat"
+          (Get-Content -Raw $bat).Replace("rem what to run:", "echo NEW LAUNCHER RUNNING& exit /b 0`r`nrem what to run:") | Set-Content -NoNewline $bat
+          git -C "$root\dev" -c user.name=CI -c user.email=ci@example.invalid commit -qam "feat: the update"
+          git -C "$root\dev" push -q "$root\origin.git" main
+          $env:PREM_NO_OPEN = "1"
+          $env:PREM_PORT = "8768"
+          $first = cmd.exe /c "call `"$root\user\tools\prem-lab.bat`" & set PREM_LAUNCHER_UPDATED" 2>&1 | Out-String
+          Write-Host $first
+          if ($first -cnotmatch "Updated\. What is new" -or $first -notmatch "feat: the update") { throw "the launcher did not take the update" }
+          if ($first -notmatch "NEW LAUNCHER RUNNING") { throw "the launcher did not run its new self after the update" }
+          if ($first -notmatch "not defined") { throw "the restart marker outlived the launcher" }
+          if ((git -C "$root\user" rev-parse HEAD) -ne (git -C "$root\dev" rev-parse HEAD)) { throw "the copy is not at the new version" }
+          $second = cmd.exe /c "`"$root\user\tools\prem-lab.bat`"" 2>&1 | Out-String
+          Write-Host $second
+          if ($second -notmatch "Up to date" -or $second -notmatch "NEW LAUNCHER RUNNING") { throw "a second start should find nothing new" }
+          Add-Content "$root\user\README.md" "a change made here"
+          $third = cmd.exe /c "`"$root\user\tools\prem-lab.bat`"" 2>&1 | Out-String
+          if ($third -notmatch "have been changed here" -or $third -notmatch "NEW LAUNCHER RUNNING") { throw "local changes should stop the update, not the start: $third" }
+          Write-Host "the launcher updates, restarts as the new version, and leaves a changed copy alone"
+          $global:LASTEXITCODE = 0   # "set" of a missing variable fails on purpose above
       - name: Install the test tools and run the tests
         run: |
           python -m pip install ".[dev]"
