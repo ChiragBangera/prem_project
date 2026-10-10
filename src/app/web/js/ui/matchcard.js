@@ -32,7 +32,7 @@ function FavMark({ team }) {
 export function MatchCard({ m, showDate = true, link = true }) {
   const k = kickoff(m);
   const played = m.played;
-  const phase = phaseOf(m);
+  const clock = phaseOf(m), phase = clock === "full_time" && m.still_playing ? "second_half" : clock;   // the last read found it still in play
   const live = !played && phase !== "upcoming";
   const homeWon = played && m.hg > m.ag, awayWon = played && m.ag > m.hg;
   const stats = m.stats || {};

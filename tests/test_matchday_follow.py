@@ -359,3 +359,28 @@ def test_half_time_retry_reads_whoscored_minutes():
     for minute in ("HT", "46'", "52'", ""):                                  # the break was caught, or the second half has begun
         assert not wanted({"moment": "ht", "state": "live", "elapsed": minute}), minute
 
+
+def test_past_full_time_by_the_clock_a_match_still_in_play_is_shown_live(tmp_path, monkeypatch):
+    async def go():
+        wb = make(tmp_path)
+        events_on(wb, monkeypatch, [])
+        now = [ROUND_TWO + matchclock.FULL_TIME + 5 * 60]                       # the clock says it has finished ...
+        wb.auto._clock = wb.auto.budget._clock = lambda: now[0]
+        try:
+            await wb.repo.league("EPL", 2026)
+            async def await_season():
+                return (await wb.matches.season("EPL", "2026"))["rounds"]
+            def card_of(rounds):
+                return next(m for r in rounds for m in r["matches"] if m["id"] == 1003)
+            assert (await wb.matches.live(1003, "EPL", "2026"))["phase"] == "full_time"     # no read yet: the clock is all there is
+            assert "still_playing" not in card_of(await await_season())
+            assert wb.events.ingest("EPL", 2026, 77, ht_doc("90+'", 2, "2 : 1")) == "live"
+            ledger.note_matchday(wb.store, "EPL", 2026, 1003, game=77, state="live", at=now[0], moment="ft", elapsed="90+'", score="2 : 1")
+            assert (await wb.matches.live(1003, "EPL", "2026"))["phase"] == "second_half"   # ... but the page says it is still being played
+            assert card_of(await await_season())["still_playing"] is True
+            now[0] = ROUND_TWO + 4 * 3600 + 60                                   # reads have given up: the clock is trusted again
+            assert (await wb.matches.live(1003, "EPL", "2026"))["phase"] == "full_time"
+        finally:
+            await wb.close()
+
+    run(go())
