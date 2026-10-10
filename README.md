@@ -82,7 +82,7 @@ A terminal window opens and stays open while the app runs; closing it, or pressi
 
 - **Stop:** close the terminal window, or press `Ctrl`+`C` in it.
 - **Start again:** step 4, or the icon. Nothing needs installing again.
-- **Update:** inside `prem_project`, run `git pull` and then `uv sync` (`uv sync --extra events` if you use event data). Your data is kept. If you downloaded the ZIP, download it again and move your `.prem-data` folder into the new one.
+- **Update:** the icon does it for you: each time it starts, it first gets what is new from GitHub and says what changed (offline, it just starts the version you have). Without the icon: inside `prem_project`, run `git pull` and then `uv sync` (`uv sync --extra events` if you use event data). Your data is kept either way. If you downloaded the ZIP, download it again and move your `.prem-data` folder into the new one.
 - **Your data** is in the `.prem-data` folder inside `prem_project`. To remove Prem Lab, delete the `prem_project` folder.
 
 ### If something goes wrong
