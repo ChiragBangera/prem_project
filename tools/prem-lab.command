@@ -1,7 +1,7 @@
 #!/bin/zsh
 # Prem Lab launcher for macOS: double-click it to start the app and open it in your browser.
 #
-# Put an alias or a symlink to this file on the Desktop (it finds the project from its own real location):
+# Put an alias, a symlink or a copy of this file on the Desktop (a copy runs the launcher inside the project, so it never goes out of date):
 #   ln -s /path/to/prem_project/tools/prem-lab.command ~/Desktop/"Prem Lab.command"
 #
 # The app runs in this window: close the window, or press Ctrl+C, to stop it. If Prem Lab is already running somewhere else (another window,
@@ -15,6 +15,10 @@ HEALTH="${URL}api/health"
 # the project is the folder above tools/ (symlinks resolved); PREM_PROJECT or ~/Developer/prem_project are the fallbacks
 PROJECT="${0:A:h:h}"
 [[ -f "$PROJECT/pyproject.toml" ]] || PROJECT="${PREM_PROJECT:-$HOME/Developer/prem_project}"
+
+# a copy of this file (say on the Desktop) would stay as old as the day it was made: run the project's own launcher, which the update keeps current
+LAUNCHER="$PROJECT/tools/prem-lab.command"
+[[ "${0:A}" != "${LAUNCHER:A}" && -f "$LAUNCHER" ]] && exec /bin/zsh "$LAUNCHER"
 
 export PATH="/opt/homebrew/bin:/usr/local/bin:$HOME/.local/bin:$PATH"   # where uv usually lives; Terminal may not have them on PATH
 
@@ -120,7 +124,7 @@ update() {
   # and run the new launcher
   if ! git diff --quiet "$before" HEAD -- tools/prem-lab.command; then
     zsh tools/set-icon.sh >/dev/null 2>&1
-    exec env PREM_NO_UPDATE=1 /bin/zsh "$PROJECT/tools/prem-lab.command"
+    exec env PREM_NO_UPDATE=1 /bin/zsh "$LAUNCHER"
   fi
 }
 update
