@@ -57,7 +57,7 @@ def movers(ls: LeagueSeason, span: int = 3) -> dict:
         return {"risers": [], "fallers": [], "span": span}
     changes = []
     for team, ranks in paths["rank"].items():
-        if len(ranks) > span and ranks[-1] is not None and ranks[-1 - span] is not None:
+        if len(ranks) > span:
             changes.append({"team": team, "short": ls.teams[team].short, "from": ranks[-1 - span], "to": ranks[-1], "change": ranks[-1 - span] - ranks[-1]})
     risers = sorted((c for c in changes if c["change"] >= 2), key=lambda c: -c["change"])[:3]
     fallers = sorted((c for c in changes if c["change"] <= -2), key=lambda c: c["change"])[:3]

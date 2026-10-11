@@ -111,7 +111,7 @@ export function RankChart({ series, rounds, highlight = [], height = 380, nTeams
         const mx = e.clientX - rect.left, my = e.clientY - rect.top;
         const w = Math.max(1, Math.min(rounds, Math.round(sx.invert(mx))));
         let best = null, bd = Infinity;
-        for (const t of teams) { const d = Math.abs(sy(series[t][w - 1]) - my); if (d < bd) { bd = d; best = t; } }
+        for (const t of teams) { if (series[t][w - 1] == null) continue; const d = Math.abs(sy(series[t][w - 1]) - my); if (d < bd) { bd = d; best = t; } }
         setHover(best);
         best && tooltip.move(e, html`<div><div class="tt-title">${best}</div><div class="tt-row"><span class="k">Matchweek ${w}</span><span class="v">${ordinal(series[best][w - 1])}</span></div></div>`);
       };
@@ -123,7 +123,7 @@ export function RankChart({ series, rounds, highlight = [], height = 380, nTeams
         ${[1, 4, 8, 12, 16, 20].filter((r) => r <= nTeams).map((r) => html`<g key=${r} transform=${`translate(0,${sy(r)})`}><line class="grid-line" x1="0" x2=${iw} /><text class="tick-label" x="-8" dy="0.32em" text-anchor="end">${r}</text></g>`)}
         <${AxisX} scale=${sx} ticks=${weeks.filter((w) => w === 1 || w % 5 === 0 || w === rounds)} ih=${ih} format=${(v) => String(v)} />
         ${order.map((t) => html`<path key=${t} d=${linePath(weeks, series[t], sx, sy)} fill="none" class=${"rank-line" + (lit.has(t) ? " on" : "")} style=${lit.has(t) ? { stroke: colorOf(t) } : null} />`)}
-        ${[...lit].filter((t) => series[t]).map((t) => html`<g key=${"l" + t} transform=${`translate(${iw + 6},${sy(series[t][rounds - 1])})`}><text dy="0.34em" class="end-label strong">${shortOf(t)}</text></g>`)}
+        ${[...lit].filter((t) => series[t]?.length).map((t) => html`<g key=${"l" + t} transform=${`translate(${sx(series[t].length) + 6},${sy(series[t][series[t].length - 1])})`}><text dy="0.34em" class="end-label strong">${shortOf(t)}</text></g>`)}
         <rect class="hit" x="0" y="0" width=${iw} height=${ih} onMouseMove=${move} onClick=${() => hover && onPick && onPick(hover)} style=${{ cursor: onPick ? "pointer" : "default" }} />
       </g>`;
     }}

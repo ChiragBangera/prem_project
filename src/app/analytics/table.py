@@ -144,7 +144,11 @@ def rank_trajectories(ls: LeagueSeason) -> dict:
     """Table position and cumulative points after each of a team's matches.
 
     Aligned by *matchweek* (a team's nth match) so postponements do not tear the
-    chart apart; ranks compare every team's tally after the same number of games.
+    chart apart. The table after matchweek k holds every team: a team that has
+    played fewer than k games stands on the tally it has, as it does in the real
+    table. Each path has one value per match the team has played, and its last value
+    is the team's place in the table now (for a team with a game in hand, the table
+    has moved on since its last match).
     """
     teams = list(ls.teams.values())
     rounds = max((len(t.history) for t in teams), default=0)
@@ -161,15 +165,15 @@ def rank_trajectories(ls: LeagueSeason) -> dict:
             series.append((pts, gf - ga, gf, xpts))
         cumulative[team.name] = series
 
-    ranks: dict[str, list[int | None]] = {t.name: [] for t in teams}
+    ranks: dict[str, list[int]] = {t.name: [] for t in teams}
     for k in range(rounds):
-        table = [
-            (name, s[k]) for name, s in cumulative.items() if len(s) > k
-        ]
-        table.sort(key=lambda item: (-item[1][0], -item[1][1], -item[1][2], item[0]))
+        table = [(name, s[min(k, len(s) - 1)] if s else (0, 0, 0, 0.0)) for name, s in cumulative.items()]
+        table.sort(key=lambda item: (-item[1][0], -item[1][1], -item[1][2], item[0]))   # as compute_table orders it
         position = {name: i for i, (name, _s) in enumerate(table, start=1)}
         for name, path in ranks.items():
-            path.append(position.get(name))
+            played = len(cumulative[name])
+            if k < played - 1 or (k == rounds - 1 and played):   # a team's last match: placed in the table as it stands now
+                path.append(position[name])
     return {
         "rounds": rounds,
         "rank": ranks,
