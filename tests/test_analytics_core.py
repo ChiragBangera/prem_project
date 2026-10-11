@@ -131,6 +131,28 @@ def test_rank_trajectories_end_at_the_final_table(demo_league):
     assert first_round_ranks == list(range(1, 21))
 
 
+
+def test_rank_trajectories_mid_season_with_games_in_hand(demo_league_partial):
+    """Teams on different numbers of games: every path has one value per game played, ends at the current table, and every
+    matchweek ranks all the teams (not only those that had played that many games)."""
+    import dataclasses
+
+    teams = dict(demo_league_partial.teams)
+    behind = sorted(teams)[:3]                                         # three teams with a game in hand
+    for name in behind:
+        teams[name] = dataclasses.replace(teams[name], history=teams[name].history[:-1])
+    ls = dataclasses.replace(demo_league_partial, teams=teams)
+    paths = rank_trajectories(ls)
+    table = compute_table(ls)
+    assert len({len(t.history) for t in teams.values()}) == 2
+    for r in table:
+        path = paths["rank"][r["team"]]
+        assert len(path) == len(teams[r["team"]].history) and None not in path
+        assert path[-1] == r["rank"]
+    for k in range(paths["rounds"] - 1):                              # every matchweek but the last is one table of all the teams
+        assert len({p[k] for p in paths["rank"].values() if len(p) > k + 1}) == sum(1 for p in paths["rank"].values() if len(p) > k + 1)
+        assert max(p[k] for p in paths["rank"].values() if len(p) > k) <= len(teams)
+
 def test_team_percentiles_orientation(demo_league):
     table = compute_table(demo_league)
     best = max(table, key=lambda r: r["xgd_pg"])
