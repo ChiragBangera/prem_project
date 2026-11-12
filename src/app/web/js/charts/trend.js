@@ -87,7 +87,7 @@ export function MatchTrendChart({ matches, series, def, band, colorBy = "opp", s
     </div>`;
   };
 
-  const root = useRef(null), scroll = useRef(null);
+  const root = useRef(null), scroll = useRef(null), keyTurn = useRef(0);
   useEffect(() => {                                                 // a long season opens on its latest matches: that is where the form is
     const area = scroll.current;
     if (area && area.scrollWidth > area.clientWidth) area.scrollLeft = area.scrollWidth;
@@ -97,8 +97,16 @@ export function MatchTrendChart({ matches, series, def, band, colorBy = "opp", s
     if (!g || !area || !root.current) return;
     const x = MARGIN.left + (i + 0.5) * g.step;
     if (x < area.scrollLeft + 40 || x > area.scrollLeft + area.clientWidth - 40) area.scrollLeft = Math.max(0, x - area.clientWidth / 2);
-    const box = root.current.getBoundingClientRect();               // after any scrolling: the inner box moves with the content
-    tooltip.at(box.left + x, box.top + MARGIN.top + g.ih * 0.35, tipFor(i));
+    const place = () => {
+      if (!root.current) return;
+      const box = root.current.getBoundingClientRect();             // after any scrolling: the inner box moves with the content
+      tooltip.at(box.left + x, box.top + MARGIN.top + g.ih * 0.35, tipFor(i));
+    };
+    place();
+    // The tooltip hides on any scroll, and a scroll event arrives a frame after what caused it: the chart moving to show this match, or
+    // the page moving to show the chart when it took the focus. Without this the tip a key press asked for vanished as it appeared.
+    const turn = ++keyTurn.current;
+    requestAnimationFrame(() => requestAnimationFrame(() => { if (turn === keyTurn.current && document.activeElement === area) place(); }));
   };
   const onKey = (e) => {
     const move = { ArrowRight: 1, ArrowLeft: -1, Home: -Infinity, End: Infinity }[e.key];
@@ -108,7 +116,7 @@ export function MatchTrendChart({ matches, series, def, band, colorBy = "opp", s
       setHover(next);
       showAtSlot(next);
     } else if (e.key === "Enter" && hover != null && matches[hover].match_id) onOpen?.(matches[hover]);
-    else if (e.key === "Escape") { setHover(null); tooltip.hide(); }
+    else if (e.key === "Escape") { keyTurn.current += 1; setHover(null); tooltip.hide(); }
   };
 
   return html`<div class="trend-chart">
@@ -116,7 +124,7 @@ export function MatchTrendChart({ matches, series, def, band, colorBy = "opp", s
       ${ticks.map((t) => html`<span key=${t} class=${zero && t === 0 ? "zero" : ""} style=${{ top: MARGIN.top + yScale(t) + "px" }}>${tickText(t)}</span>`)}
     </div>
     <div class="trend-scroll" ref=${scroll} tabindex="0" role="group" aria-label=${`${label}. Use the left and right arrow keys to move between matches, Enter to open a match report.`}
-        onKeyDown=${onKey} onBlur=${() => { setHover(null); tooltip.hide(); }}>
+        onKeyDown=${onKey} onBlur=${() => { keyTurn.current += 1; setHover(null); tooltip.hide(); }}>
       <div class="trend-inner" ref=${root} style=${{ minWidth: n * SLOT + MARGIN.left + MARGIN.right + "px" }}>
         <${Frame} height=${height} label=${label} margin=${MARGIN} onLeave=${() => { setHover(null); tooltip.hide(); }}>
         ${({ iw }) => {
