@@ -38,7 +38,8 @@ touched only JS, CSS, docs). `tools/e2e.mjs` has new checks but has **never been
   note instead of piling on the border.
 - [x] Match pass network (2026-11-12): a name must be nearer its own dot than anyone else's, else it moves out on a short leader line
   (`placeNames` in `js/charts/pitchmaps.js`).
-- [ ] Compare players on a phone: screenshot taken, not reviewed.
+- [x] Compare players on a phone: reviewed 2026-11-12 on two real players at 390 px. Nothing overflows; the cards, the shape chart,
+  both dot plots and the totals read in one column.
 - [x] Briefing table on a phone scrolls sideways to reach Form (2026-11-12: Form is dropped under 560 px).
 
 ## 2. What the owner asked for (2026-11-11)
@@ -201,8 +202,9 @@ links work.
 - Fixed on the way: `.fade-in` (base.css) used `animation-fill-mode: both`, which kept a transform in effect, so the compare tray (and any
   `position: fixed` child) was placed at the foot of the page content instead of the window. Now `backwards`.
 
-Still open under C: the owner's verdict on the moved pages; the small `DataTable`s elsewhere (Briefing table, team Matches, player match
-log) keep the older look. The "Direction" list below is superseded where it says question presets and a sentence.
+Still open under C: the owner's verdict on the moved pages; the small `DataTable`s elsewhere (about twenty: Briefing table, team Matches, player
+match log ...) now carry the desk's heading (white, the sorted column underlined in the accent) from one rule in `components.css`; they
+stay `DataTable`s, since the desk's Sheet is built for a catalog of measures. The "Direction" list below is superseded where it says question presets and a sentence.
 
 Audit first, with the owner's complaint in mind, then change. Files: `js/ui/explore/*` (FilterBar, LensBar, RuleEditor, ColumnPicker,
 Results, model), `js/ui/table.js`, `js/ui/cells.js`.
@@ -274,7 +276,7 @@ a phone:
 - Briefing on a phone: three findings instead of six before the table (`useMedia`), and the table drops Form and narrows the gap bar under
   560 px, so it no longer scrolls sideways (measured: 356 of 356 px). This closes that loose end in section 1.
 - Team tabs (Players, Style & maps, Chances, Matches, History) were reviewed and left as they are.
-**Still open:** replacing the remaining `grid cols-2` / `cols-wide-narrow` with one rhythm; Compare players on a phone; Data (under G).
+**Still open:** replacing the remaining `grid cols-2` / `cols-wide-narrow` with one rhythm; Data (under G). Compare players on a phone was reviewed (see loose ends).
 
 For each page write one sentence, "this page answers …", then order the cards to answer it: headline finding → the evidence chart →
 breakdowns → reference tables. Remove or merge cards that do not serve the sentence. Pages in order of need: Team overview, Player profile
@@ -291,7 +293,9 @@ cards carry `--shadow-sm`, `.notice.warn` is a white strip with an amber inset e
 4.5:1 or better on `--bg`, `--surface`, `--surface-2`, `--surface-3` (`--accent-strong` darkened to `#2265b9` for that). Known and accepted:
 team-colour marks on the pitch are below 3:1 against any green (orange 1.9:1); they carry rims and labels. Re-shot in light: Briefing, League,
 Scout, Team overview (desktop and phone), Player, Match overview / Shots / Passing / Moves, Data; dark spot-checked on Team.
-**Not done:** the dataviz palette validator on the series colours against the new surface. The theme switch already existed (`ThemeToggle` in `js/app.js`, an icon in the top bar cycling system, light, dark); it now carries its name (Auto / Light / Dark) beside the icon.
+**Series colours checked 2026-11-12** against the light surfaces (contrast ratio computed for `--c1` to `--c8` on white and on
+`--surface-2`; a mark needs 3:1): orange, teal, amber and pink fell short (3.2, 2.8, 2.2, 2.7 on white) and were darkened just enough
+(`#ea612b`, `#189d6e`, `#bd8000`, `#e35d8f`: 3.4 on white, 3.05 on `--surface-2`). The dark theme already passed (3.7 to 5.9). The theme switch already existed (`ThemeToggle` in `js/app.js`, an icon in the top bar cycling system, light, dark); it now carries its name (Auto / Light / Dark) beside the icon.
 
 Seen in screenshots: page ground and cards are nearly the same pale grey, borders are faint, so cards do not separate; the pitch green is
 washed out; the amber data notice is the loudest thing on every page. To do in `css/tokens.css`: stronger ground/surface step, one clear
