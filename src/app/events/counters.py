@@ -27,7 +27,7 @@ from . import schema as S
 from .silver import FL_GOAL, FL_OWN_GOAL, FL_TOUCH, Match
 
 GOLD_KIND = "ws_gold"
-GOLD_VERSION = 1
+GOLD_VERSION = 2
 
 #: counter -> definition (every counter a gold row can contain)
 COUNTERS: dict[str, str] = {
@@ -57,6 +57,12 @@ COUNTERS: dict[str, str] = {
     "carries": "Carries: the ball moved at least 3 m with the same team on it between two events.", "carry_m": "Total metres carried.",
     "carry_prog": "Carries that advance the ball at least 10% of the pitch and end in the attacking 60%, or end in the penalty area.", "carry_prog_m": "Metres gained by progressive carries.",
     "carry_f3": "Carries from outside the final third into it.", "carry_box": "Carries from outside the penalty area into it.",
+    # what came of it: the same move (or the corner, free kick or penalty it won) ended in a shot
+    "prog_shot": "Progressive passes in a move that came to a shot.", "carry_prog_shot": "Progressive carries in a move that came to a shot.",
+    "takeons_won_shot": "Successful take-ons in a move that came to a shot.", "crosses_shot": "Crosses in a move that came to a shot.",
+    "f3_entry": "Times he took the ball into the final third, by a completed pass or a carry.", "f3_entry_shot": "...in a move that came to a shot.",
+    "mv_in": "Moves (spells of possession) he took part in.", "mv_shot_in": "...that came to a shot.",
+    "mv_lost": "Moves that ended with him losing the ball.", "mv_broken": "Opponents' moves he ended by taking the ball.",
     # dribbling and being fouled
     "takeons": "Take-ons (dribbles past an opponent) attempted.", "takeons_won": "Take-ons that beat the opponent.", "dispossessed": "Times he lost the ball to a tackle.",
     "fouled": "Fouls suffered.",
@@ -220,6 +226,10 @@ def derive_match(m: Match) -> dict:
     players: dict[int, _Acc] = defaultdict(_Acc)
     play = m.play_indices()
     q = [ev["q0"][i] | (ev["q1"][i] << S.WORD_BITS) for i in range(m.n)]
+    from .possessions import action_outcomes, build_possessions, led_to_shot   # that module reads this one
+
+    moves = build_possessions(m)
+    to_shot, carry_to_shot = action_outcomes(moves)
 
     def put(pid: int, tm: int, key: str, value: float = 1) -> None:
         teams[tm].add(key, value)
@@ -267,6 +277,8 @@ def derive_match(m: Match) -> dict:
             if qq & M_CROSS:
                 put(pid, tm, "crosses")
                 put(pid, tm, "crosses_ok", ok)
+                if i in to_shot:
+                    put(pid, tm, "crosses_shot")
                 continue
             put(pid, tm, "passes")
             put(pid, tm, "pass_ok", ok)
@@ -297,17 +309,25 @@ def derive_match(m: Match) -> dict:
                     put(pid, tm, "bwd")
                 if ok and gain >= S.PROGRESSIVE_MIN and ex >= S.PROGRESSIVE_END_X:
                     put(pid, tm, "prog")
+                    if i in to_shot:
+                        put(pid, tm, "prog_shot")
                 if ok and gain > 0:
                     put(pid, tm, "pass_fwd_m", gain * S.PITCH_LENGTH_M / 100.0)
                 if x < S.FINAL_THIRD_X <= ex:
                     put(pid, tm, "pass_f3")
                     put(pid, tm, "pass_f3_ok", ok)
+                    if ok:
+                        put(pid, tm, "f3_entry")
+                        if i in to_shot:
+                            put(pid, tm, "f3_entry_shot")
                 if ey is not None and _in_box(ex, ey) and not _in_box(x, y):
                     put(pid, tm, "pass_box")
                     put(pid, tm, "pass_box_ok", ok)
         elif code == S.E_TAKEON:
             put(pid, tm, "takeons")
             put(pid, tm, "takeons_won", ok)
+            if ok and i in to_shot:
+                put(pid, tm, "takeons_won_shot")
         elif code == S.E_DISPOSSESSED:
             put(pid, tm, "dispossessed")
         elif code == S.E_TACKLE:
@@ -438,18 +458,37 @@ def derive_match(m: Match) -> dict:
             put(ev["p"][i], ev["tm"][i], "corners_key")
 
     # ---- estimated carries
-    for pid, tm, x0, y0, x1, y1, _i in carries(m):
+    for pid, tm, x0, y0, x1, y1, i in carries(m):
         d = _dist_m(x0, y0, x1, y1)
+        shot = i in carry_to_shot
         put(pid, tm, "carries")
         put(pid, tm, "carry_m", d)
         gain = x1 - x0
         if (gain >= S.PROGRESSIVE_MIN and x1 >= S.PROGRESSIVE_END_X) or (_in_box(x1, y1) and not _in_box(x0, y0)):
             put(pid, tm, "carry_prog")
             put(pid, tm, "carry_prog_m", max(0.0, gain) * S.PITCH_LENGTH_M / 100.0)
+            if shot:
+                put(pid, tm, "carry_prog_shot")
         if x0 < S.FINAL_THIRD_X <= x1:
             put(pid, tm, "carry_f3")
+            put(pid, tm, "f3_entry")
+            if shot:
+                put(pid, tm, "f3_entry_shot")
         if _in_box(x1, y1) and not _in_box(x0, y0):
             put(pid, tm, "carry_box")
+
+    # ---- moves: who took part, who lost the ball, who took it
+    for move, shot in zip(moves, led_to_shot(moves), strict=True):
+        tm = move["tm"]
+        teams[tm].add("mv_in")
+        teams[tm].add("mv_shot_in", shot)
+        for pid in {step[1] for step in move["steps"] if step[1]}:
+            players[pid].add("mv_in")
+            players[pid].add("mv_shot_in", shot)
+        if move["lost"]:
+            put(move["lost"], tm, "mv_lost")
+        if move["by"] and move["end"] == "lost":
+            put(move["by"], 1 - tm, "mv_broken")
 
     _sequences(m, teams)
 
