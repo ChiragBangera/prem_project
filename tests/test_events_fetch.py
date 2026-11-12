@@ -148,6 +148,16 @@ def test_a_wall_of_failures_stops_the_run(events, tmp_path):
     assert "blocking" in lines[-1]
 
 
+def test_a_wall_of_failures_is_not_charged_to_the_matches(events, tmp_path):
+    """Five failures in a row are the connection or the site: none of those matches moves towards "waiting for a person"."""
+    reader = reader_for(tmp_path, 10, broken=range(100, 110))
+    status, _ = run(events, reader, tmp_path, max_failures=3)
+    assert L.failures(events.store, "EPL", 2025) == {} and "in a row" in status["stopped"]
+    reader.broken = {100}                                            # the connection is back; one match really is broken
+    status, _ = run(events, reader, tmp_path, max_failures=3)
+    assert set(L.failures(events.store, "EPL", 2025)) == {100} and len(events.match_ids("EPL", 2025)) == 9
+
+
 def test_a_reader_that_cannot_start_is_reported_not_raised(events, tmp_path):
     class NoBrowser:
         def read_schedule(self, force_cache=False):
@@ -155,7 +165,49 @@ def test_a_reader_that_cannot_start_is_reported_not_raised(events, tmp_path):
 
     with pytest.raises(RuntimeError):
         run(events, NoBrowser(), tmp_path)
-    assert events.status("EPL", 2025)["running"] is False            # and it never stays marked as running
+    status = events.status("EPL", 2025)
+    assert status["running"] is False            # and it never stays marked as running
+    assert status["last_error"] == "chrome not found"                # the Data page reads the reason from here
+
+
+class ListReader(FakeReader):
+    """A reader whose match list lives in files, as soccerdata's does: a missing month is "downloaded", a stored one is read as it is."""
+
+    def __init__(self, *args, error_pages=0, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.error_pages, self.downloads = error_pages, 0             # how many downloads still come back as the browser's error page
+        self.month = self.data_dir / "matches" / "ENG-Premier League_2526_25544_0.json"
+
+    def read_schedule(self, force_cache=False):
+        self.schedule_calls.append(force_cache)
+        if not (force_cache and self.month.is_file()):
+            self.downloads += 1
+            self.month.parent.mkdir(parents=True, exist_ok=True)
+            page = "<html><title>www.whoscored.com</title>Your connection was interrupted</html>" if self.error_pages > 0 else json.dumps({"tournaments": []})
+            self.error_pages -= 1
+            self.month.write_text(page)
+        json.loads(self.month.read_text())                            # soccerdata parses the file: an error page stops it here
+        return Frame([{**g, "league": "ENG-Premier League", "season": "2526"} for g in self.games])
+
+
+def test_an_error_page_saved_as_the_match_list_is_thrown_away_and_read_again(events, tmp_path):
+    """Seen 2026-11-12: the network dropped, the browser's "connection was interrupted" page was saved as January's matches, and every
+    later read of the list from the cache stopped on it."""
+    reader = ListReader(games(2), tmp_path, error_pages=1)
+    _status, lines = run(events, reader, tmp_path)
+    assert events.match_ids("EPL", 2025) == [100, 101] and reader.downloads == 2
+    assert any("reading it again" in line for line in lines)
+    reader.month.write_text("<html>error</html>")                     # the same, left behind by an earlier run that stopped on it
+    events.set_status("EPL", 2025, schedule_at=__import__("time").time())
+    run(events, reader, tmp_path)
+    assert reader.downloads == 3 and reader.schedule_calls[-1] is True
+
+
+def test_a_match_list_that_stays_unreadable_says_so_and_leaves_no_bad_file(events, tmp_path):
+    reader = ListReader(games(2), tmp_path, error_pages=5)
+    with pytest.raises(FetchUnavailable, match="could not be read"):
+        run(events, reader, tmp_path)
+    assert not reader.month.exists() and "could not be read" in events.status("EPL", 2025)["last_error"]
 
 
 def test_helpers():

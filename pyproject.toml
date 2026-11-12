@@ -94,5 +94,5 @@ warn_unused_ignores = true
 check_untyped_defs = true
 
 [[tool.mypy.overrides]]
-module = ["soccerdata.*"]   # the optional event-data package ships no type information
+module = ["soccerdata.*", "seleniumbase.*"]   # the optional event-data packages ship no type information
 ignore_missing_imports = true

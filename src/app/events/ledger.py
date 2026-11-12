@@ -47,6 +47,20 @@ def forget(store: Any, league: str, season: int, game: int) -> None:
         store.kv_set(_key(league, season), book) if book else store.kv_delete(_key(league, season))
 
 
+def forgive(store: Any, league: str, season: int, game: int) -> None:
+    """Take back the last failed try of a match: it failed with everything else (the connection, the site refusing), not by itself."""
+    book = store.kv_get(_key(league, season)) or {}
+    entry = book.get(str(game))
+    if entry is None:
+        return
+    entry["attempts"] = int(entry.get("attempts", 0)) - 1
+    if entry["attempts"] <= 0 and not entry.get("skip"):
+        del book[str(game)]
+    else:
+        entry["at"] = 0.0     # due again at once: the wait is for a match that fails on its own
+    store.kv_set(_key(league, season), book) if book else store.kv_delete(_key(league, season))
+
+
 def set_skip(store: Any, league: str, season: int, game: int, skip: bool) -> dict | None:
     book = store.kv_get(_key(league, season)) or {}
     entry = book.get(str(game))
