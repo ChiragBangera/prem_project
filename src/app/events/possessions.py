@@ -16,8 +16,7 @@ nobody to name: it stays empty). **Who broke it** is the opponent whose action e
 nobody who broke it.
 
 Nothing is estimated here except carries (see :func:`app.events.counters.carries`), which are drawn as such. Team totals in
-:mod:`app.events.counters` (``seq_*``) still use the older, plainer rule (any touch by the other side ends a run); these rows are for
-reading one match.
+:mod:`app.events.counters` (``seq_*``) add up these same moves.
 
 Coordinates are tenths of a pitch unit in the move's own direction, y with the left wing at 0 (as in :mod:`app.analytics.match_centre`).
 """
