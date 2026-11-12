@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from app.events import maps as event_maps
+from app.events import movestats
 from app.events.store import EventStore
 
 
@@ -31,5 +32,7 @@ def map_payload(events: EventStore, code: str, season: int, matches: list[tuple[
         "available": True, "dims": [event_maps.NX, event_maps.NY], "n": len(silver), "counts": layer["n"],
         "grids": {"touches": layer["touches"], "pass_from": layer["pass_from"], "def": layer["def_grid"], "recover": layer["recover_grid"]},
         "lines": lines, "lost": lost, "all_passes": event_maps.lines_view(layer, limit=600), "carries": layer["carries"], "def": layer["def"], "takeons": layer["takeons"], "gk": layer["gk"],
-        "zones": event_maps.zone_shares(layer), "network": event_maps.pass_network(silver, team) if selection.player is None else None, **extra,
+        "zones": event_maps.zone_shares(layer), "network": event_maps.pass_network(silver, team) if selection.player is None else None,
+        # the same moves the Match page lists, summed: how the team's end and where it loses the ball; for a player, where he lost it and won it
+        "moves": movestats.team_moves([m for _i, m in silver], team) if selection.player is None else movestats.player_moves(silver, selection.player), **extra,
     }

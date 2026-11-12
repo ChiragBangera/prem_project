@@ -164,8 +164,11 @@ class TeamPage(Part):
             fixtures = info["fixtures"]
             listing = [{"i": i, "game": r["game"], "date": r["date"], "opp": info["alias"].get(r["opp"], r["opp"]), "home": r["home"], "gf": r["gf"], "ga": r["ga"],
                         "match_id": fixtures[r["game"]].id if r["game"] in fixtures else None} for i, r in enumerate(log)]
-            return map_payload(self.events, code, s, games, event_maps.Selection(team=ws), team=ws,
-                               extra={"matches": listing, "formations": agg["formations"], "manager": max(agg["managers"], key=agg["managers"].get) if agg["managers"] else None})
+            out = map_payload(self.events, code, s, games, event_maps.Selection(team=ws), team=ws,
+                              extra={"matches": listing, "formations": agg["formations"], "manager": max(agg["managers"], key=agg["managers"].get) if agg["managers"] else None})
+            to_us = {w: u for u, w in info["players"].items()}       # so the names in "who lost it most" open the player's page
+            out["links"] = {str(p["id"]): to_us[p["id"]] for key in ("losers", "winners") for p in out["moves"][key] if p["id"] in to_us}
+            return out
 
         out = await wb.memo(key, version, compute)
         return {"scope": scope, "team": t.name, **out}
@@ -182,14 +185,21 @@ class TeamPage(Part):
             mine = [f for f in mine if venue == "all" or (venue == "h") == (f.home == t.name)]
             mine = mine[-last:] if last else mine
             for_, against = [], []
+            games = {}
+
+            def row(sh, f):   # the first nine places are what the maps read; the rest is the detail of one shot
+                return [round(sh.x, 3), round(sh.y, 3), round(sh.xg, 3), sh.result, sh.minute, sh.player, sh.situation, sh.shot_type, f.id,
+                        sh.player_id, sh.assisted_by, sh.last_action]
+
             for f in mine:
                 side = "h" if f.home == t.name else "a"
+                games[f.id] = {"date": f.date, "opponent": f.away if side == "h" else f.home, "home": side == "h"}
                 for sh in pages[f.id].shots.get(side, []):
-                    for_.append([round(sh.x, 3), round(sh.y, 3), round(sh.xg, 3), sh.result, sh.minute, sh.player, sh.situation, sh.shot_type, f.id])
+                    for_.append(row(sh, f))
                 for sh in pages[f.id].shots.get("a" if side == "h" else "h", []):
-                    against.append([round(sh.x, 3), round(sh.y, 3), round(sh.xg, 3), sh.result, sh.minute, sh.player, sh.situation, sh.shot_type, f.id])
+                    against.append(row(sh, f))
             have, total = self.matchbook.coverage(ls, pages)
-            return {"for": for_, "against": against, "matches": len(mine), "coverage": [have, total]}
+            return {"for": for_, "against": against, "games": games, "matches": len(mine), "coverage": [have, total]}
 
         out = await self.wb.memo(("team-shots", code, s, t.name, venue, last), (self.repo.version("league", f"{code}:{s}"), self.repo.epochs.get("match", 0)), compute)
         return {"scope": scope, "team": t.name, **out}
