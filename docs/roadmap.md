@@ -96,7 +96,10 @@ a match's moves build in ~6 ms, and the map payload is remembered). Team → Sty
 where and by how the move began with the share that came to a shot; a heat map of where the ball is lost; who lost it most; who took
 it off the opponents most). Player → Maps: "Moves he was part of" (where he lost it and how; where he took it). `js/ui/moves.js`,
 `tests/test_movestats.py` (hand-counted), two e2e checks. The totals match the stored `mv_*` counters on a real player.
-**Still open:** the hand check against a second match on WhoScored's own page; `counters._sequences` still uses its older rule.
+**Second match checked 2026-11-12:** Ipswich v Nottingham Forest, 10:30 to the goal at 12:11, raw events (the page as WhoScored
+served it) against the moves: six moves, each starting and ending on the right event, the right player losing the ball and the
+right one winning it, and the eleven-pass move ending in Williams's goal.
+**Still open:** `counters._sequences` (the team "sequence" totals) still uses its older, plainer rule.
 
 **Backend**
 - Lift the sequence builder out of `counters._sequences` into one function that returns rows, used by both the counters (totals unchanged:
@@ -149,8 +152,17 @@ page and Player → Maps views (see A).
 **Also done 2026-11-12:** the xG of the shots moves came to, joined from Understat match by match (`match_centre.shot_xg`,
 `mapdata.xg_reader`): the Team and Player moves cards say what those shots were worth and for how many it is known; each shot is
 counted once. Checked on Arsenal 2026/27: 11.84 xG over 78 shots, against Understat's own 11.85 over the same 78.
-**Still open:** that xG split by kind of action (progressive pass, carry, take-on), and "lost within the next N actions" as a
-second outcome.
+**"Lost within three actions" done 2026-11-12** as the second outcome (`possessions.lost_soon`; counters `prog_lost`,
+`carry_prog_lost`, `takeons_won_lost`, gold version 3, so stored matches re-derive once on the next start: about 40 s for 700 matches;
+measure `progact_lost_pct`, lower is better; the profile's split bar gained a dark end for it). The losing action is the move's last
+step, or one further on when that step is a completed pass (the receiver lost it); the player who lost it himself is not counted as
+"followed by" a loss.
+**Split by kind of action, done 2026-11-12:** Player → Maps lists the shots that followed his progressive passes, his progressive
+carries and his take-ons won, each with Understat's xG where known (`by_action` in `movestats.player_moves`).
+**Found on the way:** while stored matches are re-derived after a version bump, `/api/data/status` waited for the whole job (the
+Data page hung: 40 s on the real store, three minutes on the demo world). It now answers in under a second with how far the job is
+(`links.status(light=True)`, `boot.done`), and the Data page says "Re-working the stored matches, N of M". Also: the trend chart's
+keyboard tooltip vanished a frame after an arrow key when the chart or page scrolled; it is put back after the scroll (`trend.js`).
 
 The idea, stated honestly: **volume against what came of it**. Not a judgement of a player, a description of his actions.
 
@@ -276,7 +288,10 @@ a phone:
 - Briefing on a phone: three findings instead of six before the table (`useMedia`), and the table drops Form and narrows the gap bar under
   560 px, so it no longer scrolls sideways (measured: 356 of 356 px). This closes that loose end in section 1.
 - Team tabs (Players, Style & maps, Chances, Matches, History) were reviewed and left as they are.
-**Still open:** replacing the remaining `grid cols-2` / `cols-wide-narrow` with one rhythm; Data (under G). Compare players on a phone was reviewed (see loose ends).
+**Rhythm checked 2026-11-12:** every remaining two-column row of cards was measured on real data (card heights and the empty space
+under the last element): League, Team overview and Compare end on one line with under 60 px to spare. The Data page's Tools row is
+two stacks of different length, which is what a stack is; left as it is.
+**Still open:** Data (under G). Compare players on a phone was reviewed (see loose ends).
 
 For each page write one sentence, "this page answers …", then order the cards to answer it: headline finding → the evidence chart →
 breakdowns → reference tables. Remove or merge cards that do not serve the sentence. Pages in order of need: Team overview, Player profile
