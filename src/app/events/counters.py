@@ -27,7 +27,7 @@ from . import schema as S
 from .silver import FL_GOAL, FL_OWN_GOAL, FL_TOUCH, Match
 
 GOLD_KIND = "ws_gold"
-GOLD_VERSION = 3
+GOLD_VERSION = 4
 
 #: counter -> definition (every counter a gold row can contain)
 COUNTERS: dict[str, str] = {
@@ -90,9 +90,9 @@ COUNTERS: dict[str, str] = {
     # discipline
     "yellow": "Yellow cards (a second yellow is counted as a red instead; cards rescinded after a review do not count).", "red": "Red cards, direct or second yellow.", "second_yellow": "Second yellow cards.", "offsides": "Times flagged offside.",
     # team-level possession sequences
-    "seq": "Possession sequences (runs of touches uninterrupted by the opponent).", "seq_passes": "Passes within sequences.", "seq_10p": "Sequences of ten or more passes.",
+    "seq": "Possession sequences: the team's moves, each ending at a shot, a stop in play or the other side taking the ball.", "seq_passes": "Completed passes within sequences.", "seq_10p": "Sequences of ten or more passes.",
     "seq_f3": "Sequences that reached the final third.", "seq_box": "Sequences that reached the penalty area.", "seq_shot": "Sequences that ended in a shot.",
-    "seq_gain": "Net pitch gained (0-100 units) from the first to the last touch, summed over sequences.", "seq_secs": "Duration in seconds, summed over sequences.",
+    "seq_gain": "Net pitch gained (0-100 units) from where a sequence began to where its last action left the ball, summed over sequences.", "seq_secs": "Duration in seconds, summed over sequences.",
     "seq_fast": "Sequences that gained at least 40% of the pitch in 15 seconds or less (direct attacks).", "seq_start_x": "Sum of the position (0-100) where sequences began.",
 }
 TEAM_ONLY = ("seq", "seq_passes", "seq_10p", "seq_f3", "seq_box", "seq_shot", "seq_gain", "seq_secs", "seq_fast", "seq_start_x")
@@ -175,47 +175,30 @@ def carries(m: Match) -> list[tuple[int, int, float, float, float, float, int]]:
     return out
 
 
-def _sequences(m: Match, accs: list[_Acc]) -> None:
-    """Possession sequences per team: runs of touches broken only by a touch from the other side."""
-    ev = m.ev
-    cur = None  # dict for the sequence in progress
-    sequences = []
-    for i in m.play_indices():
-        if not (ev["fl"][i] & FL_TOUCH):
-            continue
-        team, clock = ev["tm"][i], ev["mi"][i] * 60 + ev["se"][i]
-        x = ev["x"][i] / 10.0 if ev["x"][i] >= 0 else None
-        if cur is None or cur["team"] != team or ev["pe"][i] != cur["pe"]:
-            if cur is not None:
-                sequences.append(cur)
-            cur = {"team": team, "pe": ev["pe"][i], "x0": x, "x1": x, "t0": clock, "t1": clock, "passes": 0, "f3": False, "box": False, "shot": False}
-        if x is not None:
-            cur["x1"] = x
-            if cur["x0"] is None:
-                cur["x0"] = x
-            cur["f3"] |= x >= S.FINAL_THIRD_X
-            cur["box"] |= _in_box(x, ev["y"][i] / 10.0 if ev["y"][i] >= 0 else None)
-        cur["t1"] = clock
-        if ev["t"][i] == S.E_PASS and not (ev["q0"][i] | (ev["q1"][i] << S.WORD_BITS)) & M_RESTART:
-            cur["passes"] += 1
-        if ev["t"][i] in S.SHOT_EVENTS and not ev["fl"][i] & FL_OWN_GOAL:
-            cur["shot"] = True
-    if cur is not None:
-        sequences.append(cur)
-    for s in sequences:
-        a = accs[s["team"]]
+def _sequences(moves: list[dict], accs: list[_Acc]) -> None:
+    """Team totals of possession sequences, added up from the match's moves (:func:`app.events.possessions.build_possessions`).
+
+    A sequence is a move, by the one rule the Moves tab uses: it ends at a shot, when play stops or when the other side takes the
+    ball, and a stray touch that leaves the ball with the same side does not end it. Passes are the completed ones; the pitch
+    gained runs from where the move began to where its last action left the ball.
+    """
+    for move in moves:
+        a = accs[move["tm"]]
         a.add("seq")
-        a.add("seq_passes", s["passes"])
-        if s["passes"] >= 10:
+        a.add("seq_passes", move["n"])
+        if move["n"] >= 10:
             a.add("seq_10p")
-        a.add("seq_f3", s["f3"])
-        a.add("seq_box", s["box"])
-        a.add("seq_shot", s["shot"])
-        if s["x0"] is not None and s["x1"] is not None:
-            gain = s["x1"] - s["x0"]
+        a.add("seq_f3", move["f3"])
+        a.add("seq_box", move["box"])
+        a.add("seq_shot", move["shot"] >= 0)
+        steps = move["steps"]
+        x0 = move["sat"][0] if move["sat"] else next((s[2] for s in steps if s[2] >= 0), -1)
+        x1 = next((s[4] if s[0] in (0, 1) and s[6] and s[4] >= 0 else s[2] for s in reversed(steps) if s[2] >= 0 or s[4] >= 0), -1)   # 0, 1: a pass, a carry
+        if x0 >= 0 and x1 >= 0:
+            gain = (x1 - x0) / 10.0
             a.add("seq_gain", gain)
-            a.add("seq_start_x", s["x0"])
-            secs = max(0, s["t1"] - s["t0"])
+            a.add("seq_start_x", x0 / 10.0)
+            secs = max(0, move["c1"] - move["c0"])
             a.add("seq_secs", secs)
             if gain >= 40 and 0 < secs <= 15:
                 a.add("seq_fast")
@@ -500,7 +483,7 @@ def derive_match(m: Match) -> dict:
         if move["by"] and move["end"] == "lost":
             put(move["by"], 1 - tm, "mv_broken")
 
-    _sequences(m, teams)
+    _sequences(moves, teams)
 
     # ---- playing time and what happened while each player was on the pitch
     rows = []

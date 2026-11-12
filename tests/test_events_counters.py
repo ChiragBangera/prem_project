@@ -237,6 +237,21 @@ def test_team_totals_and_possession_sequences():
     assert g["teams"][1]["c"]["passes"] == 1 and g["teams"][1]["c"]["seq"] == 1
 
 
+def test_sequences_are_the_moves_a_stray_touch_does_not_cut_one_and_only_completed_passes_count():
+    events = [
+        ev("Pass", 1, x=10, end_x=30, minute=1), ev("Pass", 2, x=30, end_x=50, minute=1, second=3),
+        ev("BallTouch", 9, team=AWAY, x=50, minute=1, second=4),             # an opponent's stray touch: the home side plays on
+        ev("Pass", 3, x=52, end_x=70, minute=1, second=6),
+        ev("Pass", 2, x=70, end_x=80, minute=1, second=8, outcome=False),    # goes astray: not a pass of the sequence
+        ev("Pass", 9, team=AWAY, x=20, end_x=30, minute=1, second=12), end(),
+    ]
+    g = gold(events, away_players=[player(9, team_side="away")])
+    home = g["teams"][0]["c"]
+    assert home["seq"] == 1 and home["seq_passes"] == 3 and home["seq"] == home["mv_in"]
+    assert home["seq_start_x"] == pytest.approx(10) and home["seq_gain"] == pytest.approx(60) and home["seq_secs"] == 8
+    assert g["teams"][1]["c"]["seq"] == 1
+
+
 def test_goals_while_on_the_pitch_and_the_keepers_shots_faced_and_clean_sheet():
     events = [
         ev("Save", 20, x=3, quals=("KeeperSaveInTheBox",), minute=20),
