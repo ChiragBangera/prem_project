@@ -35,7 +35,7 @@ function Row({ k, row, ctx, peers }) {
     ...(neutral ? [{ label: "Reading", value: "style, not quality" }] : []),
   ]} />`);
   return html`<div class="sp-row" onMouseMove=${tip} onMouseLeave=${tooltip.hide}>
-    <span class="sp-label">${def.short}<span class="sp-name">${def.label}</span></span>
+    <span class="sp-label" title=${def.label}><span class="sp-short" aria-hidden="true">${def.short}</span><span class="sp-name">${def.label}</span></span>
     <span class=${"sp-track" + (neutral ? " style" : "")} aria-hidden="true">
       ${neutral
         ? html`<i class="sp-dot" style=${{ left: `${p ?? 50}%` }}></i>`

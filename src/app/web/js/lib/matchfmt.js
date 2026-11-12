@@ -74,3 +74,25 @@ export function verdict(m) {
   }
   return null;
 }
+
+/** One team's season so far, from its own side of each result. */
+/** A fixture with its final score in `hg`/`ag` whichever source has it. Understat publishes a match some hours after it ends (and can be
+ *  down for weeks); a match stored from WhoScored before that carries its score in `result`, and has no xG yet. */
+export const withResult = (m) => (!m.played && m.result ? { ...m, hg: m.result.hg, ag: m.result.ag } : m);
+export const finished = (m) => !!(m.played || m.result);
+
+export function teamRecord(matches, team) {
+  const out = { played: 0, w: 0, d: 0, l: 0, gf: 0, ga: 0, xg: 0, xga: 0, xgKnown: 0, flagged: 0 };
+  for (const raw of matches) {
+    const m = withResult(raw);
+    if (!finished(m) || (m.home !== team && m.away !== team)) continue;
+    const home = m.home === team;
+    const gf = home ? m.hg : m.ag, ga = home ? m.ag : m.hg;
+    out.played += 1; out.gf += gf; out.ga += ga;
+    if (gf > ga) out.w += 1; else if (gf === ga) out.d += 1; else out.l += 1;
+    const xf = home ? m.hxg : m.axg, xa = home ? m.axg : m.hxg;
+    if (xf != null && xa != null) { out.xg += xf; out.xga += xa; out.xgKnown += 1; }
+    if (m.flag) out.flagged += 1;
+  }
+  return out;
+}

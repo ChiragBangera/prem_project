@@ -3,6 +3,7 @@ import { html, useState } from "../lib/html.js";
 import { useApi } from "../lib/api.js";
 import { Async, Card, Segmented, Select } from "../ui/common.js";
 import { MapLab } from "../ui/maplab.js";
+import { TeamMoves } from "../ui/moves.js";
 
 const WINDOWS = [{ value: "", label: "Whole season" }, { value: "5", label: "Last 5 matches" }, { value: "10", label: "Last 10 matches" }, { value: "20", label: "Last 20 matches" }];
 const VENUES = [{ value: "all", label: "All matches" }, { value: "h", label: "Home" }, { value: "a", label: "Away" }];
@@ -22,5 +23,6 @@ export default function StyleMaps({ team, scope }) {
       </div>`}>
       <${Async} q=${q}>${(d) => html`<${MapLab} data=${d} kind="team" shots=${sample} shotsLoading=${shots.loading} />`}</${Async}>
     </${Card}>
+    ${q.data?.moves ? html`<${TeamMoves} moves=${q.data.moves} team=${team} links=${q.data.links} />` : null}
   </div>`;
 }

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { kickoff, phaseOf, scorerLines, shortName, verdict } from "../../src/app/web/js/lib/matchfmt.js";
+import { kickoff, phaseOf, scorerLines, shortName, teamRecord, verdict } from "../../src/app/web/js/lib/matchfmt.js";
 import { blank, direction, fmtMetric, fmtPct } from "../../src/app/web/js/lib/metricfmt.js";
 import { formation } from "../../src/app/web/js/lib/format.js";
 
@@ -77,4 +77,15 @@ test("an unplayed fixture's phase follows the clock from its kickoff, as the ser
   assert.deepEqual([-5, 10, 50, 70, 115].map((x) => phaseOf(m, at(x))), ["upcoming", "first_half", "half_time", "second_half", "full_time"]);
   assert.equal(phaseOf({ ...m, played: true }, at(10)), "played");
   assert.equal(phaseOf({ played: false }, at(10)), "upcoming");    // no kickoff time: nothing to say
+});
+
+test("a team's record counts its own side of each played match, and xG only where both sides have it", () => {
+  const ms = [
+    { played: true, home: "A", away: "B", hg: 2, ag: 1, hxg: 1.5, axg: 0.5, flag: null },
+    { played: true, home: "C", away: "A", hg: 3, ag: 3, hxg: 2.0, axg: 1.0, flag: "lucky_draw" },
+    { played: true, home: "A", away: "D", hg: 0, ag: 1, hxg: null, axg: null, flag: null },
+    { played: false, home: "E", away: "A", hg: null, ag: null },
+  ];
+  assert.deepEqual(teamRecord(ms, "A"), { played: 3, w: 1, d: 1, l: 1, gf: 5, ga: 5, xg: 2.5, xga: 2.5, xgKnown: 2, flagged: 1 });
+  assert.equal(teamRecord(ms, "Z").played, 0);
 });

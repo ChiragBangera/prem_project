@@ -29,15 +29,21 @@ function FavMark({ team }) {
   return useFavourite(team) ? html`<span class="mc-fav" title="A favourite team"><${Icon} name="star" size="sm" /></span>` : null;
 }
 
+/** Kicked off more than two days ago: a result that has still not arrived is not "arriving shortly". */
+const overdue = (m, now = Date.now()) => !!m.utc && now - Date.parse(m.utc) > 2 * 86400e3;
+
 export function MatchCard({ m, showDate = true, link = true }) {
   const k = kickoff(m);
-  const played = m.played;
+  // `result`: finished and stored from WhoScored, but Understat has not published it. The score, scorers and counts are real; xG is not there yet.
+  const unpublished = !m.played && m.result ? m.result : null;
+  const played = m.played || !!unpublished;
+  if (unpublished) m = { ...m, hg: unpublished.hg, ag: unpublished.ag };
   const clock = phaseOf(m), phase = clock === "full_time" && m.still_playing ? "second_half" : clock;   // the last read found it still in play
   const live = !played && phase !== "upcoming";
   const homeWon = played && m.hg > m.ag, awayWon = played && m.ag > m.hg;
   const stats = m.stats || {};
   const poss = stats.poss;
-  const note = played ? verdict(m) : null;
+  const note = m.played ? verdict(m) : null;
   const body = html`
     <div class="mc-top">
       <span class="mc-when num">${showDate ? `${k.day} · ` : ""}${k.time}</span>
@@ -56,10 +62,14 @@ export function MatchCard({ m, showDate = true, link = true }) {
       </div>
     </div>
     ${played ? html`<div class="mc-stats">
-      <${Pair} label="xG" a=${m.hxg} b=${m.axg} fmt=${(v) => nf(v, 2)} />
+      ${m.hxg != null && m.axg != null ? html`<div class="mc-xg" title="Expected goals: the chances each side made">
+        <b class=${"num" + (m.hxg > m.axg ? " lead" : "")}>${nf(m.hxg, 2)}</b>
+        <span class="mc-xg-mid"><span class="tug-bars"><i class="h" style=${{ width: (m.hxg / ((m.hxg + m.axg) || 1)) * 100 + "%" }}></i><i class="a" style=${{ width: (m.axg / ((m.hxg + m.axg) || 1)) * 100 + "%" }}></i></span><span class="mc-stat-label">xG</span></span>
+        <b class=${"num" + (m.axg > m.hxg ? " lead" : "")}>${nf(m.axg, 2)}</b>
+      </div>` : unpublished ? html`<div class="mc-noxg muted small" title="The score, scorers and counts are from WhoScored. Expected goals come from Understat, which has not published this match.">No xG yet: Understat has not published this match</div>` : null}
       ${poss ? html`<${Pair} label="Possession" a=${poss[0]} b=${poss[1]} fmt=${(v) => `${v}%`} />` : null}
       ${m.shots ? html`<${Pair} label="Shots" a=${m.shots.h} b=${m.shots.a} />` : null}
-    </div>` : html`<div class="mc-upnext muted small">${live ? (phase === "full_time" ? "Finished: Understat's shots and xG arrive shortly. Open it for the event data read at full time." : "Being played now. Open it to follow it.") : `Kicks off ${k.long} at ${k.time}`}</div>`}`;
+    </div>` : html`<div class="mc-upnext muted small">${live ? (phase === "full_time" ? (overdue(m) ? "Finished, but neither source has it here yet: the score appears with the next update." : "Finished: Understat's shots and xG arrive shortly. Open it for the event data read at full time.") : "Being played now. Open it to follow it.") : `Kicks off ${k.long} at ${k.time}`}</div>`}`;
   return link
     ? html`<a class=${cls("mc", m.flag && "flagged", !played && "upcoming")} href=${matchHref(m.id)} aria-label=${`${m.home} ${played ? `${m.hg} ${m.away} ${m.ag}` : `v ${m.away}`}`}>${body}</a>`
     : html`<div class=${cls("mc", m.flag && "flagged", !played && "upcoming")}>${body}</div>`;

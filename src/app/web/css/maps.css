@@ -4,10 +4,10 @@
 .pitchmap svg { width: 100%; height: auto; overflow: visible; }
 .pitchmap figcaption { text-align: center; margin-top: 4px; }
 .pitchmap .hit { fill: transparent; }
-.pitchmap .shot { cursor: default; }
-.pitchmap .shot:hover { stroke: var(--ink); stroke-width: 0.5px; }
 .pm-dir line, .pm-dir path { stroke: var(--ink-3); stroke-width: 0.35; }
-.pm-label { font-size: 2.7px; font-weight: 650; fill: var(--ink-2); paint-order: stroke; stroke: var(--pitch-fill); stroke-width: 0.55px; stroke-linejoin: round; }
+.heat-img { image-rendering: auto; pointer-events: none; }
+.pm-leader { stroke: var(--pitch-ink); stroke-width: 0.25px; opacity: .7; }
+.pm-label { font-size: 2.7px; font-weight: 650; fill: var(--pitch-ink); paint-order: stroke; stroke: var(--pitch-fill); stroke-width: 0.55px; stroke-linejoin: round; }
 
 .maplab { display: flex; flex-direction: column; gap: 14px; }
 .maplab-tabs { overflow-x: auto; padding-bottom: 2px; }
@@ -27,3 +27,18 @@
 .zb-track { display: flex; gap: 2px; height: 24px; border-radius: 6px; overflow: hidden; }
 .zb-track i { display: grid; place-items: center; font-style: normal; font-size: var(--fs-xs); font-weight: 650; color: var(--ink); min-width: 2px; }
 @media (max-width: 1100px) { .maplab-body { grid-template-columns: minmax(0, 1fr); } }
+
+/* moves summed over matches (Team: how their moves end; Player: where he lost and won the ball) */
+.moves-grid { gap: 22px 28px; margin-top: 18px; align-items: start; }
+.mini-title { margin: 0 0 8px; font-size: var(--fs-sm); font-weight: 700; color: var(--ink); }
+.mini-title .muted { font-weight: 500; margin-left: 6px; }
+.link-quiet { color: inherit; }
+.link-quiet:hover { color: var(--accent-strong); text-decoration: underline; text-underline-offset: 2px; }
+.people { display: grid; gap: 7px; margin-bottom: 10px; }
+.people-row { display: grid; grid-template-columns: minmax(0, 150px) minmax(40px, 1fr) 34px 96px; align-items: center; gap: 10px; font-size: var(--fs-sm); }
+.people-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.people-row .track { height: 6px; border-radius: 3px; background: var(--surface-3); overflow: hidden; }
+.people-row .track i { display: block; height: 100%; border-radius: 3px; background: var(--c1); }
+.people-row b { text-align: right; }
+.people-note { white-space: nowrap; }
+@media (max-width: 560px) { .people-row { grid-template-columns: minmax(0, 1fr) 60px 30px; } .people-note { grid-column: 1 / -1; margin-top: -4px; } }
