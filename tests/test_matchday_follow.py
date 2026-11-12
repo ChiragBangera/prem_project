@@ -312,6 +312,7 @@ def test_the_report_comes_from_the_read_until_understat_publishes_and_then_is_th
             await wb.repo.league("EPL", 2026)
             with pytest.raises(BadRequest):
                 await wb.matches.report(1003, "EPL", "2026")                                    # no read yet: nothing to draw
+            assert (await wb.matches.centre(1003, "EPL", "2026"))["centre"] == {"available": False, "reason": "not_read"}
             assert wb.events.ingest("EPL", 2026, 77, page_doc()) == "live"
             ledger.note_matchday(wb.store, "EPL", 2026, 1003, game=77, state="live", at=now[0], moment="ht", elapsed="HT", score="1 : 0")
             live = await wb.matches.report(1003, "EPL", "2026")
@@ -321,6 +322,10 @@ def test_the_report_comes_from_the_read_until_understat_publishes_and_then_is_th
             deep = await wb.matches.players(1003, "EPL", "2026")
             json.dumps(deep, allow_nan=False)
             assert deep["rows"] and not any("xg" in k or k in ("xa", "xa90", "big90") for k in deep["keys"])   # no xG metric made of zeros
+            # the event sections (momentum, passing, line-ups) are drawn from the same read, and no shot carries an xG
+            centre = (await wb.matches.centre(1003, "EPL", "2026"))["centre"]
+            json.dumps(centre, allow_nan=False)
+            assert centre["available"] and centre["final"] is False and centre["touches"] and all(s["xg"] is None for s in centre["shots"])
             # full time: the page replaces the half-time one, which leaves no trace
             now[0] = ROUND_TWO + matchclock.FT_READ + 60
             assert wb.events.ingest("EPL", 2026, 77, page_doc("FT", 6, "2 : 0")) == "final"
@@ -328,6 +333,7 @@ def test_the_report_comes_from_the_read_until_understat_publishes_and_then_is_th
             assert wb.events.live("EPL", 2026, 77) is None and wb.store.keys("ws_live") == []
             final = await wb.matches.report(1003, "EPL", "2026")
             assert final["live"]["final"] is True and (final["report"]["fixture"]["hg"], final["report"]["fixture"]["ag"]) == (2, 0)
+            assert (await wb.matches.centre(1003, "EPL", "2026"))["centre"]["final"] is True
             # Understat publishes: the report is Understat's own again, exactly as for any finished match
             other = await wb.matches.report(1000, "EPL", "2026")                                 # a fixture Understat has published
             assert "live" not in other and other["report"].get("has_xg", True) is True and other["report"]["timeline"]["home"]
@@ -380,6 +386,47 @@ def test_past_full_time_by_the_clock_a_match_still_in_play_is_shown_live(tmp_pat
             assert card_of(await await_season())["still_playing"] is True
             now[0] = ROUND_TWO + 4 * 3600 + 60                                   # reads have given up: the clock is trusted again
             assert (await wb.matches.live(1003, "EPL", "2026"))["phase"] == "full_time"
+        finally:
+            await wb.close()
+
+    run(go())
+
+
+def test_a_finished_match_stored_later_is_shown_from_whoscored_until_understat_publishes_it(tmp_path, monkeypatch):
+    """October 2026: Understat was down for a month. The catch-up fetch stored the finished matches from WhoScored, but nothing was read
+    on the day, so there was no matchday note and the Matches page showed them as "finished, result arrives shortly" with no score."""
+    async def go():
+        wb = make(tmp_path)
+        try:
+            ls = await wb.repo.league("EPL", 2026)
+            f = fixture(wb, 1003)
+            assert not f.played
+            now = [matchclock.kickoff(f) + 20 * 86400]                                          # three weeks on, still not published
+            wb.auto._clock = wb.auto.budget._clock = lambda: now[0]
+            doc = {**page_doc("FT", 6, "2 : 1"), "startTime": f.dt.replace(" ", "T")}
+            doc["home"]["name"], doc["away"]["name"] = f.home, f.away
+            assert wb.events.ingest("EPL", 2026, 77, doc) == "final"                            # the catch-up fetch: no matchday note is written
+            assert ledger.matchday(wb.store, "EPL", 2026, 1003) is None
+            assert wb.matches.stored_games(ls.data) == {1003: 77}
+            season = await wb.matches.season("EPL", "2026")
+            json.dumps(season, allow_nan=False)
+            card = next(m for r in season["rounds"] for m in r["matches"] if m["id"] == 1003)
+            assert card["played"] is False and card["hxg"] is None                              # not Understat's: no xG, and none made up
+            assert (card["result"]["hg"], card["result"]["ag"], card["result"]["source"]) == (2, 1, "whoscored")
+            assert card["scorers"]["h"][0]["xg"] is None and card["shots"]["h"] == 2 and "big" not in card
+            assert season["coverage"]["unpublished"] == 1 and season["latest_round"] == card["round"]
+            report = await wb.matches.report(1003, "EPL", "2026")
+            json.dumps(report, allow_nan=False)
+            assert report["live"]["final"] is True and report["live"]["overdue"] is True and report["report"]["has_xg"] is False
+            assert (report["report"]["fixture"]["hg"], report["report"]["fixture"]["ag"]) == (2, 1)
+            assert (await wb.matches.centre(1003, "EPL", "2026"))["centre"]["final"] is True
+            live = await wb.matches.live(1003, "EPL", "2026")
+            assert live["read"]["final"] is True and live["phase"] == "full_time" and live["overdue"] is True
+            # a match of other clubs on the same day is nobody's fixture: it is not guessed at
+            other = {**page_doc("FT", 6, "0 : 0"), "startTime": f.dt.replace(" ", "T")}
+            other["home"]["name"], other["away"]["name"] = "Someone", "Else"
+            wb.events.ingest("EPL", 2026, 78, other)
+            assert wb.matches.stored_games(ls.data) == {1003: 77}
         finally:
             await wb.close()
 
