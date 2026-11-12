@@ -1,6 +1,6 @@
 // Bar-style visuals built from HTML/CSS so text stays crisp and layouts reflow.
 import { html } from "../lib/html.js";
-import { nf, signed } from "../lib/format.js";
+import { nf, ordinal, signed } from "../lib/format.js";
 import { tooltip } from "../lib/tooltip.js";
 import { seqColor } from "./core.js";
 import { SERIES_COLORS } from "./lines.js";
@@ -73,10 +73,11 @@ export function PercentileDots({ metrics, subjects, colors }) {
   const colorAt = (i) => (colors ? colors[i] : SERIES_COLORS[i % SERIES_COLORS.length]);
   return html`<div class="pdots" role="list">
     <div class="pdots-head" aria-hidden="true"><span></span><span class="axis-cap"><em>0</em><em>25</em><em>50</em><em>75</em><em>100</em></span><span></span></div>
-    ${metrics.map((m) => {
+    ${metrics.map((m, mi) => {
       const known = m.pct.filter((v) => v != null);
       const lo = Math.min(...known), hi = Math.max(...known);
-      return html`<div class="pdot-row" role="listitem" key=${m.key}>
+      const head = m.group && m.group !== metrics[mi - 1]?.group ? html`<div class="pdot-group" key=${"g" + m.group}>${m.group}</div>` : null;
+      return html`${head}<div class="pdot-row" role="listitem" key=${m.key} title=${m.title || undefined}>
         <span class="lab">${m.label}</span>
         <span class="track" aria-hidden="true">
           ${known.length > 1 ? html`<i class="span" style=${{ left: lo + "%", width: hi - lo + "%" }}></i>` : null}
@@ -84,6 +85,31 @@ export function PercentileDots({ metrics, subjects, colors }) {
             onMouseMove=${(e) => tooltip.move(e, html`<div><div class="tt-title">${subjects[i].name}</div><div class="tt-row"><span class="k">${m.label}</span><span class="v">${m.format(m.values[i])}</span></div><div class="tt-row"><span class="k">Percentile</span><span class="v">${Math.round(p)}</span></div></div>`)} onMouseLeave=${tooltip.hide}></i>`))}
         </span>
         <span class="vals num">${m.values.map((v, i) => html`<b key=${i} class=${i === m.best ? "best" : ""} style=${{ "--dot": colorAt(i) }}>${m.format(v)}</b>`)}</span>
+      </div>`;
+    })}
+  </div>`;
+}
+
+/**
+ * Volume against what came of it. One row per kind of action: the bar's length is how many there were (against the longest row), its solid
+ * part the ones in a move that came to a shot, its hatched part the ones that did not. ``rows``: ``{ key, label, n, shot, pct?, note?, color?, text? }``;
+ * ``pct`` is where that share stands among peers. A row with fewer than ``minN`` actions is drawn faded: a share of three is not a share.
+ */
+export function OutcomeBars({ rows, minN = 5, peers = "", solid = "came to a shot", hatched = "did not" }) {
+  const max = Math.max(1, ...rows.map((r) => r.n));
+  return html`<div class="outcome-bars">
+    <div class="ob-legend xsmall muted"><span class="ob-key solid"></span>${solid}<span class="ob-key hatch"></span>${hatched}</div>
+    ${rows.map((r) => {
+      const share = r.n > 0 ? r.shot / r.n : null;
+      return html`<div key=${r.key || r.label} class=${"ob-row" + (r.n < minN ? " faint" : "")} title=${r.n < minN ? "Too few to read a share from" : undefined} style=${r.color ? { "--ob": r.color } : null}>
+        <span class="ob-label">${r.label}${r.note ? html`<span class="muted xsmall"> ${r.note}</span>` : null}</span>
+        <span class="ob-track" role="img" aria-label=${`${r.text || r.label}: ${r.shot} of ${r.n} ${solid}`}>
+          <span class="ob-fill" style=${{ width: `${(r.n / max) * 100}%` }}>
+            <span class="ob-solid" style=${{ width: `${(share || 0) * 100}%` }}></span>
+          </span>
+        </span>
+        <span class="ob-num num"><b>${r.shot}</b> of ${r.n}${share != null ? html` <span class="muted">· ${Math.round(share * 100)}%</span>` : null}</span>
+        ${r.pct != null ? html`<span class="ob-pct xsmall" title=${`That share is higher than ${Math.round(r.pct)}% of ${peers || "peers"}`}>${ordinal(Math.round(r.pct))} pct</span>` : html`<span class="ob-pct"></span>`}
       </div>`;
     })}
   </div>`;

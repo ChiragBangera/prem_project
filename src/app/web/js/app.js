@@ -104,9 +104,12 @@ function DataPill({ meta }) {
   const auto = meta.auto || {};
   const busy = (meta.jobs || []).some((j) => j.state === "running") || auto.running || Boolean(auto.events_running);
   const age = newest ? Date.now() / 1000 - newest : null;
-  const problem = auto.enabled && auto.errors > 0;
+  // a live table is read at least twice a day: two days without one is a problem whatever the last cycle reported (the pill stayed green
+  // for a month while Understat was down)
+  const behind = !meta.mode.offline && age != null && age > 2 * 86400;
+  const problem = (auto.enabled && auto.errors > 0) || behind;
   const label = busy ? (auto.events_running ? `Fetching ${auto.events_running}…` : "Updating…") : meta.mode.offline ? "Offline cache" : age == null ? "No data yet" : `Updated ${relTime(age)}`;
-  const title = meta.mode.offline ? "Offline: serving what is stored" : auto.enabled ? `Updates itself in the background${problem ? " (the last cycle had problems: open Data)" : ""}` : "Automatic updates are off: open Data";
+  const title = meta.mode.offline ? "Offline: serving what is stored" : auto.enabled ? `Updates itself in the background${behind ? " (nothing new has arrived for days: open Data to see why)" : problem ? " (the last cycle had problems: open Data)" : ""}` : "Automatic updates are off: open Data";
   return html`<a class=${"pill" + ((age == null && !busy) || problem ? " warn" : "")} href=${href("/data")} title=${title}><i class=${busy ? "live" : ""}></i><span class="pill-text">${label}</span></a>`;
 }
 
@@ -114,7 +117,9 @@ function ThemeToggle() {
   const theme = useStore(ui, (s) => s.theme);
   const next = { system: "light", light: "dark", dark: "system" }[theme] || "light";
   const icon = { system: "monitor", light: "sun", dark: "moon" }[theme] || "monitor";
-  return html`<${Button} kind="quiet" icon=${icon} title=${`Theme: ${theme}. Switch to ${next}.`} onClick=${() => ui.set({ theme: next })} />`;
+  // the name of the setting sits beside the icon: an icon alone was not recognised as the light/dark switch
+  const name = { system: "Auto", light: "Light", dark: "Dark" }[theme] || "Auto";
+  return html`<${Button} kind="quiet" icon=${icon} title=${`Theme: ${theme}${theme === "system" ? " (follows this computer)" : ""}. Switch to ${next}.`} onClick=${() => ui.set({ theme: next })}><span class="pill-text">${name}</span></${Button}>`;
 }
 
 function TopBar({ meta, onSearch }) {

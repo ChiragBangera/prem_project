@@ -1,5 +1,6 @@
 // Compare: players side by side (percentile dot plot) or two teams (numbers, trend, meetings).
 import { html, useMemo, useState } from "../lib/html.js";
+import { Radar } from "../charts/pizza.js";
 import { useApi } from "../lib/api.js";
 import { useScope, useMeta } from "../lib/scope.js";
 import { setQuery, useLocation } from "../lib/router.js";
@@ -48,6 +49,8 @@ function PlayerPicker({ chosen, onAdd, max = 4 }) {
 
 function PlayersView({ d, ids, remove, scope, colors }) {
   const players = d.players;
+  // the radar's axes: every measure at least one of them is ranked on (event measures only when the event data has them)
+  const axes = [...d.metrics, ...(d.event_metrics || [])].filter((m) => m.pct.some((v) => v != null));
   const dots = d.metrics.map((m) => ({ key: m.key, label: m.short || m.label, values: m.values, pct: m.pct, best: m.best, format: (v) => (v == null ? "–" : metricValue({ unit: m.key === "output" ? "count" : undefined, decimals: m.decimals }, v)) }));
   // optional event data: shown only when at least two of the players have some
   const eventDots = (d.event_metrics || []).map((m) => ({ key: m.key, label: m.short || m.label, values: m.values, pct: m.pct, best: m.best, format: (v) => (v == null ? "–" : metricValue({ unit: m.unit, decimals: m.decimals }, v)) }));
@@ -67,7 +70,11 @@ function PlayersView({ d, ids, remove, scope, colors }) {
         <div class="row wrap" style=${{ gap: "6px" }}>${(p.tags || []).slice(0, 2).map((t) => html`<span class="tag" key=${t.key} title=${t.why}>${t.label}</span>`)}</div>
       </div>`)}
     </div>
-    ${d.note ? html`<${Notice} icon="info">${d.note}</${Notice}>` : null}
+    ${axes.length >= 5 ? html`<${Card} title="Shapes side by side" sub="Each player's standing among his own role on every measure: further out is better than more of his peers. Compare the shapes; hover a measure for the numbers.">
+      <${Radar} axes=${axes} players=${players} colors=${colors} valueOf=${(a, pi) => (a.values[pi] == null ? "–" : metricValue({ unit: a.unit, decimals: a.decimals }, a.values[pi]))} />
+    </${Card}>` : null}
+    ${/* the warning below says the same thing as the note for mixed roles, and says why it matters: one of them is enough */""}
+    ${d.note && !d.mixed_groups ? html`<${Notice} icon="info">${d.note}</${Notice}>` : null}
     ${d.mixed_groups ? html`<${Notice} tone="warn" icon="alert">These players have different roles. Each percentile is measured against that player's own role, so a defender's 90 and a striker's 90 are not the same skill.</${Notice}>` : null}
     ${d.facts?.length ? html`<${Section} title="The differences that matter"><div class="stack" style=${{ "--gap": "6px" }}>${d.facts.map((f) => html`<div class="fact" key=${f.key}><${Icon} name="arrowRight" size="sm" /><span><b>${f.leader}</b> leads <b>${f.trailer}</b> on ${d.metrics.find((m) => m.key === f.key)?.label || f.key}: ${metricValue({ decimals: d.metrics.find((m) => m.key === f.key)?.decimals ?? 2 }, f.leader_value)} against ${metricValue({ decimals: d.metrics.find((m) => m.key === f.key)?.decimals ?? 2 }, f.trailer_value)}.</span></div>`)}</div></${Section}>` : null}
     <${Card} title="Profile against role peers" sub="Each dot is a player's percentile (0 to 100) among peers in the same role. Ringed: best in the row. The shaded span is the gap between the players.">
@@ -122,11 +129,11 @@ function StyleCompare({ a, b, scope, colors }) {
   if (!ctx) return null;
   const ra = q.data.rows.find((r) => r.team === a.team), rb = q.data.rows.find((r) => r.team === b.team);
   if (!ra || !rb) return null;
-  const dots = STYLE_GROUPS.flatMap((g) => g.keys).filter((k) => ctx.idx[k] !== undefined).map((k) => {
+  const dots = STYLE_GROUPS.flatMap((g) => g.keys.map((k) => [k, g.title])).filter(([k]) => ctx.idx[k] !== undefined).map(([k, group]) => {
     const i = ctx.idx[k], def = ctx.metrics[k];
-    return { k, i, def, va: ra.v[i], vb: rb.v[i], pa: ra.p[i], pb: rb.p[i] };
+    return { k, i, def, group, va: ra.v[i], vb: rb.v[i], pa: ra.p[i], pb: rb.p[i] };
   }).filter((m) => !blank(m.va) && !blank(m.vb)).map((m) => ({
-    key: m.k, label: m.def.short, values: [m.va, m.vb], pct: [m.pa, m.pb], format: (v) => fmtMetric(m.def, v),
+    key: m.k, label: m.def.label, group: m.group, title: m.def.what, values: [m.va, m.vb], pct: [m.pa, m.pb], format: (v) => fmtMetric(m.def, v),
     best: m.def.hib === null || m.pa == null || m.pb == null || m.pa === m.pb ? -1 : m.pa > m.pb ? 0 : 1,
   }));
   if (!dots.length) return null;
@@ -162,7 +169,7 @@ function TeamsView({ d, colors }) {
       <div class="legend" style=${{ marginTop: "14px" }}>${[a, b].map((t, i) => html`<span class="item" key=${t.team}><span class="swatch dot" style=${{ background: colors[i] }}></span>${t.team}</span>`)}</div>
     </${Card}>
     <${StyleCompare} a=${a} b=${b} scope=${d.scope} colors=${colors} />
-    <div class="grid cols-2 top">
+    <div class="grid cols-2 fill">
       <${Card} title="Net chances through the season" sub="Running total of xG minus xGA, match by match.">
         <${LineChart} x=${idx} series=${[{ key: "a", label: a.team, values: cum(d.xgd_by_match.a), color: colors[0], endLabel: a.short }, { key: "b", label: b.team, values: cum(d.xgd_by_match.b), color: colors[1], endLabel: b.short }]}
           height=${280} yFormat=${(v) => signed(v, 0)} xLabel="Match" zeroLine tooltipTitle=${(i) => `After match ${idx[i]}`} tooltipFormat=${(v) => signed(v, 1)} />

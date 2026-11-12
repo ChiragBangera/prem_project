@@ -1,19 +1,18 @@
 // Briefing: the page you open first. Findings lead; evidence follows.
+import { useMedia } from "../lib/media.js";
 import { html, useMemo } from "../lib/html.js";
 import { useApi } from "../lib/api.js";
 import { useMeta, useScope } from "../lib/scope.js";
 import { href, navigate } from "../lib/router.js";
-import { nf, plural, signed } from "../lib/format.js";
+import { plural } from "../lib/format.js";
 import { Icon } from "../lib/icons.js";
-import { Async, Card, Crest, DataNotices, Insights, PageHead, Section, useDocumentTitle } from "../ui/common.js";
+import { Async, Card, DataNotices, Form, Insights, PageHead, Section, TeamName, useDocumentTitle } from "../ui/common.js";
 import { shortlistStore, useStore } from "../lib/store.js";
 import { DataTable } from "../ui/table.js";
 import { MetricCell, PlayerCell, ScoreCell, TagCell } from "../ui/cells.js";
-import { FixtureRow, MoverRow } from "../ui/blocks.js";
+import { FixtureRow, GapCell, MoverRow } from "../ui/blocks.js";
 import { MatchCard, kickoff } from "../ui/matchcard.js";
 import { buildContext } from "../ui/explore/model.js";
-import { DivergingBars } from "../charts/bars.js";
-import { Tip } from "../lib/tooltip.js";
 
 function headline(d) {
   const { table, scope, context } = d;
@@ -31,11 +30,24 @@ function headline(d) {
   return `${lead} with ${plural(left, "matchweek")} left.${next}`;
 }
 
-function gapRows(table) {
-  return [...table].sort((a, b) => b.xpts_gap - a.xpts_gap).map((t) => ({
-    key: t.team, value: t.xpts_gap, team: t,
-    label: html`<a class="cell-team" href=${href(`/team/${encodeURIComponent(t.team)}`)}><${Crest} team=${t.team} short=${t.short} size=${20} /><span class="truncate">${t.team}</span></a>`,
-  }));
+/** The table at a glance: where each side stands and how far its points sit from the chances it has made. */
+function TableSnapshot({ table, scope }) {
+  const n = table.length;
+  const cols = [
+    { key: "rank", label: "#", num: true, width: "38px", firstDir: "asc", render: (r) => html`<span class="rank">${r.rank}</span>` },
+    { key: "team", label: "Team", firstDir: "asc", render: (r) => html`<${TeamName} team=${r.team} short=${r.short} size=${20} />` },
+    { key: "played", label: "P", num: true },
+    { key: "pts", label: "Pts", num: true, className: "strong" },
+    { key: "xpts_gap", label: "Pts − xPts", num: true, render: (r) => html`<${GapCell} value=${r.xpts_gap} max=${Math.max(8, ...table.map((t) => Math.abs(t.xpts_gap)))} />`,
+      title: "Points won minus the points the chances earned (every match replayed from its shots). Blue: more than earned. Orange: fewer." },
+    { key: "form", label: "Form", sortable: false, render: (r) => html`<${Form} items=${r.form} />`, title: "Last five results, oldest to newest." },
+  ];
+  return html`<${Card} flush title="The table" sub="Points, and how far they sit from what the chances earned"
+    actions=${html`<a class="link small" href=${href("/league")}>Full table</a>`}>
+    <${DataTable} columns=${cols} rows=${table} rowKey=${(r) => r.team} initialSort=${{ key: "rank", dir: "asc" }} tight caption="League table at a glance"
+      onRowClick=${(r) => navigate(`/team/${encodeURIComponent(r.team)}`, { league: scope.league, season: scope.season })}
+      zone=${(r) => (r.rank <= scope.ucl_places ? "ucl" : r.rank > n - scope.relegation_places ? "rel" : "none")} />
+  </${Card}>`;
 }
 
 /** The players you track, with this season's numbers: the briefing is for you, not for the league in general. */
@@ -64,45 +76,40 @@ function Watchlist({ scope }) {
 function BriefingView({ d }) {
   const { scope, meta, table, upcoming, recent, movers, insights, highlights } = d;
   const flagged = recent.filter((m) => m.flag);
+  // on a phone the findings and the table are one column: six findings put the table five screens down, three leave it within reach
+  const shown = useMedia("(max-width: 860px)") ? 3 : 6;
   return html`
     <${PageHead} eyebrow=${`${scope.league_name} · ${scope.label} · Matchweek ${scope.rounds_played} of ${scope.rounds_total}${scope.complete ? " · final" : ""}`}
       title="Briefing" sub=${headline(d)} />
     <span class="wide-page" hidden></span>
     <${DataNotices} scope=${scope} meta=${meta} />
 
-    <${Section} title="What stands out" sub=${`${insights.length} findings, ranked by how far they sit from expectation`}>
-      <${Insights} items=${insights} scope=${scope} limit=${6} />
-    </${Section}>
+    <div class="mrow brief-lead">
+      <${Section} title="What stands out" sub=${`${Math.min(shown, insights.length)} of ${plural(insights.length, "finding")}, ranked by how far they sit from expectation`}>
+        <${Insights} items=${insights} scope=${scope} limit=${shown} expandable />
+      </${Section}>
+      <${TableSnapshot} table=${table} scope=${scope} />
+    </div>
 
     <${Watchlist} scope=${{ league: scope.league, season: scope.season }} />
 
-    <div class="mrow m-7-5">
-      <${Card} title="Latest results" sub=${flagged.length ? `${flagged.length} of ${recent.length} did not follow the chances` : "All followed the chances"} actions=${html`<a class="link small" href=${href("/matches")}>All matchweeks</a>`}>
-        <div class="mgrid brief-grid">${recent.slice(0, 10).map((m) => html`<${MatchCard} key=${m.id} m=${m} />`)}</div>
-      </${Card}>
-      ${upcoming.length ? html`<${Card} flush title="Next fixtures" sub="Kickoff in your time zone, with each side's league position, form and chance difference" actions=${html`<a class="link small" href=${href("/matches")}>Schedule</a>`}>
-        <div class="fixtures">${upcoming.slice(0, 10).map((f) => html`<${FixtureRow} key=${f.id} f=${f} />`)}</div>
-      </${Card}>` : null}
-    </div>
+    <${Card} title="Latest results" sub=${flagged.length ? `${flagged.length} of ${recent.length} did not follow the chances` : "All followed the chances"} actions=${html`<a class="link small" href=${href("/matches")}>All matchweeks</a>`}>
+      <div class="mgrid brief-grid">${recent.slice(0, 10).map((m) => html`<${MatchCard} key=${m.id} m=${m} />`)}</div>
+    </${Card}>
 
-    <div class="mrow m-7-5">
-      <${Card} title="Points against expected points"
-        sub="Expected points replay every shot of every match. Blue: more points than the chances earned. Orange: fewer.">
-        <${DivergingBars} rows=${gapRows(table)} format=${(v) => signed(v, 1)}
-          tip=${(r) => html`<${Tip} title=${r.team.team} rows=${[
-            { label: "Points", value: r.team.pts }, { label: "Expected points", value: nf(r.team.xpts, 1) },
-            { label: "Table rank", value: r.team.rank }, { label: "Rank on expected points", value: r.team.rank_xpts },
-          ]} />`} />
-      </${Card}>
-      <div class="stack">
+    <div class="mrow m-5-7">
+      ${upcoming.length ? html`<${Card} flush title="Next fixtures" sub="Kickoff in your time zone, with each side's league position, form and chance difference" actions=${html`<a class="link small" href=${href("/matches")}>Schedule</a>`}>
+        <div class="fixtures">${upcoming.slice(0, 6).map((f) => html`<${FixtureRow} key=${f.id} f=${f} />`)}</div>
+      </${Card}>` : html`<span></span>`}
+      <div class="stack" style=${{ "--gap": "20px" }}>
         ${movers.risers.length || movers.fallers.length ? html`<${Card} title="Movers" sub=${`Table position over the last ${movers.span} matchweeks`}>
-          <div class="movers">
-            ${movers.risers.map((m) => html`<${MoverRow} key=${m.team} m=${m} up=${true} />`)}
-            ${movers.fallers.map((m) => html`<${MoverRow} key=${m.team} m=${m} up=${false} />`)}
+          <div class="movers two">
+            <div class="movers">${movers.risers.map((m) => html`<${MoverRow} key=${m.team} m=${m} up=${true} />`)}</div>
+            <div class="movers">${movers.fallers.map((m) => html`<${MoverRow} key=${m.team} m=${m} up=${false} />`)}</div>
           </div>
         </${Card}>` : null}
         <${Section} title="From the scouting board" sub="Players whose numbers say something">
-          <div class="stack" style=${{ "--gap": "10px" }}><${Insights} items=${highlights} scope=${scope} limit=${4} compact /></div>
+          <${Insights} items=${highlights} scope=${scope} limit=${4} compact />
           <a class="link" href=${href("/scout")}>Open the scouting board <${Icon} name="arrowRight" size="sm" /></a>
         </${Section}>
       </div>

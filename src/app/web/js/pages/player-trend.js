@@ -123,7 +123,7 @@ function TrendView({ d, cat, group, who }) {
         onOpen=${(m) => navigate(`/match/${m.match_id}`)} />
       <p class="chart-caption">${caption}</p>
     </${Card}>
-    <div class="grid cols-2 top">
+    <div class="grid cols-2 fill start">
       <${Card} title="What stands out">
         ${reads.length ? html`<ul class="reads">${reads.map((r) => html`<li key=${r.kind} class=${cls("read", r.tone)}>${r.text}</li>`)}</ul>` : html`<p class="muted small">Not enough matches with a number to say anything yet.</p>`}
         <p class="xsmall muted" style=${{ marginTop: "10px" }}>Written from the numbers on this page. A pattern over a handful of matches is a hint, not a finding.</p>

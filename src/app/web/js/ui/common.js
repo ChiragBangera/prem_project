@@ -302,10 +302,61 @@ const CONF_LABEL = { high: "", medium: "Moderate evidence", low: "Small sample" 
 // The tone also gets a word, so it never rests on colour alone.
 const KICKER = { positive: "Upside", negative: "Downside", warning: "Watch", info: "Context", neutral: "Context" };
 
-export function InsightCard({ insight, scope, compact }) {
+// The statistic's own name means little to most readers: say what it measures.
+const FACT_LABEL = { z: "Standard deviations from expected" };
+const FACT_TITLE = { z: "How unusual the gap is for this many shots. Beyond about 2 either way is rare by chance alone." };
+const num = (text) => { const m = String(text ?? "").replace("−", "-").match(/-?\d+(\.\d+)?/); return m ? Number(m[0]) : null; };
+const REFERENCE = /^(xpts|xg\b|xga\b|league avg|league average|expected)/i;
+const SCORE = /^(percentile|role score)$/i;
+
+/** What a finding's numbers can be drawn as: the value against its reference on one scale, or a score out of 100. Null when neither fits. */
+export function insightGauge(insight) {
+  const ev = insight.evidence || [];
+  // a season-on-season change reads the same way: the latest figure against the one before
+  const [a, b] = /^previous$/i.test(ev[0]?.label) && /^latest$/i.test(ev[1]?.label) ? [ev[1], ev[0]] : ev;
+  if (a && b && (REFERENCE.test(b.label) || /^previous$/i.test(b.label))) {
+    const va = num(a.value), vb = num(b.value);
+    if (va != null && vb != null && va >= 0 && vb >= 0 && Math.max(va, vb) > 0) {
+      return { type: "pair", a: { ...a, v: va }, b: { ...b, v: vb }, expected: !/^(league|previous)/i.test(b.label), rest: ev.slice(2) };
+    }
+  }
+  const i = ev.findIndex((e) => SCORE.test(e.label) || /^\d+(\.\d+)?%$/.test(String(e.value)));
+  if (i >= 0) {
+    const v = num(ev[i].value);
+    if (v != null && v >= 0 && v <= 100) return { type: "score", item: ev[i], v, median: SCORE.test(ev[i].label), rest: ev.filter((_, j) => j !== i) };
+  }
+  return null;
+}
+
+function InsightGauge({ g }) {
+  if (g.type === "pair") {
+    const max = Math.max(g.a.v, g.b.v) * 1.12;
+    const xa = (g.a.v / max) * 100, xb = (g.b.v / max) * 100;
+    const tone = !g.expected ? "neu" : g.a.v >= g.b.v ? "pos" : "neg";
+    return html`<div class="iv" role="img" aria-label=${`${g.a.label} ${g.a.value} against ${g.b.label} ${g.b.value}`}>
+      <div class="iv-track">
+        <i class=${"iv-seg " + tone} style=${{ left: `${Math.min(xa, xb)}%`, width: `${Math.abs(xa - xb)}%` }}></i>
+        <i class="iv-ref" style=${{ left: `${xb}%` }}></i>
+        <i class=${"iv-dot " + tone} style=${{ left: `${xa}%` }}></i>
+      </div>
+      <div class="iv-key">
+        <span><i class=${"iv-k dot " + tone}></i>${g.a.label}<b>${g.a.value}</b></span>
+        <span><i class="iv-k ref"></i>${g.b.label}<b>${g.b.value}</b></span>
+      </div>
+    </div>`;
+  }
+  return html`<div class="iv" role="img" aria-label=${`${g.item.label} ${g.item.value}`}>
+    <div class="iv-track meter"><i class="iv-fill" style=${{ width: `${Math.max(2, g.v)}%` }}></i>${g.median ? html`<i class="iv-mid"></i>` : null}</div>
+    <div class="iv-key"><span>${g.item.label}<b>${g.item.value}</b></span>${g.median ? html`<span class="iv-note">middle of the role is 50</span>` : null}</div>
+  </div>`;
+}
+
+export function InsightCard({ insight, scope, compact, quietConf }) {
   const to = linkHref(insight.link, scope);
   const Tag = to ? "a" : "div";
-  const conf = CONF_LABEL[insight.confidence];
+  const conf = quietConf ? "" : CONF_LABEL[insight.confidence];
+  const g = insightGauge(insight);
+  const facts = g ? g.rest : insight.evidence || [];
   return html`<${Tag} class=${cls("insight", to && "linked")} href=${to || undefined}>
     <div class="insight-top">
       <span class=${cls("tone", insight.tone)} aria-hidden="true"><${Icon} name=${TONE_ICON[insight.tone] || "info"} size="sm" /></span>
@@ -316,18 +367,26 @@ export function InsightCard({ insight, scope, compact }) {
       </div>
       ${to ? html`<span class="go" aria-hidden="true"><${Icon} name="arrowUpRight" size="sm" /></span>` : null}
     </div>
-    ${insight.evidence?.length ? html`<div class="evidence">${insight.evidence.slice(0, 4).map((e, i) => html`<span key=${i}>${e.label}<b>${e.value}</b></span>`)}</div>` : null}
-    ${conf ? html`<div class="insight-foot"><span class=${cls("conf", insight.confidence === "low" && "low")}>${conf}</span></div>` : null}
+    <div class="insight-foot">
+      ${g ? html`<${InsightGauge} g=${g} />` : null}
+      ${facts.length || conf ? html`<div class="evidence">${facts.slice(0, 4).map((e, i) => html`<span key=${i} title=${FACT_TITLE[e.label] || undefined}>${FACT_LABEL[e.label] || e.label}<b>${e.value}</b></span>`)}
+        ${conf ? html`<span class=${cls("conf", insight.confidence === "low" && "low")}>${conf}</span>` : null}</div>` : null}
+    </div>
   </${Tag}>`;
 }
+
+const CONF_NOTE = { low: "Each of these rests on a small sample so far: read them as early signals, not settled facts.", medium: "Each of these rests on moderate evidence." };
 
 export function Insights({ items, scope, limit, compact, expandable, empty = "Nothing stands out right now. That is a finding too: no team or player is far from expectation." }) {
   const [open, setOpen] = useState(false);
   const all = items || [];
   const list = open || !limit ? all : all.slice(0, limit);
   if (!all.length) return html`<div class="well muted">${empty}</div>`;
-  return html`<div class="stack" style=${{ "--gap": "12px" }}>
-    <div class="insights">${list.map((i) => html`<${InsightCard} key=${i.id} insight=${i} scope=${scope} compact=${compact} />`)}</div>
+  // When every finding shown carries the same caveat, say it once under the set instead of on every card.
+  const shared = list.length > 1 && list.every((i) => i.confidence === list[0].confidence) ? CONF_NOTE[list[0].confidence] : null;
+  return html`<div class="stack" style=${{ "--gap": "10px" }}>
+    <div class="insights">${list.map((i) => html`<${InsightCard} key=${i.id} insight=${i} scope=${scope} compact=${compact} quietConf=${!!shared} />`)}</div>
+    ${shared ? html`<p class="insights-note"><${Icon} name="info" size="sm" />${shared}</p>` : null}
     ${expandable && limit && all.length > limit ? html`<div><${Button} size="sm" kind="quiet" icon=${open ? "chevronLeft" : "chevronDown"} onClick=${() => setOpen(!open)}>${open ? "Show fewer" : `Show ${all.length - limit} more`}</${Button}></div>` : null}
   </div>`;
 }
