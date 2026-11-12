@@ -11,6 +11,8 @@ Personal use only: this reads a public website through its pages, which its term
 
 from __future__ import annotations
 
+import glob
+import json
 import math
 import os
 import random
@@ -24,6 +26,7 @@ from collections.abc import Callable
 from app.data.people import plays_for
 
 from . import ledger as L
+from . import nativedriver
 from . import raw as R
 from .store import EventStore
 
@@ -112,6 +115,12 @@ def make_reader(league: str, season: int, *, data_dir: Path, browser: str | None
     if not browser:
         raise FetchUnavailable("No Chrome, Chromium or Brave found. Install one, or pass --browser (or set PREM_BROWSER) with its path. Microsoft Edge does not work for this.")
     os.environ.setdefault("SOCCERDATA_DIR", str(data_dir / "soccerdata"))  # must be set before soccerdata is imported
+    if nativedriver.needs_native_driver():
+        # an Apple-silicon Mac without Rosetta: the driver SeleniumBase would use cannot start there (see app.events.nativedriver)
+        ready, what = nativedriver.prepare(browser)
+        if not ready:
+            raise FetchUnavailable(f"The browser driver cannot run on this Mac (an Apple chip without Rosetta): {what}. Installing Rosetta is the other way: softwareupdate --install-rosetta")
+        print(f"Browser driver: {what}.", flush=True)
     try:
         import logging
 
@@ -125,6 +134,54 @@ def make_reader(league: str, season: int, *, data_dir: Path, browser: str | None
 
 def _records(frame) -> list[dict]:
     return frame.reset_index().to_dict("records")
+
+
+class ListUnreadable(FetchUnavailable):
+    """WhoScored's match list could not be read (the browser got something that is not the list)."""
+
+
+def _is_list_file(path: Path) -> bool:
+    """Whether a file in soccerdata's match-list cache holds what its name says: the season's calendar or one month of matches."""
+    try:
+        doc = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return False
+    return isinstance(doc, dict) and ("mask" if path.suffix == ".html" else "tournaments") in doc
+
+
+def drop_bad_lists(reader, league: str, season: int) -> int:
+    """Delete this league season's cached match-list files that are not a match list. Returns how many.
+
+    soccerdata saves whatever the browser showed. When the network drops for a moment that is the browser's own error page ("Your
+    connection was interrupted"), saved under the name of a month of matches, and every later read of the list from the cache then
+    stops on it. A deleted file is simply downloaded again by the next read."""
+    folder = Path(reader.data_dir) / "matches"
+    if league not in LEAGUE_CODES or not folder.is_dir():
+        return 0
+    bad = [p for p in folder.glob(f"{glob.escape(LEAGUE_CODES[league])}_{R.season_code(season)}*") if p.suffix in (".json", ".html") and not _is_list_file(p)]
+    for path in bad:
+        path.unlink(missing_ok=True)
+    return len(bad)
+
+
+def read_list(reader, league: str, season: int, *, cached: bool, log: Callable[[str], None] = print) -> list[dict]:
+    """The season's match list as rows. ``cached`` reads soccerdata's stored copy (downloading only what is missing); otherwise the
+    whole list is downloaded again. A stored file that is not a match list is thrown away and read once more before giving up."""
+    if cached:
+        drop_bad_lists(reader, league, season)
+    try:
+        return _records(reader.read_schedule(force_cache=True) if cached else reader.read_schedule())
+    except (ValueError, TypeError, KeyError) as first:     # what soccerdata raises on a page that is not the list
+        dropped = drop_bad_lists(reader, league, season)
+        if not dropped:
+            raise ListUnreadable(f"WhoScored's match list could not be read ({type(first).__name__}: {str(first)[:80]}).") from first
+        log(f"{dropped} part{'s' if dropped != 1 else ''} of the match list came back as something else (a network or browser error page); reading {'them' if dropped != 1 else 'it'} again...")
+        try:
+            return _records(reader.read_schedule(force_cache=True))
+        except (ValueError, TypeError, KeyError) as second:
+            drop_bad_lists(reader, league, season)
+            raise ListUnreadable("WhoScored's match list could not be read: twice the browser got a page that is not the list "
+                                 "(the network dropped, or the site is refusing requests). Nothing was changed; it is tried again later.") from second
 
 
 def _known(v) -> bool:
@@ -193,11 +250,11 @@ def read_targets(
     :func:`app.events.ledger.note_matchday`). Returns ``{"read", "final", "live", "not_found", "failed"}``."""
     out = {"read": 0, "final": 0, "live": 0, "not_found": 0, "failed": 0}
     reader = reader or make_reader(league, season, data_dir=data_dir, browser=browser, headless=headless)
-    rows = _records(reader.read_schedule(force_cache=True))
+    rows = read_list(reader, league, season, cached=True, log=log)
     found = {t["fixture"]: _find(rows, t) for t in targets}
     if any(row is None for row in found.values()):   # a fixture moved since the match list was read: read the list again, once
         log("A match is not in the stored match list; reading the list again (this takes a few minutes)...")
-        rows = _records(reader.read_schedule())
+        rows = read_list(reader, league, season, cached=False, log=log)
         events.set_status(league, season, schedule_at=time.time())
         found = {t["fixture"]: _find(rows, t) for t in targets}
     for i, target in enumerate(targets, start=1):
@@ -266,6 +323,7 @@ def sync_season(
     previous = events.status(league, season) or {}
     events.set_status(league, season, running=True, started=time.time(), done=0, failed=0, last_error=None, stalled=False, stopped=None)
     done = failed = consecutive = 0
+    streak: list[int] = []   # the matches of the current run of failures
     try:
         adopted = R.import_soccerdata_cache(events.store, data_dir, only=[(league, season)])  # pages a stopped run downloaded but never stored
         if adopted["imported"]:
@@ -275,7 +333,7 @@ def sync_season(
         reader = reader or make_reader(league, season, data_dir=data_dir, browser=browser, headless=headless)
         fresh = time.time() - previous.get("schedule_at", 0.0) < SCHEDULE_REFRESH
         log(f"Reading the {league} {season} match list ({'from cache' if fresh else 'this takes a few minutes'})...")
-        schedule = _finished(_records(reader.read_schedule(force_cache=True) if fresh else reader.read_schedule()))
+        schedule = _finished(read_list(reader, league, season, cached=fresh, log=log))
         events.set_status(league, season, schedule_at=time.time())
         missing = [r for r in schedule if not events.has_match(league, season, int(r["game_id"]))]
         stored = len(schedule) - len(missing)
@@ -309,6 +367,7 @@ def sync_season(
                 if doc is None or state is None:
                     raise ValueError("no events returned")
                 consecutive = 0
+                streak.clear()
                 if state == "final":
                     done += 1
                     L.forget(events.store, league, season, gid)
@@ -322,8 +381,14 @@ def sync_season(
                 events.set_status(league, season, last_error=f"{label}: {str(exc)[:160]}")
                 L.note_failure(events.store, league, season, gid, label=label, date=str(match.get("date") or "")[:10] or None, error=str(exc), now=clock())
                 log(f"  [{i}/{len(todo)}] {label}: FAILED ({str(exc)[:100]})")
+                streak.append(gid)
                 if consecutive >= max_failures:
-                    log(f"Stopping: {max_failures} matches in a row failed. WhoScored may be blocking requests; try again later, or add --visible.")
+                    # a wall of failures is the connection or the site, not these matches: they are not charged a try, so they are
+                    # read again next run instead of drifting towards "waiting for a person"
+                    for g in streak:
+                        L.forgive(events.store, league, season, g)
+                    events.set_status(league, season, stopped=f"{max_failures} matches in a row failed", done=done, failed=failed)
+                    log(f"Stopping: {max_failures} matches in a row failed. WhoScored may be blocking requests, or the connection is down; it is tried again later (or add --visible).")
                     break
             events.set_status(league, season, done=done, failed=failed)
             if time.monotonic() - started > cached_under:  # the pause is for the website's sake: a match read back from the local cache needs none
@@ -333,6 +398,9 @@ def sync_season(
                     sleep(pause * (1.0 + random.random()))
     except KeyboardInterrupt:
         log("Stopped. Everything fetched so far is saved; run the same command again to carry on.")
+    except Exception as exc:   # the run could not start or carry on (no browser, the match list unreadable): leave the reason where the Data page reads it
+        events.set_status(league, season, last_error=str(exc)[:200])
+        raise
     finally:
         status = events.set_status(league, season, running=False, done=done, failed=failed, finished=time.time())
     return status
