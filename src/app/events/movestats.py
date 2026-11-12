@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable
 
-from .possessions import K_PASS, build_possessions, led_to_shot
+from .possessions import K_CARRY, K_PASS, K_TAKEON, SF_PROG, build_possessions, led_to_shot
 from .silver import Match
 
 SHOT_ENDS = frozenset({"goal", "shot_on", "shot_off", "shot_blocked"})
@@ -99,6 +99,21 @@ def _shot_events(moves: list[dict], came: list[bool]) -> list[int]:
         else:
             out.append(-1)
     return out
+
+
+ACTION_KINDS = (("prog_pass", "Progressive passes"), ("prog_carry", "Progressive carries"), ("takeon", "Take-ons won"))
+
+
+def _action_kind(step: list) -> str | None:
+    """Which of the forward actions a step of a move is, by the same rules the counters use; None for anything else."""
+    kind, ok, flags = step[0], step[6], step[8]
+    if kind == K_PASS and ok and flags & SF_PROG:
+        return "prog_pass"
+    if kind == K_CARRY and flags & SF_PROG:
+        return "prog_carry"
+    if kind == K_TAKEON and ok:
+        return "takeon"
+    return None
 
 
 def _team_index(m: Match, team: str) -> int | None:
@@ -198,6 +213,7 @@ def player_moves(matches: Iterable[tuple[int, Match]], player: int, *, xg_of: Xg
     lost_zone = dict.fromkeys((key for key, _label in ZONES), 0)
     games = xg_known = shots = 0
     xg_sum = 0.0
+    kinds: dict[str, dict[str, float]] = {key: {"shots": 0, "xg": 0.0, "known": 0} for key, _label in ACTION_KINDS}
     for index, m in matches:
         me = m.by_id.get(player)
         if me is None:
@@ -208,6 +224,7 @@ def player_moves(matches: Iterable[tuple[int, Match]], player: int, *, xg_of: Xg
         led = led_to_shot(moves)
         xg = xg_of(m) if xg_of is not None else {}
         seen: set[int] = set()
+        seen_kind: set[tuple[str, int]] = set()
         for move, shot, at_shot in zip(moves, led, _shot_events(moves, led), strict=True):
             if move["tm"] == tm:
                 if any(step[1] == player for step in move["steps"]):
@@ -219,6 +236,17 @@ def player_moves(matches: Iterable[tuple[int, Match]], player: int, *, xg_of: Xg
                         if at_shot in xg:
                             xg_sum += xg[at_shot]
                             xg_known += 1
+                    if shot and at_shot >= 0:
+                        # the same shot, by what he did before it: a shot counts once for each kind of action of his in the move
+                        for kind in {_action_kind(step) for step in move["steps"] if step[1] == player}:
+                            if kind is None or (kind, at_shot) in seen_kind:
+                                continue
+                            seen_kind.add((kind, at_shot))
+                            k = kinds[kind]
+                            k["shots"] += 1
+                            if at_shot in xg:
+                                k["xg"] += xg[at_shot]
+                                k["known"] += 1
                 if move["lost"] == player and end_group(move) == "lost":
                     at = _lost_at(move)
                     how = move["how"] or "pass"            # nobody took it off him: his pass found no team-mate
@@ -233,6 +261,9 @@ def player_moves(matches: Iterable[tuple[int, Match]], player: int, *, xg_of: Xg
     return {
         "matches": games, "n": part, "shot": shot_in, "lost_n": sum(lost_how.values()), "won_n": len(won),
         "shots": shots, "shot_xg": None if xg_of is None else round(xg_sum, 2), "shot_xg_known": None if xg_of is None else xg_known,
+        # the shots that followed each kind of forward action of his, and their xG where Understat has it
+        "by_action": [{"key": key, "label": label, "shots": kinds[key]["shots"], "xg": None if xg_of is None else round(kinds[key]["xg"], 2),
+                       "known": None if xg_of is None else kinds[key]["known"]} for key, label in ACTION_KINDS],
         "lost": _thin(lost), "won": _thin(won),
         "lost_how": [{"key": k, "label": HOW_LABEL.get(k, k), "n": v} for k, v in sorted(lost_how.items(), key=lambda kv: -kv[1])],
         "lost_zone": [{"key": key, "label": label, "n": lost_zone[key]} for key, label in ZONES],

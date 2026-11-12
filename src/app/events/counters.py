@@ -27,7 +27,7 @@ from . import schema as S
 from .silver import FL_GOAL, FL_OWN_GOAL, FL_TOUCH, Match
 
 GOLD_KIND = "ws_gold"
-GOLD_VERSION = 2
+GOLD_VERSION = 3
 
 #: counter -> definition (every counter a gold row can contain)
 COUNTERS: dict[str, str] = {
@@ -60,6 +60,9 @@ COUNTERS: dict[str, str] = {
     # what came of it: the same move (or the corner, free kick or penalty it won) ended in a shot
     "prog_shot": "Progressive passes in a move that came to a shot.", "carry_prog_shot": "Progressive carries in a move that came to a shot.",
     "takeons_won_shot": "Successful take-ons in a move that came to a shot.", "crosses_shot": "Crosses in a move that came to a shot.",
+    "prog_lost": "Progressive passes after which the side lost the ball within three actions.",
+    "carry_prog_lost": "Progressive carries after which the side lost the ball within three actions.",
+    "takeons_won_lost": "Successful take-ons after which the side lost the ball within three actions.",
     "f3_entry": "Times he took the ball into the final third, by a completed pass or a carry.", "f3_entry_shot": "...in a move that came to a shot.",
     "mv_in": "Moves (spells of possession) he took part in.", "mv_shot_in": "...that came to a shot.",
     "mv_lost": "Moves that ended with him losing the ball.", "mv_broken": "Opponents' moves he ended by taking the ball.",
@@ -226,10 +229,11 @@ def derive_match(m: Match) -> dict:
     players: dict[int, _Acc] = defaultdict(_Acc)
     play = m.play_indices()
     q = [ev["q0"][i] | (ev["q1"][i] << S.WORD_BITS) for i in range(m.n)]
-    from .possessions import action_outcomes, build_possessions, led_to_shot   # that module reads this one
+    from .possessions import action_outcomes, build_possessions, led_to_shot, lost_soon   # that module reads this one
 
     moves = build_possessions(m)
     to_shot, carry_to_shot = action_outcomes(moves)
+    then_lost, carry_then_lost = lost_soon(moves)
 
     def put(pid: int, tm: int, key: str, value: float = 1) -> None:
         teams[tm].add(key, value)
@@ -311,6 +315,8 @@ def derive_match(m: Match) -> dict:
                     put(pid, tm, "prog")
                     if i in to_shot:
                         put(pid, tm, "prog_shot")
+                    if i in then_lost:
+                        put(pid, tm, "prog_lost")
                 if ok and gain > 0:
                     put(pid, tm, "pass_fwd_m", gain * S.PITCH_LENGTH_M / 100.0)
                 if x < S.FINAL_THIRD_X <= ex:
@@ -328,6 +334,8 @@ def derive_match(m: Match) -> dict:
             put(pid, tm, "takeons_won", ok)
             if ok and i in to_shot:
                 put(pid, tm, "takeons_won_shot")
+            if ok and i in then_lost:
+                put(pid, tm, "takeons_won_lost")
         elif code == S.E_DISPOSSESSED:
             put(pid, tm, "dispossessed")
         elif code == S.E_TACKLE:
@@ -469,6 +477,8 @@ def derive_match(m: Match) -> dict:
             put(pid, tm, "carry_prog_m", max(0.0, gain) * S.PITCH_LENGTH_M / 100.0)
             if shot:
                 put(pid, tm, "carry_prog_shot")
+            if i in carry_then_lost:
+                put(pid, tm, "carry_prog_lost")
         if x0 < S.FINAL_THIRD_X <= x1:
             put(pid, tm, "carry_f3")
             put(pid, tm, "f3_entry")

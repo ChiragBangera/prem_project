@@ -140,3 +140,34 @@ def test_an_action_came_to_a_shot_when_its_move_did_or_the_corner_it_won_did():
     assert (c[3]["takeons_won_shot"], c[3]["crosses_shot"], c[3]["mv_in"], c[3]["mv_shot_in"]) == (1, 1, 1, 1)
     assert (c[1]["mv_in"], c[1]["mv_shot_in"]) == (2, 1) and "prog_shot" not in c[4]              # the shot is not an action that led to one
     assert c[2]["mv_lost"] == 1 and c[9]["mv_broken"] == 1 and c[9]["mv_lost"] == 1
+
+
+def test_an_action_is_followed_by_a_loss_when_the_side_loses_the_ball_within_three_more_actions():
+    from app.events.possessions import lost_soon
+
+    built = moves([
+        ev("Pass", 1, x=20, y=50, end_x=30, end_y=50, minute=5, second=0),         # four actions before the loss: too far back
+        ev("Pass", 2, x=30, y=50, end_x=45, end_y=50, minute=5, second=2),         # three actions later the ball is gone
+        ev("Pass", 3, x=45, y=50, end_x=60, end_y=50, minute=5, second=4),
+        ev("Pass", 4, x=60, y=50, end_x=70, end_y=50, minute=5, second=6),
+        ev("Dispossessed", 5, x=70, y=50, minute=5, second=8),                     # he lost it himself: not "followed by" a loss
+        ev("Tackle", 9, team=AWAY, x=30, y=50, minute=5, second=8),
+        ev("Pass", 9, team=AWAY, x=30, y=50, end_x=60, end_y=50, minute=5, second=10),
+        ev("MissedShots", 9, team=AWAY, x=85, y=50, minute=5, second=13, isShot=True),   # a move that came to a shot lost nothing
+    ])
+    first = built[0]
+    events, carried = lost_soon(built)
+    by_player = {first["steps"][n][1] for n, i in enumerate(first["ix"]) if i in events}
+    assert first["end"] == "lost" and by_player == {2, 3, 4} and not carried
+    assert not (set(built[1]["ix"]) & events)
+    assert lost_soon(built, within=1)[0] == {first["ix"][3]}                       # only the pass straight before the loss
+
+
+def test_the_counters_keep_what_followed_each_progressive_pass():
+    c = counters([
+        ev("Pass", 1, x=40, y=50, end_x=75, end_y=50, minute=5, second=0),         # progressive, then lost two actions later
+        ev("Pass", 2, x=75, y=50, end_x=80, end_y=50, minute=5, second=2),
+        ev("Dispossessed", 3, x=80, y=50, minute=5, second=4),
+        ev("Tackle", 9, team=AWAY, x=20, y=50, minute=5, second=4),
+    ])
+    assert c[1]["prog"] == 1 and c[1]["prog_lost"] == 1 and c[1].get("prog_shot", 0) == 0

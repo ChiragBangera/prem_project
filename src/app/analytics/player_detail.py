@@ -49,25 +49,28 @@ def event_summary(row: dict, pools: dict | None = None) -> dict:
             "pool_n": (pools or {}).get(row["group"], {}).get("tackles90", row.get("ev_pool_n", 0)), "pool_minutes": row["ev_pool_minutes"]}
 
 
-#: (label, counter, the counter of those that came to a shot, the metric whose percentile says how that share compares, an estimate?)
+#: (label, counter, the counter of those that came to a shot, the metric whose percentile says how that share compares, an estimate?,
+#:  the counter of those after which the ball was lost within three actions, where that is counted)
 OUTCOMES = (
-    ("Progressive passes", "prog", "prog_shot", "progpass_shot_pct", False),
-    ("Progressive carries", "carry_prog", "carry_prog_shot", "carryprog_shot_pct", True),
-    ("Take-ons won", "takeons_won", "takeons_won_shot", "takeon_shot_pct", False),
-    ("Crosses", "crosses", "crosses_shot", "cross_shot_pct", False),
-    ("Final-third entries", "f3_entry", "f3_entry_shot", "f3entry_shot_pct", True),
-    ("Moves he was part of", "mv_in", "mv_shot_in", "move_shot_pct", False),
+    ("Progressive passes", "prog", "prog_shot", "progpass_shot_pct", False, "prog_lost"),
+    ("Progressive carries", "carry_prog", "carry_prog_shot", "carryprog_shot_pct", True, "carry_prog_lost"),
+    ("Take-ons won", "takeons_won", "takeons_won_shot", "takeon_shot_pct", False, "takeons_won_lost"),
+    ("Crosses", "crosses", "crosses_shot", "cross_shot_pct", False, None),
+    ("Final-third entries", "f3_entry", "f3_entry_shot", "f3entry_shot_pct", True, None),
+    ("Moves he was part of", "mv_in", "mv_shot_in", "move_shot_pct", False, None),
 )
 
 
 def outcomes(row: dict) -> dict | None:
-    """What his actions led to: for each kind, how many, and how many were in a move that came to a shot. None without event data."""
+    """What his actions led to: for each kind, how many, how many were in a move that came to a shot, and (for the three kinds it is
+    counted for) after how many the side lost the ball within three actions. None without event data."""
     counts = row.get("ev_c")
     if not counts:
         return None
     pct = row.get("full_pct", {})
-    items = [{"label": label, "n": int(counts.get(total, 0)), "shot": int(counts.get(shot, 0)), "key": key, "pct": pct.get(key), "estimate": estimate}
-             for label, total, shot, key, estimate in OUTCOMES]
+    items = [{"label": label, "n": int(counts.get(total, 0)), "shot": int(counts.get(shot, 0)), "key": key, "pct": pct.get(key), "estimate": estimate,
+              "lost": int(counts.get(lost, 0)) if lost else None}
+             for label, total, shot, key, estimate, lost in OUTCOMES]
     return {"items": [x for x in items if x["n"] > 0], "lost": int(counts.get("mv_lost", 0)), "broken": int(counts.get("mv_broken", 0)), "moves": int(counts.get("mv_in", 0))}
 
 

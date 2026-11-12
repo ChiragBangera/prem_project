@@ -57,7 +57,10 @@ def test_a_players_part_in_the_moves_and_where_he_lost_and_won_the_ball():
     three = MS.player_moves([(0, match())], 3)
     assert (three["lost_n"], three["won_n"]) == (1, 1) and three["lost_how"][0]["key"] in ("recovery", "pass")
     assert three["won"] == [[250, 500, "interception", 0]]                                       # deep in his own third, drawn on the left
-    assert MS.player_moves([(0, match())], 77) == {"matches": 0, "n": 0, "shot": 0, "lost_n": 0, "won_n": 0, "shots": 0, "shot_xg": None, "shot_xg_known": None, "lost": [], "won": [], "lost_how": [], "lost_zone": [
+    assert MS.player_moves([(0, match())], 77) == {"matches": 0, "n": 0, "shot": 0, "lost_n": 0, "won_n": 0, "shots": 0, "shot_xg": None, "shot_xg_known": None, "by_action": [
+        {"key": "prog_pass", "label": "Progressive passes", "shots": 0, "xg": None, "known": None},
+        {"key": "prog_carry", "label": "Progressive carries", "shots": 0, "xg": None, "known": None},
+        {"key": "takeon", "label": "Take-ons won", "shots": 0, "xg": None, "known": None}], "lost": [], "won": [], "lost_how": [], "lost_zone": [
         {"key": "own", "label": "Own third", "n": 0}, {"key": "mid", "label": "Middle third", "n": 0}, {"key": "final", "label": "Final third", "n": 0}]}
 
 
@@ -95,6 +98,8 @@ def test_the_xg_of_the_shots_moves_came_to_is_understats_and_unknown_is_not_zero
     assert (team["shot"], team["shots"], team["shot_xg"], team["shot_xg_known"]) == (1, 1, 0.42, 1)
     two = MS.player_moves([(0, m)], 2, xg_of=lambda _m: xg)
     assert (two["shot"], two["shot_xg"], two["shot_xg_known"]) == (1, 0.42, 1)
+    # player 2's pass from x=30 to x=70 is progressive, and its move ended in the goal: that shot is listed under his progressive passes
+    assert {a["key"]: (a["shots"], a["xg"], a["known"]) for a in two["by_action"]} == {"prog_pass": (1, 0.42, 1), "prog_carry": (0, 0.0, 0), "takeon": (0, 0.0, 0)}
     unknown = MS.player_moves([(0, m)], 2, xg_of=lambda _m: {})             # Understat has not published the match
     assert (unknown["shot"], unknown["shot_xg"], unknown["shot_xg_known"]) == (1, 0.0, 0)
     assert MS.player_moves([(0, m)], 2)["shot_xg"] is None                   # not asked for

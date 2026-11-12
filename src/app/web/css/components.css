@@ -397,7 +397,11 @@ kbd { font: 600 var(--fs-2xs) var(--font); border: 1px solid var(--line-2); bord
 .ob-row.faint { opacity: 0.55; }
 .ob-track { display: block; height: 14px; }
 .ob-fill { display: block; height: 100%; border-radius: 3px; overflow: hidden; min-width: 3px; }
-.ob-solid { display: block; height: 100%; }
+.ob-fill { display: flex; }
+.ob-solid { display: block; height: 100%; flex: none; }
+.ob-lost { display: block; height: 100%; flex: none; margin-left: auto; background: var(--ink-3); }
+.ob-key.lost { background: var(--ink-3); }
+.ob-lostnum { white-space: nowrap; }
 .ob-num { text-align: right; white-space: nowrap; }
 .ob-pct { text-align: right; color: var(--ink-2); white-space: nowrap; }
 @media (max-width: 560px) {
