@@ -145,8 +145,11 @@ rule, a set-piece start, an unforced loss and a move ending in a goal.
 **Done 2026-11-12:** the split bar in tables: every "came to a shot" column of a desk table (Scout, Team → Players) draws it under
 the number (`SPLIT_OF`, `SplitBar` in `js/ui/explore/Sheet.js`; length against the 95th percentile of the regulars listed); the Team
 page and Player → Maps views (see A).
-**Still open:** xG of the shot the action led to (needs Understat's xG joined
-at season level); "lost within the next N actions" as a second outcome.
+**Also done 2026-11-12:** the xG of the shots moves came to, joined from Understat match by match (`match_centre.shot_xg`,
+`mapdata.xg_reader`): the Team and Player moves cards say what those shots were worth and for how many it is known; each shot is
+counted once. Checked on Arsenal 2026/27: 11.84 xG over 78 shots, against Understat's own 11.85 over the same 78.
+**Still open:** that xG split by kind of action (progressive pass, carry, take-on), and "lost within the next N actions" as a
+second outcome.
 
 The idea, stated honestly: **volume against what came of it**. Not a judgement of a player, a description of his actions.
 
@@ -251,8 +254,8 @@ Parity (✓ present, – not applicable, ✗ missing):
 | Goals against xG (finishing luck) | ✓ findings | ✓ distribution | ✓ findings, Chances | ✓ table columns |
 | Breakdown by situation, body part, zone | by filter (totals follow) | ✓ table | ✓ Chances | ✓ Chances "versus the league" |
 
-Still open: the goal-mouth view for a player's and a team's season (silver events keep `gy`/`gz` per shot, but no season-level endpoint
-reads them yet); the xG of the shot an action led to (also listed under B).
+Done 2026-11-12: the goal-mouth view for a season (`maps.goal_mouth` in the map payload, `js/ui/goalmouth.js`): Player → Finishing
+("Where his shots went in the goal") and Team → Chances (the team's shots and the shots it faced). No xG there: it is event data.
 
 ### E. Page composition: every page tells one story (ask 6)
 
@@ -371,9 +374,8 @@ settled) and asked for "Update now" to be closed.
 1. A full cycle with Understat back (still down on 2026-11-12): league tables, the 37 match pages still missing, xG joined onto the
    newer event matches, and the 19 "from WhoScored" cards turning into normal ones.
 2. The first event run after a real Brave or Chrome update.
-3. The league table, team form and player totals are Understat's and stop at 11 October; only the Matches page and the match page
-   know the newer results. Whether the table should count WhoScored results meanwhile is the owner's call (not done: mixing
-   sources in a table).
+3. Settled (owner, 2026-11-12): the league table, team form and player totals stay Understat's and stop where Understat stops; only
+   the Matches page and the match page know the newer results. Do not mix WhoScored results into the table.
 
 Settled: event data is on for the Premier League and Serie A only; La Liga, Bundesliga and Ligue 1 are off on purpose (owner,
 2026-11-12). Do not switch them on or raise it again.

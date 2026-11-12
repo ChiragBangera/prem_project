@@ -9,6 +9,9 @@ import { Card, EmptyState, playerHref } from "./common.js";
 
 const whole = (v) => Math.round(v).toLocaleString("en-GB");
 const share = (n, of) => (of > 0 ? `${Math.round((100 * n) / of)}%` : "");
+/** What the shots the moves came to were worth, in Understat's xG, said with how many of those shots it is known for (a match Understat has
+ *  not published, or a shot it does not list, has none: it is left out of the sum, never counted as zero). */
+const worth = (m) => (m.shot_xg == null || !m.shot_xg_known ? "" : ` The ${plural(m.shots, "shot")} they came to ${m.shots === 1 ? "was" : "were"} worth ${m.shot_xg.toFixed(1)} xG${m.shot_xg_known < m.shots ? ` (Understat's xG, known for ${m.shot_xg_known} of them)` : " (Understat's xG)"}.`);
 
 const ENDS = [
   { key: "shot", label: "Ended in a shot", color: "var(--c1)" },
@@ -50,7 +53,7 @@ export function TeamMoves({ moves, team, links }) {
           <h3 class="mini-title">By how it began</h3>
           <${OutcomeBars} rows=${rows(m.starts)} solid="came to a shot" hatched="did not" />
         </section>
-        <p class="xsmall muted" style=${{ margin: 0 }}>“Came to a shot” counts the move itself, or the corner, free kick or penalty it won, when that was the side's next move and ended in a shot. That is why it is a little more than “ended in a shot” above (${whole(m.shot)} against ${whole(m.ends.shot)}).</p>
+        <p class="xsmall muted" style=${{ margin: 0 }}>“Came to a shot” counts the move itself, or the corner, free kick or penalty it won, when that was the side's next move and ended in a shot. That is why it is a little more than “ended in a shot” above (${whole(m.shot)} against ${whole(m.ends.shot)}).${worth(m)}</p>
       </div>
       <div class="stack" style=${{ "--gap": "10px" }}>
         <h3 class="mini-title">Where ${team} lose the ball in play <span class="muted">${whole(lostTotal)} times</span></h3>
@@ -95,7 +98,7 @@ export function PlayerMoves({ moves, matches, name }) {
   if (!m.n && !m.lost_n && !m.won_n) return html`<${Card} title="Moves he was part of"><${EmptyState} icon="info" title="No moves recorded" text="He has no part in a move in the stored matches." /></${Card}>`;
   const zones = m.lost_zone.filter((z) => z.n > 0).map((z) => `${z.n} in ${z.label === "Own third" ? "his own third" : `the ${z.label.toLowerCase()}`}`);
   return html`<${Card} title="Moves he was part of"
-    sub=${`A move is one spell of possession, as on a match's Moves tab. ${who} had a part in ${whole(m.n)} of his side's moves in ${plural(m.matches, "match", "matches")}; ${whole(m.shot)} of them came to a shot${m.n ? ` (${share(m.shot, m.n)})` : ""}.`}>
+    sub=${`A move is one spell of possession, as on a match's Moves tab. ${who} had a part in ${whole(m.n)} of his side's moves in ${plural(m.matches, "match", "matches")}; ${whole(m.shot)} of them came to a shot${m.n ? ` (${share(m.shot, m.n)})` : ""}.${worth(m)}`}>
     <div class="grid cols-2 moves-grid">
       <section class="stack" style=${{ "--gap": "10px" }}>
         <h3 class="mini-title">Where he lost the ball <span class="muted">${whole(m.lost_n)} times${zones.length ? `: ${zones.join(", ")}` : ""}</span></h3>

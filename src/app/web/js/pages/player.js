@@ -21,6 +21,7 @@ import { MapLab } from "../ui/maplab.js";
 import { PlayerTrend } from "./player-trend.js";
 import { readBar } from "../lib/percentile.js";
 import { PlayerMoves } from "../ui/moves.js";
+import { PlayerGoalMouth } from "../ui/goalmouth.js";
 import { SORTS, describeSort, nextSort, orderMetrics } from "../lib/metrictable.js";
 
 function Avatar({ name, size = 52 }) {
@@ -422,7 +423,7 @@ function PlayerView({ d, id, tab, span, setSpan }) {
     ${tab === "trend" ? html`<${PlayerTrend} id=${id} league=${dScope.league} defaultSeason=${mapSeason} career=${detail.career} group=${p.group} groupLabel=${detail.group_label} catalog=${metaState.catalog} />` : null}
     ${tab === "maps" ? html`<${PlayerMaps} id=${id} league=${dScope.league} season=${mapSeason} />` : null}
     ${tab === "matches" ? html`<${PlayerMatches} id=${id} league=${dScope.league} season=${mapSeason} />` : null}
-    ${tab === "finishing" ? html`<${Finishing} d=${detail} />` : null}
+    ${tab === "finishing" ? html`<div class="stack" style=${{ "--gap": "16px" }}><${Finishing} d=${detail} /><${PlayerGoalMouth} id=${id} league=${dScope.league} season=${mapSeason} name=${detail.player?.name} /></div>` : null}
     ${tab === "seasons" ? html`<${Seasons} career=${detail.career} />` : null}
     ${tab === "similar" ? html`<${Similar} d=${{ ...d, scope: dScope, similar: d.similar }} scope=${scope} meta=${meta} id=${id} />` : null}
   `;

@@ -18,7 +18,7 @@ from collections.abc import Iterable
 
 from . import counters as C
 from . import schema as S
-from .silver import FL_TOUCH, Match
+from .silver import FL_OWN_GOAL, FL_TOUCH, Match
 
 NX, NY = 24, 16
 MAX_LINES = 900      # passes / carries drawn as lines
@@ -221,3 +221,38 @@ def zone_shares(layer: dict) -> dict:
         thirds[min(2, cx * 3 // NX)] += c
         lanes[min(2, cy * 3 // NY)] += c
     return {"thirds": thirds, "lanes": lanes}
+
+
+# ------------------------------------------------------------------ where shots went in the goal
+
+SHOT_RESULT = {S.E_GOAL: "Goal", S.E_SAVED: "SavedShot", S.E_MISS: "MissedShots", S.E_POST: "ShotOnPost"}
+M_OWN_GOAL = C._mask("OwnGoal")
+
+
+def goal_mouth(matches: Iterable[tuple[int, Match]], selection: Selection) -> dict:
+    """Where the shots of a selection went in the goal, over several matches: ``{"for": [...], "against": [...]}``.
+
+    Each shot is ``{gy, gz, result, p, pe, mi, m}``: the goal-mouth position as Opta records it (tenths; the match page's goal-mouth
+    chart reads the same two numbers), the result, the taker, the period and minute, and the match index. Only shots that have a
+    goal-mouth position are listed, and blocked shots and own goals never do: they did not reach the goal. ``against`` is what the
+    selected *team* faced; it is empty for a player. No xG: WhoScored has none.
+    """
+    out: dict[str, list[dict]] = {"for": [], "against": []}
+    for index, m in matches:
+        tm = selection.team_index(m)
+        if tm is None:
+            continue
+        ev = m.ev
+        for i in m.play_indices():
+            code = ev["t"][i]
+            if code not in SHOT_RESULT or ev["gy"][i] < 0 or ev["gz"][i] < 0:
+                continue
+            q = ev["q0"][i] | (ev["q1"][i] << S.WORD_BITS)
+            if ev["fl"][i] & FL_OWN_GOAL or q & M_OWN_GOAL or (code == S.E_SAVED and q & C.M_BLOCKED):
+                continue
+            mine = ev["tm"][i] == tm
+            if selection.player is not None and (not mine or ev["p"][i] != selection.player):
+                continue
+            out["for" if mine else "against"].append({"gy": ev["gy"][i], "gz": ev["gz"][i], "result": SHOT_RESULT[code], "p": ev["p"][i], "pe": ev["pe"][i],
+                                                       "mi": ev["mi"][i], "m": index})
+    return out
