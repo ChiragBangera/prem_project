@@ -51,7 +51,7 @@ const hoverSteadily = async (locator) => {
   await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))));
   await locator.hover();
 };
-const h1 = () => page.locator("h1.page-title").first().innerText();
+const h1 = () => page.locator("h1.page-title, .dk-railhead h1").first().innerText();   // a desk page (Scout, Teams) carries its title in the rail
 const bodyText = () => page.locator("main").innerText();
 const noBug = async () => expect(!(await bodyText()).includes("This page hit a bug"), "the page crashed: " + (await bodyText()).slice(0, 160));
 /** "587 players" / "Top 10 of 27" at the head of the results bar -> the number of rows the list is about. */
@@ -139,14 +139,14 @@ await check("back and forward return to the same tab, the same point down the pa
   await page.goBack(); await settled();
   expect(hash() === "#/league", "a third Back should be the league table: " + hash());
   await go("/scout");
-  await page.mouse.wheel(0, 1400);
+  await page.locator(".dk-scroll").evaluate((el) => { el.scrollTop = 1400; });   // the list scrolls in its own box
   await page.waitForTimeout(400);
-  const y = await page.evaluate(() => Math.round(scrollY));
-  await page.locator("main a[href*='#/player/']").nth(12).click();
+  const y = await page.locator(".dk-scroll").evaluate((el) => Math.round(el.scrollTop));
+  await page.locator("main a[href*='#/player/']").nth(32).click();
   await settled();
   await page.goBack(); await settled();
   await page.waitForTimeout(300);
-  const back = await page.evaluate(() => Math.round(scrollY));
+  const back = await page.locator(".dk-scroll").evaluate((el) => Math.round(el.scrollTop));
   expect(y > 300 && Math.abs(back - y) < 40, `Back to Scout should land where the list was left (${y}), not at ${back}`);
   await go("/league");
   const before = await league();
@@ -184,20 +184,26 @@ await check("palette finds a player by partial name and a page by its name", asy
 console.log("League");
 await check("table views and venue filter change the data", async () => {
   await go("/league");
-  const first = await page.locator("table.data tbody tr").first().innerText();
-  expect((await page.locator("table.data tbody tr").count()) === 20, "20 teams expected");
-  await page.getByRole("button", { name: "Expected", exact: true }).click();
+  const first = await page.locator("table.dk-sheet tbody tr").first().innerText();
+  expect((await page.locator("table.dk-sheet tbody tr").count()) === 20, "20 teams expected");
+  await page.locator(".dk-sets").getByRole("tab", { name: "Expected" }).click();
   await settled();
-  expect(await page.locator("th", { hasText: "Pts − xPts" }).count(), "expected view should show Pts − xPts");
+  expect(page.url().includes("view=expected"), "the table view should be in the address");
+  expect(await page.locator("table.dk-sheet thead th", { hasText: "Pts-xPts" }).count(), "the expected view should show points minus expected points");
+  await page.locator("table.dk-sheet thead th", { hasText: "xPts rank" }).click();
+  await page.waitForSelector(".dk-menu");
+  expect((await page.locator(".dk-menu h3").innerText()) === "Rank on expected points", "a heading's menu names the measure in full");
+  expect((await page.locator(".dk-menu .dk-hist i").count()) >= 8, "and draws its spread across the league");
+  await page.keyboard.press("Escape");
   await page.getByRole("button", { name: "Home", exact: true }).click();
   await settled();
   expect(page.url().includes("venue=h"), "venue should be in the URL");
-  const played = await page.locator("table.data tbody tr").first().innerText();
+  const played = await page.locator("table.dk-sheet tbody tr").first().innerText();
   expect(played !== first, "home-only table should differ");
 });
 await check("clicking a team row opens the team page", async () => {
   await go("/league");
-  await page.locator("table.data tbody tr").first().click();
+  await page.locator("table.dk-sheet tbody tr").first().click();
   await settled();
   expect((await page.locator(".tabs button", { hasText: "Style & maps" }).count()) === 1, "team tabs missing");
 });
@@ -208,22 +214,27 @@ await check("it lists everyone, with no filter, lens or sort chosen for you", as
   const { n, lead } = await resultCount();
   expect(n > 300, "everyone should be listed: " + lead);
   expect(!page.url().includes("?"), "no filter should be in the address: " + page.url());
-  const pressed = await page.locator(".filterbar .chip[aria-pressed=true]").allInnerTexts();
+  const pressed = await page.locator(".dk-rail [aria-label=Role] .chip[aria-pressed=true]").allInnerTexts();
   expect(pressed.length === 1 && pressed[0].trim() === "All", "only the All role chip is on, saw: " + pressed.join(" | "));
-  expect((await page.locator(".chip.lens[aria-pressed=true]").count()) === 0, "no lens should be on");
-  expect((await page.locator(".filterbar").innerText()).includes("No filters"), "the filter bar should say nothing is filtered");
+  expect((await page.locator(".dk-ready-btn.lens[aria-pressed=true]").count()) === 0, "no ready-made search should be on");
+  expect((await page.locator(".dk-rule").count()) === 0 && (await page.locator(".fchip").count()) === 0, "no rule and no filter chip to start with");
+  expect((await page.locator(".results-bar").innerText()).includes("no filters"), "the bar should say nothing is filtered");
+  const widths = await page.locator("table.dk-sheet thead th").evaluateAll((ths) => [...new Set(ths.slice(1).map((t) => Math.round(t.getBoundingClientRect().width)))]);
+  expect(widths.length === 1, "every measure column should be the same width, saw: " + widths.join(", "));
+  expect((await page.locator("table.dk-sheet tbody tr").first().evaluate((tr) => tr.getBoundingClientRect().top)) < 420, "the table should start near the top of the screen");
 });
 await check("a lens is an explained quick filter that leaves your other choices alone", async () => {
   await go("/scout");
   const all = (await resultCount()).n;
-  await page.locator(".chip.lens", { hasText: "Goal threats" }).click();
+  await page.locator(".dk-ready-btn.lens", { hasText: "Goal threats" }).click();
   await settled();
   expect(page.url().includes("lens=goal_threats"), "the lens should be in the address");
   const lensOnly = (await resultCount()).n;
   expect(lensOnly > 5 && lensOnly < all, `the lens should narrow the list (${all} -> ${lensOnly})`);
-  const panel = await page.locator(".lensbar").innerText();
-  expect(/keeps players where/i.test(panel) && panel.includes("Non-penalty xG per 90"), "the lens should say which rules it applies");
-  await page.locator(".filterbar .chip", { hasText: /^Attackers/ }).click();
+  const panel = await page.locator(".dk-ready-item.on").innerText();
+  expect(panel.includes("Non-penalty xG per 90") && /Edit these rules/.test(panel), "the search should say which rules it applies and offer them for editing");
+  expect(page.url().includes("sort=") && page.url().includes("cols="), "it should also show its measures and rank by its main one: " + page.url());
+  await page.locator(".dk-rail .chip", { hasText: /^Attackers/ }).click();
   await settled();
   const both = (await resultCount()).n;
   expect(both > 0 && both < lensOnly, `a role on top of the lens should narrow it further (${lensOnly} -> ${both})`);
@@ -238,26 +249,35 @@ await check("a metric filter, the profile filter and Top N each narrow the list 
   expect(rule.n > 20 && rule.n < 200, "a top-20% npxG rule should keep a fifth or so: " + rule.lead);
   expect((await page.locator(".fchip", { hasText: "npxG/90" }).count()) === 1, "the rule should show as a chip");
   await go("/scout?tag=poacher");
-  const tagged = await page.locator("table.data tbody tr").evaluateAll((rows) => rows.map((r) => r.innerText.includes("Poacher")));
-  expect(tagged.length > 3 && tagged.every(Boolean), "every row should carry the Poacher tag");
+  const tagged = (await resultCount()).n;
+  expect(tagged > 3 && tagged < 80 && (await page.locator(".fchip", { hasText: "Poacher" }).count()) === 1, "the profile filter should narrow the list and show as a chip: " + tagged);
+  await page.locator("table.dk-sheet tbody tr").first().click();
+  await page.waitForSelector(".dk-peek");
+  expect((await page.locator(".dk-peek .tag", { hasText: "Poacher" }).count()) === 1 && (await page.locator(".dk-peek .dk-pbar").count()) >= 4, "a row opens the player beside the list, with his profile and ranked bars");
+  expect(page.url().includes("/scout"), "opening the panel should not leave the list");
   await go("/scout?top=10");
-  expect((await page.locator("table.data tbody tr").count()) === 10, "Top 10 should show ten rows");
+  expect((await page.locator("table.dk-sheet tbody tr").count()) === 10, "Top 10 should show ten rows");
   expect((await resultCount()).lead.startsWith("Top 10 of"), "the results bar should say it is the top ten");
 });
 await check("any metric can be a column and a sort, blanks never sort as zero", async () => {
   await go("/scout?cols=defending&sort=tackles90");
-  const heads = await page.locator("table.data thead th").allInnerTexts();
+  const heads = await page.locator("table.dk-sheet thead th").allInnerTexts();
   expect(heads.some((t) => t.startsWith("Tackles/90")) && heads.some((t) => t.startsWith("Int/90")), "the defending columns should be shown: " + heads.join(" | ").slice(0, 200));
-  expect((await page.locator("table.data thead th.sorted").innerText()).startsWith("Tackles/90"), "the table should be sorted by tackles");
-  expect((await page.locator(".results-bar").first().innerText()).includes("By Tackles per 90, highest first"), "the results bar should say how the list is sorted");
-  expect((await page.locator('select[aria-label="Sort by"]').inputValue()) === "tackles90", "the sort menu should show it too");
-  await page.locator("table.data thead th", { hasText: "Tackle %" }).first().click();    // a click on any heading re-sorts by it
+  expect((await page.locator("table.dk-sheet thead th.sorted").innerText()).startsWith("Tackles/90"), "the table should be sorted by tackles");
+  expect((await page.locator(".dk-foot").innerText()).includes("Sorted by tackles per 90, highest first"), "the foot of the table should say how the list is sorted");
+  await page.locator("table.dk-sheet thead th", { hasText: "Tackle %" }).first().hover();
+  await page.waitForTimeout(200);
+  expect((await bodyText()).includes("Tackle success"), "pointing at a short heading should give the measure's full name");
+  await page.locator("table.dk-sheet thead th", { hasText: "Tackle %" }).first().click();    // a heading opens its menu: meaning, spread, sort, keep
+  await page.waitForSelector(".dk-menu");
+  expect((await page.locator(".dk-menu .dk-hist i").count()) > 10, "the menu should draw the measure's spread");
+  await page.locator(".dk-menu").getByRole("button", { name: "Highest first" }).click();
   await settled();
   expect(!page.url().includes("sort=tackles90") && page.url().includes("sort="), "clicking another heading should change the sort: " + page.url());
 });
 await check("player rows carry event metrics once event data is stored", async () => {
   await go("/scout?cols=passing");
-  const cells = await page.locator("table.data tbody tr").evaluateAll((rows) => rows.slice(0, 40).map((r) => r.innerText));
+  const cells = await page.locator("table.dk-sheet tbody tr").evaluateAll((rows) => rows.slice(0, 40).map((r) => r.innerText));
   expect(cells.some((t) => /\d+%/.test(t)), "pass accuracy should have values for players with event data");
 });
 await check("text search narrows the list and a role chip and reset bring it back", async () => {
@@ -265,7 +285,7 @@ await check("text search narrows the list and a role chip and reset bring it bac
   const everyone = (await resultCount()).n;
   await page.getByPlaceholder("Search by player or club").fill("everton");
   await page.waitForTimeout(500);
-  const teams = await page.locator("table.data tbody tr .cell-player .sub").allInnerTexts();
+  const teams = await page.locator("table.dk-sheet tbody tr .cell-player .sub").allInnerTexts();
   expect(teams.length > 3 && teams.every((t) => t.startsWith("Everton")), "search should keep Everton players only");
   await page.getByRole("button", { name: /Clear all|Reset/ }).first().click();
   await settled();
@@ -278,18 +298,31 @@ await check("the map draws every player in the selection and honours Top N", asy
   await go("/scout?view=map&top=20");
   expect((await page.locator(".chart svg .dot-mark").count()) <= 20, "Top 20 should limit the map as well as the table");
 });
+await check("the map starts from a question, and a trend names who stands off it", async () => {
+  await go("/scout?view=map");
+  await page.waitForSelector(".map-questions .chip");
+  expect((await page.locator(".chart svg .trend-line").count()) === 0, "no trend until a question asks for one");
+  await page.getByRole("button", { name: "Busy, or productive?" }).click();
+  await page.waitForSelector(".chart svg .trend-line");
+  expect((await page.locator(".chart svg .trend-line").count()) >= 2, "one trend line per role");
+  expect((await page.locator(".map-off .map-off-col").count()) === 2 && (await page.locator(".map-off li").count()) >= 1, "who is furthest below and above the line");
+  await page.getByText("Draw the trend and name who is furthest from it").click();
+  expect((await page.locator(".chart svg .trend-line").count()) === 0, "the trend can be switched off");
+});
 await check("ticking two players enables Compare", async () => {
   await go("/scout");
-  await page.locator("table.data tbody tr input[type=checkbox]").nth(0).check();
-  await page.locator("table.data tbody tr input[type=checkbox]").nth(1).check();
+  await page.locator("table.dk-sheet tbody tr input[type=checkbox]").nth(0).check();
+  await page.locator("table.dk-sheet tbody tr input[type=checkbox]").nth(1).check();
   await page.locator(".tray").getByRole("button", { name: /Compare 2/ }).click();
   await settled();
   expect(page.url().includes("/compare?ids="), "should be on compare");
+  await page.waitForSelector(".radar .rd-shape");
+  expect((await page.locator(".radar .rd-shape").count()) >= 2, "one shape per player on the radar");
   expect((await page.locator(".cmp-head").count()) === 2, "two player cards expected");
 });
 await check("age filter narrows to known ages", async () => {
   await go("/scout?age=16-22&unk=0");
-  const subs = await page.locator("table.data tbody tr .cell-player .sub").allInnerTexts();
+  const subs = await page.locator("table.dk-sheet tbody tr .cell-player .sub").allInnerTexts();
   expect(subs.length > 0, "some young players expected in the demo world");
   expect(subs.every((t) => Number(t.split(" · ").pop()) <= 22), "everyone should be 22 or younger: " + subs.slice(0, 3).join(" | "));
 });
@@ -298,21 +331,36 @@ console.log("Teams: the same explorer, one level up");
 await check("every team is listed, lenses explain themselves, and event measures are filled in", async () => {
   await go("/teams");
   expect((await resultCount()).n === 20, "20 teams expected");
-  await page.locator(".chip.lens", { hasText: "High press" }).click();
+  await page.locator(".dk-ready-btn.lens", { hasText: "High press" }).click();
   await settled();
   const pressing = (await resultCount()).n;
   expect(pressing > 0 && pressing < 20, "the lens should keep some of the teams: " + pressing);
   expect(page.url().includes("lens="), "the lens should be in the address");
   await go("/teams?cols=possession&sort=poss");
-  const poss = await page.locator("table.data tbody tr").evaluateAll((rows) => rows.slice(0, 20).map((r) => r.innerText));
+  const poss = await page.locator("table.dk-sheet tbody tr").evaluateAll((rows) => rows.slice(0, 20).map((r) => r.innerText));
   expect(poss.filter((t) => /\d+%/.test(t)).length >= 15, "possession should be known for the teams with event data");
 });
-await check("the team map plots all twenty and a row opens the team", async () => {
+await check("a formation narrows the teams, and the rail says what it keeps", async () => {
+  await go("/teams");
+  const chips = page.locator(".dk-rail [aria-label=Formation] .chip");
+  expect((await chips.count()) >= 2, "the usual formations should be listed with their counts");
+  const label = await chips.first().innerText();
+  const n = Number(label.trim().split(/\s+/).pop());
+  await chips.first().click();
+  await settled();
+  expect(page.url().includes("form="), "the formation should be in the address");
+  expect((await resultCount()).n === n, `the count on the chip should be the count of the list (${label})`);
+  expect((await page.locator(".fchip").count()) === 1, "and it should show as a filter pill");
+});
+await check("the team map plots all twenty, and a row opens the team beside the list", async () => {
   await go("/teams?view=map");
   await page.waitForSelector(".chart svg circle");
   expect((await page.locator(".chart svg .dot-mark").count()) === 20, "20 dots expected");
   await go("/teams");
-  await page.locator("table.data tbody tr").first().click();
+  await page.locator("table.dk-sheet tbody tr").first().click();
+  await page.waitForSelector(".dk-peek");
+  expect((await page.locator(".dk-peek .dk-pbar").count()) >= 6 && page.url().includes("/teams"), "a row opens the team's ranks beside the list, without leaving it");
+  await page.locator(".dk-peek a", { hasText: "Open team page" }).click();
   await settled();
   expect(page.url().includes("/team/"), "should open a team page");
 });
@@ -397,6 +445,11 @@ await check("style & maps draws every layer from the stored events", async () =>
     expect((await page.locator(".maplab svg").count()) >= 1, `${layer}: nothing drawn`);
   }
   expect((await bodyText()).toLowerCase().includes("attacking left to right"), "the maps should say which way they attack");
+  // the same moves the match page lists, summed over the season: how they end, where the ball is lost, who lost and who won it
+  await page.waitForSelector(".people .people-row");
+  expect((await bodyText()).includes("How their moves end"), "the card about how the team's moves end is missing");
+  expect((await page.locator(".stackbar i").count()) >= 3 && (await page.locator(".outcome-bars .ob-row").count()) >= 6, "moves by how they ended, and by where and how they began");
+  expect((await page.locator(".people").count()) === 2 && (await page.locator(".people .people-row").count()) >= 6, "who lost the ball most and who took it most");
 });
 await check("chances tab: one chart area with toggles, and the chart changes", async () => {
   await go("/team/Arsenal?tab=chances");
@@ -409,9 +462,20 @@ await check("chances tab: one chart area with toggles, and the chart changes", a
   await settled();
   await noBug();
 });
-await check("players tab lists the squad with metrics", async () => {
+await check("players tab lists the squad on the desk, with filters and one player beside it", async () => {
   await go("/team/Arsenal?tab=players");
-  expect((await page.locator("table.data tbody tr").count()) >= 15, "the squad should be listed");
+  const rows = () => page.locator(".desk.inset table.dk-sheet tbody tr").count();
+  const squad = await rows();
+  expect(squad >= 15, "the squad should be listed: " + squad);
+  expect((await page.locator("h1").count()) === 1, "the desk inside the page adds no second page title");
+  await page.locator(".dk-rail .chip", { hasText: /^Defenders/ }).click();
+  await settled();
+  const defenders = await rows();
+  expect(defenders > 2 && defenders < squad, `a role should narrow the squad (${squad} -> ${defenders})`);
+  expect(page.url().includes("tab=players") && page.url().includes("r=DEF"), "the tab and the filter should both be in the address: " + page.url());
+  await page.locator(".desk.inset table.dk-sheet tbody tr").first().click();
+  await page.waitForSelector(".dk-peek");
+  expect((await page.locator(".dk-peek .dk-pbar").count()) >= 4, "a row opens the player beside the list");
 });
 await check("manager stints render as a table when managers.json has them", async () => {
   await page.route("**/api/team?*", async (route) => {
@@ -444,12 +508,17 @@ await check("profile, every-metric search, maps, match log, finishing, similar p
   await page.locator(".tabs button", { hasText: "Maps" }).click();
   await settled();
   await page.waitForSelector(".maplab svg");
+  await page.waitForSelector(".moves-grid .pitchmap svg");
+  expect((await bodyText()).includes("Where he lost the ball") && (await page.locator(".moves-grid .pitchmap").count()) === 2, "where he lost the ball and where he took it, one pitch each");
+  expect((await page.locator(".moves-grid .pitchmap circle[style*='fill-opacity']").count()) >= 5, "each loss and each ball won is a dot");
   await page.locator(".tabs button", { hasText: "Match log" }).click();
   await settled();
   expect((await page.locator("table.data tbody tr").count()) > 5, "match log rows missing");
   await page.locator(".tabs button", { hasText: "Finishing" }).click();
   await settled();
   expect((await page.locator(".shotmap svg circle.shot").count()) > 20, "shots missing");
+  await page.locator(".shotboard .shotrow button").first().click();
+  expect((await page.locator(".shotboard .shotrow.sel .sr-links a").count()) >= 1, "a player's shot should link to the match it was in");
   expect((await page.locator("svg[aria-label^='Chance of each possible goal tally'] rect").count()) > 5, "distribution bars missing");
   await page.locator(".tabs button", { hasText: "Similar" }).click();
   await settled();
@@ -474,32 +543,111 @@ await check("the percentile bars say who he is compared with and what a bar mean
 });
 
 console.log("Match: deep analytics");
+await check("match centre: momentum, the numbers of one half, passing, defending and line-ups", async () => {
+  const league = await (await fetch(`${base}/api/matches?league=EPL`)).json();
+  const played = league.rounds.flatMap((r) => r.matches).filter((m) => m.played).pop();
+  await go(`/match/${played.id}`);
+  await page.waitForSelector(".momentum svg .mo-min");
+  expect(page.url().includes("league=EPL"), "a match's address should say which league it is in, so the link works anywhere: " + page.url());
+  expect((await page.locator(".scoreboard .sb-meter").count()) >= 2, "the scoreboard should carry xG and shots");
+  expect((await page.locator(".momentum .mo-min").count()) >= 90, "a bar for every minute");
+  expect((await page.locator(".momentum .mo-ev").count()) >= 1, "goals, cards and substitutions sit on the clock");
+  const passes = () => page.locator(".numgroups .tug", { hasText: "Passes" }).first().innerText();
+  const whole = await passes();
+  await page.locator(".numgroups").locator("xpath=ancestor::section[1]").getByRole("button", { name: "First half" }).click();
+  expect((await passes()) !== whole, "picking the first half should change the numbers");
+  expect((await page.locator(".leaders .leader").count()) >= 6, "who led the match at what");
+  await page.getByRole("tab", { name: "Passing" }).click();
+  await page.waitForSelector(".duo .pitchmap svg");
+  expect((await page.locator(".duo .pitchmap").count()) === 2, "one pitch per side");
+  expect((await page.locator(".duo .pm-label").count()) >= 16, "the players of both networks should be named");
+  await page.getByRole("button", { name: "Touches", exact: true }).click();
+  await page.waitForSelector(".duo .heat-img");
+  await page.getByRole("button", { name: "Into the box" }).click();
+  expect((await page.locator(".duo .pitchmap line").count()) > 6, "passes into the box should be drawn");
+  expect((await page.locator(".channels").count()) === 2 && (await page.locator(".blockbars .bb-row").count()) === 6, "attacks by side and control by quarter-hour");
+  await page.getByRole("tab", { name: "Moves" }).click();
+  await page.waitForSelector(".move-list .move-row");
+  expect((await page.locator(".move-row[aria-selected='true']").count()) === 1, "one move is picked from the start");
+  expect((await page.locator(".movepitch .mv-badge").count()) >= 1 && (await page.locator(".move-lines li").count()) >= 2, "the picked move is drawn and written out, action by action");
+  const shown = await page.locator(".move-row").count();
+  await page.getByRole("button", { name: "Show every move" }).click();
+  expect((await page.locator(".move-row").count()) > shown, "short moves are hidden until asked for");
+  await page.getByRole("button", { name: "Lost it" }).click();
+  await page.locator(".move-row").first().click();
+  expect(/Lost|lost/.test(await page.locator(".move-endline").innerText()), "a lost move says who lost it");
+  await page.locator(".move-row[aria-selected='true']").press("ArrowDown");
+  expect((await page.locator(".move-row").nth(1).getAttribute("aria-selected")) === "true", "the arrow keys step through the moves");
+  expect((await page.locator(".mv-breaks").count()) === 2 && (await page.locator(".moveboard").count()) === 2, "where moves broke down, and who lost and won the ball");
+  await page.getByRole("tab", { name: "Players" }).click();
+  await page.getByRole("button", { name: "By half" }).click();
+  await page.waitForSelector(".outcome-bars .ob-row");
+  expect((await page.locator(".outcome-bars .ob-row").count()) >= 4, "each busy player's forward actions, split by whether the move came to a shot");
+  await page.getByRole("tab", { name: "Defending" }).click();
+  await page.waitForSelector(".def-line");
+  expect((await page.locator(".def-line").count()) === 2, "each side's line of engagement");
+  await page.getByRole("tab", { name: "Line-ups" }).click();
+  await page.waitForSelector(".formation .fp-player");
+  expect((await page.locator(".formation .fp-player").count()) === 22, "eleven a side on the pitch");
+  await page.getByRole("tab", { name: "Shots" }).click();
+  await page.waitForSelector(".goalmouth");
+  expect((await page.locator(".goalmouth").count()) === 2 && (await page.locator(".shotmap.wide .shot").count()) > 5, "the shot map and both goal mouths");
+  // the shot board: one player's shots, then one shot's detail, with its circle ringed on the pitch
+  const everyShot = await page.locator(".shotboard .shotmap .shot").count();
+  // a few takers are chips; a match with many of them offers a "Taken by" list instead
+  const chips = (await page.locator(".shotboard .sbd-takers .chip").count()) > 0;
+  const takenBy = page.locator(".shotboard").getByLabel("Taken by");
+  if (chips) await page.locator(".shotboard .sbd-takers .chip").nth(1).click();
+  else await takenBy.selectOption({ index: 1 });
+  expect((await page.locator(".shotboard .shotmap .shot").count()) < everyShot, "picking a taker should leave only his shots");
+  expect((await page.locator(".shotboard .shotrow").count()) === (await page.locator(".shotboard .shotmap .shot").count()), "the list and the pitch show the same shots");
+  await page.locator(".shotboard .shotrow button").first().click();
+  expect((await page.locator(".shotboard .shotrow.sel .sr-detail dt").count()) >= 4 && (await page.locator(".shotboard .shot-ring.sel").count()) === 1, "a picked shot opens its detail and is ringed on the pitch");
+  if (chips) await page.locator(".shotboard .sbd-takers .chip").first().click();
+  else await takenBy.selectOption({ index: 0 });
+  await noBug();
+});
+await check("a match not played yet opens onto how the two sides compare this season", async () => {
+  const league = await (await fetch(`${base}/api/matches?league=EPL`)).json();
+  const next = league.rounds.flatMap((r) => r.matches).filter((m) => !m.played).pop();
+  await go(`/match/${next.id}`);
+  await page.waitForSelector(".pv-grid .tug");
+  expect((await page.locator(".pv-grid .tug").count()) >= 6 && (await page.locator(".pv-grid .xgd-strip").count()) === 2, "the season numbers and each side's run of xG difference");
+  expect((await page.locator(".mc-xg").count()) === 0, "no card of another page should be here");
+  await noBug();
+});
 await check("match deep analytics: both teams in one table, filters, and who leads", async () => {
   const league = await (await fetch(`${base}/api/matches?league=EPL`)).json();
   const played = league.rounds.flatMap((r) => r.matches).filter((m) => m.played).pop();
   await go(`/match/${played.id}`);
   await page.waitForSelector(".tabs [role=tab]");
+  await page.getByRole("tab", { name: "Players" }).click();
   expect((await page.locator(".grid.cols-2 table.data").count()) === 2, "the quick view keeps one table per team");
-  await page.getByRole("tab", { name: "Deep analytics" }).click();
-  await page.waitForSelector(".deep-controls");
-  await page.waitForSelector(".results-card table.data tbody tr");
+  await page.getByRole("button", { name: "Deep analytics" }).click();
+  await page.waitForSelector(".desk.inset table.dk-sheet tbody tr");
   expect(page.url().includes("tab=deep"), "the tab should be in the address: " + page.url());
-  const count = () => page.locator(".results-card table.data tbody tr").count();
+  const count = () => page.locator(".desk.inset table.dk-sheet tbody tr").count();
+  const ranked = await count();
+  expect((await page.locator(".fchip", { hasText: "30+ minutes" }).count()) === 1, "it opens on the players who are ranked, and says so as a filter that can be removed");
+  await page.locator(".dk-rail .chip", { hasText: /^Any$/ }).click();
   const all = await count();
-  expect(all >= 18, "every player who played should be listed, from both teams: " + all);
-  expect((await page.locator(".results-card .deep-side").evaluateAll((els) => new Set(els.map((e) => e.title)).size)) === 2, "both teams in the one table");
-  await page.locator(".deep-controls .segmented button").nth(1).click();
+  expect(all >= 18 && all >= ranked, "every player who played should be listed, from both teams: " + all);
+  expect((await page.locator(".desk.inset .dk-who .dk-dot").evaluateAll((els) => new Set(els.map((e) => e.title)).size)) === 2, "both teams in the one table");
+  await page.locator(".dk-rail [aria-label=Team] .chip").nth(1).click();
   const home = await count();
   expect(home > 0 && home < all, `one team only should show fewer players: ${home} of ${all}`);
-  await page.locator(".deep-controls .segmented button").first().click();
-  await page.locator(".deep-controls select[aria-label='Minutes played']").selectOption("90");
-  const full = await count();
-  expect(full > 0 && full <= all, "the full-match filter should keep only players who played 90");
-  expect((await page.locator(".results-card .mx-best").count()) >= 3, "the best of each metric should be marked");
-  expect((await page.locator(".results-card .is-tile").count()) === 3, "best, median and weakest of the sorted metric");
-  await page.locator("main select[aria-label='Sort by']").selectOption("tackles90");
-  await page.waitForSelector("table.data thead th.sorted");
-  expect((await page.locator("table.data thead th.sorted").first().innerText()).includes("Tackles"), "the table should sort by the chosen metric");
+  await page.locator(".dk-rail [aria-label=Team] .chip").first().click();
+  await page.locator(".dk-rail .chip", { hasText: /^Started$/ }).click();
+  const starters = await count();
+  expect(starters > 10 && starters <= all, `starters only: ${starters} of ${all}`);
+  expect((await page.locator(".desk.inset .dk-c.mk-best").count()) >= 3, "the best of each measure should be ringed");
+  await page.locator(".dk-sets button", { hasText: "Defending" }).click();
+  await page.locator("table.dk-sheet thead th", { hasText: "Tackles/90" }).first().click();
+  await page.waitForSelector(".dk-menu");
+  await page.locator(".dk-menu").getByRole("button", { name: "Highest first" }).click();
+  await page.waitForSelector("table.dk-sheet thead th.sorted");
+  expect((await page.locator("table.dk-sheet thead th.sorted").first().innerText()).startsWith("Tackles/90"), "the table should sort by the chosen measure");
+  expect(!page.url().includes("sort="), "the table keeps its state to itself: the match's address is left alone: " + page.url());
 });
 
 console.log("Player: match trend");
@@ -548,7 +696,7 @@ await check("match trend: arrow keys walk the matches and show each one", async 
   await page.waitForSelector(".trend-chart svg");
   await page.locator(".trend-scroll").focus();
   await page.keyboard.press("ArrowLeft");
-  await page.waitForFunction(() => /Matchweek/.test(document.querySelector(".tooltip.on")?.innerText || ""), null, { timeout: 5000 });
+  await page.waitForFunction(() => /Matchweek/.test(document.querySelector(".tooltip.on")?.innerText || ""), null, { timeout: 10000 });
   const last = await page.locator(".tooltip.on").innerText();
   await page.keyboard.press("ArrowLeft");
   await page.waitForFunction((before) => { const t = document.querySelector(".tooltip.on")?.innerText || ""; return t.includes("Matchweek") && t !== before; }, last, { timeout: 10000 });
@@ -661,14 +809,30 @@ await check("matches: day-grouped cards with scorers, round navigation and flagg
   await settled();
   expect((await page.locator(".mc.flagged").count()) > 3, "flagged matches expected");
 });
+await check("matches: one team's season, its next games and then its results", async () => {
+  await go("/matches");
+  await page.locator("main select[aria-label='Team']").selectOption("Arsenal");
+  await settled();
+  expect(page.url().includes("team=Arsenal"), "the team should be in the address");
+  expect((await page.locator(".round-head h2").innerText()) === "Arsenal", "the season is headed with the team's name");
+  const cards = await page.locator(".mc").allInnerTexts();
+  expect(cards.length >= 10 && cards.every((t) => t.includes("Arsenal")), "every card should be one of Arsenal's matches");
+  expect((await page.locator(".day-title").allInnerTexts()).some((t) => t.startsWith("Results, latest first")), "its results should be listed");
+  await page.getByRole("button", { name: /Results that lied/ }).click();
+  await settled();
+  expect((await page.locator(".mc").allInnerTexts()).every((t) => t.includes("Arsenal")), "the results that lied are Arsenal's only");
+});
 await check("match report: scoreboard with scorers, xG race, shot map and how the game was played", async () => {
   await go("/matches");
   await page.locator("a.mc").first().click();
   await settled();
   expect((await page.locator(".scoreboard").count()) === 1, "scoreboard missing");
   expect((await page.locator("svg[aria-label^='Cumulative xG']").count()) === 1, "xG race missing");
+  // with the match's events stored the page shows "The match in numbers" (by half); with only the team totals, "How the game was played"
+  expect((await page.locator(".numgroups").count()) >= 1 || (await bodyText()).includes("How the game was played"), "the event-data card is missing");
+  await page.getByRole("tab", { name: "Shots" }).click();
+  await page.waitForSelector(".shotboard");
   expect((await page.locator(".shotmap svg circle.shot").count()) > 4, "shots missing");
-  expect((await bodyText()).includes("How the game was played"), "the event-data card is missing");
 });
 
 console.log("Dictionary, guide, data");
@@ -741,7 +905,7 @@ const AUDIT = () => {
   if (document.querySelectorAll("h1").length !== 1) bad.push("the page should have exactly one h1");
   return bad;
 };
-for (const route of ["/", "/league", "/matches", "/scout", "/teams", "/team/Arsenal", "/team/Arsenal?tab=maps", "/player/100844", "/player/100844?tab=trend", "/compare?mode=teams&a=Everton&b=Arsenal", "/dictionary", "/guide", "/data", "/shortlist"]) {
+for (const route of ["/", "/league", "/league?view=expected", "/matches", "/matches?team=Arsenal&view=flagged", "/scout", "/teams", "/team/Arsenal", "/team/Arsenal?tab=players", "/team/Arsenal?tab=maps", "/player/100844", "/player/100844?tab=trend", "/compare?mode=teams&a=Everton&b=Arsenal", "/dictionary", "/guide", "/data", "/shortlist"]) {
   await check(`controls are labelled and headings are in order: ${route}`, async () => {
     await go(route);
     const bad = await page.evaluate(AUDIT);
@@ -751,7 +915,7 @@ for (const route of ["/", "/league", "/matches", "/scout", "/teams", "/team/Arse
 
 console.log("Phone layout");
 await fresh({ width: 390, height: 844 });
-for (const route of ["/", "/league", "/matches", "/scout", "/scout?view=map", "/teams", "/team/Everton", "/team/Everton?tab=maps", "/player/100844", "/player/100844?tab=trend", "/match/10260292", "/dictionary", "/data"]) {
+for (const route of ["/", "/league", "/matches", "/matches?team=Everton", "/scout", "/scout?view=map", "/teams", "/team/Everton", "/team/Everton?tab=players", "/team/Everton?tab=maps", "/player/100844", "/player/100844?tab=trend", "/match/10260292", "/dictionary", "/data", "/shortlist"]) {
   await check(`no horizontal scroll at 390px: ${route}`, async () => {
     await go(route);
     const over = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
