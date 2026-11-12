@@ -204,3 +204,34 @@ def attach_xg(centre: dict, understat_shots: dict[str, list]) -> None:
                 used.add(best)
                 xg = float(pool[best].xg)
                 shot["xg"] = None if xg != xg else round(xg, 3)
+
+
+def shot_xg(match: Match, understat_shots: dict[str, list], *, flip: bool = False) -> dict[int, float]:
+    """``event index -> Understat's xG`` for the shots of a stored match, matched as :func:`attach_xg` does (same side, the same minute
+    give or take one, the nearest spot). ``flip``: the match's first team is Understat's away side. A shot Understat does not list is
+    simply absent: its xG is unknown, not zero."""
+    ev = match.ev
+    out: dict[int, float] = {}
+    for tm in (0, 1):
+        key = "h" if (tm == 0) != flip else "a"
+        pool = [s for s in understat_shots.get(key, []) if getattr(s, "result", None) != "OwnGoal"]
+        used: set[int] = set()
+        for i in match.play_indices():
+            if ev["tm"][i] != tm or ev["t"][i] not in S.SHOT_EVENTS or ev["x"][i] < 0 or ev["y"][i] < 0:
+                continue
+            q = ev["q0"][i] | (ev["q1"][i] << S.WORD_BITS)
+            if ev["fl"][i] & FL_OWN_GOAL or q & M_OWN_GOAL:
+                continue
+            best, best_d = None, 0.0
+            for n, shot in enumerate(pool):
+                if n in used or abs(int(shot.minute) - ev["mi"][i]) > 1:
+                    continue
+                d = (float(shot.x) - ev["x"][i] / 1000) ** 2 + (float(shot.y) - ev["y"][i] / 1000) ** 2
+                if best is None or d < best_d:
+                    best, best_d = n, d
+            if best is not None and best_d <= 0.02:
+                used.add(best)
+                xg = float(pool[best].xg)
+                if xg == xg:
+                    out[i] = xg
+    return out

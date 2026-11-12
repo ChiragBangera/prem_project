@@ -10,7 +10,7 @@ moves themselves keep them.
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 
 from .possessions import K_PASS, build_possessions, led_to_shot
 from .silver import Match
@@ -85,11 +85,27 @@ def _thin(points: list, limit: int = MAX_POINTS) -> list:
     return [points[int(i * step)] for i in range(limit)]
 
 
+XgOf = Callable[[Match], dict[int, float]]   # a match -> {shot event index: Understat's xG}, for the shots Understat has
+
+
+def _shot_events(moves: list[dict], came: list[bool]) -> list[int]:
+    """Per move, the event index of the shot it came to: its own, or that of the corner, free kick or penalty it won; -1 when none."""
+    out = []
+    for k, move in enumerate(moves):
+        if move["shot"] >= 0:
+            out.append(move["shot"])
+        elif came[k] and k + 1 < len(moves):
+            out.append(moves[k + 1]["shot"])
+        else:
+            out.append(-1)
+    return out
+
+
 def _team_index(m: Match, team: str) -> int | None:
     return next((i for i, t in enumerate(m.teams) if t["name"] == team), None)
 
 
-def team_moves(matches: Iterable[Match], team: str) -> dict:
+def team_moves(matches: Iterable[Match], team: str, *, xg_of: XgOf | None = None) -> dict:
     """A team's moves over these matches: how they ended, by where and how they began; where the ball was lost; who lost it most and
     who took it off the opponents most.
 
@@ -105,7 +121,8 @@ def team_moves(matches: Iterable[Match], team: str) -> dict:
     losers: dict[int, dict] = {}
     winners: dict[int, dict] = {}
     names: dict[int, str] = {}
-    n = passes = games = came = 0
+    n = passes = games = came = xg_known = shots = 0
+    xg_sum = 0.0
     for m in matches:
         tm = _team_index(m, team)
         if tm is None:
@@ -114,8 +131,17 @@ def team_moves(matches: Iterable[Match], team: str) -> dict:
         for p in m.players:
             names.setdefault(p["id"], p["name"])
         moves = build_possessions(m)
-        for move, shot in zip(moves, led_to_shot(moves), strict=True):
+        led = led_to_shot(moves)
+        xg = xg_of(m) if xg_of is not None else {}
+        seen: set[int] = set()
+        for move, shot, at_shot in zip(moves, led, _shot_events(moves, led), strict=True):
             group = end_group(move)
+            if move["tm"] == tm and shot and at_shot >= 0 and at_shot not in seen:
+                seen.add(at_shot)             # a corner won and the corner itself came to the same shot: it is one shot
+                shots += 1
+                if at_shot in xg:
+                    xg_sum += xg[at_shot]
+                    xg_known += 1
             if move["tm"] != tm:
                 # the other side's move: which of ours ended it, and how
                 if move["by"] and move["end"] == "lost" and m.by_id.get(move["by"], {}).get("tm") == tm:
@@ -149,6 +175,8 @@ def team_moves(matches: Iterable[Match], team: str) -> dict:
     top = lambda book, extra: [{"id": pid, "name": names.get(pid, ""), **extra(v)} for pid, v in sorted(book.items(), key=lambda kv: (-kv[1]["n"], names.get(kv[0], "")))[:8]]  # noqa: E731
     return {
         "n": n, "matches": games, "passes": passes, "shot": came, "ends": ends,
+        # the shots the moves came to (each once), Understat's xG of them, and for how many it is known (None when it was not asked for)
+        "shots": shots, "shot_xg": None if xg_of is None else round(xg_sum, 2), "shot_xg_known": None if xg_of is None else xg_known,
         "zones": [{"key": key, "label": label, **zones[key]} for key, label in ZONES],
         "starts": [{"key": key, "label": label, **starts[key]} for key, label, _kinds in START_GROUPS if starts[key]["n"]],
         "lost_grid": grid, "dims": [NX, NY],
@@ -157,7 +185,7 @@ def team_moves(matches: Iterable[Match], team: str) -> dict:
     }
 
 
-def player_moves(matches: Iterable[tuple[int, Match]], player: int) -> dict:
+def player_moves(matches: Iterable[tuple[int, Match]], player: int, *, xg_of: XgOf | None = None) -> dict:
     """One player's part in his side's moves over these ``(index, match)`` pairs: how many he was in and how many came to a shot,
     every place he lost the ball (and how), and every place he took it off the other side.
 
@@ -168,7 +196,8 @@ def player_moves(matches: Iterable[tuple[int, Match]], player: int) -> dict:
     won: list[list] = []
     lost_how: dict[str, int] = {}
     lost_zone = dict.fromkeys((key for key, _label in ZONES), 0)
-    games = 0
+    games = xg_known = shots = 0
+    xg_sum = 0.0
     for index, m in matches:
         me = m.by_id.get(player)
         if me is None:
@@ -176,11 +205,20 @@ def player_moves(matches: Iterable[tuple[int, Match]], player: int) -> dict:
         games += 1
         tm = me["tm"]
         moves = build_possessions(m)
-        for move, shot in zip(moves, led_to_shot(moves), strict=True):
+        led = led_to_shot(moves)
+        xg = xg_of(m) if xg_of is not None else {}
+        seen: set[int] = set()
+        for move, shot, at_shot in zip(moves, led, _shot_events(moves, led), strict=True):
             if move["tm"] == tm:
                 if any(step[1] == player for step in move["steps"]):
                     part += 1
                     shot_in += shot
+                    if shot and at_shot >= 0 and at_shot not in seen:
+                        seen.add(at_shot)     # in the move that won the corner and in the corner: still one shot
+                        shots += 1
+                        if at_shot in xg:
+                            xg_sum += xg[at_shot]
+                            xg_known += 1
                 if move["lost"] == player and end_group(move) == "lost":
                     at = _lost_at(move)
                     how = move["how"] or "pass"            # nobody took it off him: his pass found no team-mate
@@ -194,6 +232,7 @@ def player_moves(matches: Iterable[tuple[int, Match]], player: int) -> dict:
                     won.append([1000 - at[0], 1000 - at[1], move["how"], index])
     return {
         "matches": games, "n": part, "shot": shot_in, "lost_n": sum(lost_how.values()), "won_n": len(won),
+        "shots": shots, "shot_xg": None if xg_of is None else round(xg_sum, 2), "shot_xg_known": None if xg_of is None else xg_known,
         "lost": _thin(lost), "won": _thin(won),
         "lost_how": [{"key": k, "label": HOW_LABEL.get(k, k), "n": v} for k, v in sorted(lost_how.items(), key=lambda kv: -kv[1])],
         "lost_zone": [{"key": key, "label": label, "n": lost_zone[key]} for key, label in ZONES],

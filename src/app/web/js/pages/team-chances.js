@@ -12,6 +12,7 @@ import { ColumnPairs } from "../charts/columns.js";
 import { ZonePitch } from "../charts/pitch.js";
 import { SERIES_COLORS } from "../charts/lines.js";
 import { ShotBoard } from "../ui/shotboard.js";
+import { TeamGoalMouth } from "../ui/goalmouth.js";
 import { teamShot } from "../lib/shots.js";
 
 const NUMBERS_INFO = {
@@ -338,6 +339,7 @@ function ChancesView({ d, lq, scope, team }) {
     </${Card}>
     ${showNumbers ? html`<${Numbers} group=${group} />` : null}
     <${ShotMapCard} team=${team} scope=${scope} />
+    <${TeamGoalMouth} team=${team} scope=${scope} />
   </div>`;
 }
 

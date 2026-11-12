@@ -14,7 +14,7 @@ from app.events import maps as event_maps
 from app.insights.core import dicts, rank
 from app.insights.team import team_insights
 from app.leagues import FIRST_SEASON, LEAGUES, season_label
-from app.workbench.pages.mapdata import map_payload, pick_matches
+from app.workbench.pages.mapdata import map_payload, pick_matches, xg_reader
 from app.workbench.part import Part
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -164,7 +164,7 @@ class TeamPage(Part):
             fixtures = info["fixtures"]
             listing = [{"i": i, "game": r["game"], "date": r["date"], "opp": info["alias"].get(r["opp"], r["opp"]), "home": r["home"], "gf": r["gf"], "ga": r["ga"],
                         "match_id": fixtures[r["game"]].id if r["game"] in fixtures else None} for i, r in enumerate(log)]
-            out = map_payload(self.events, code, s, games, event_maps.Selection(team=ws), team=ws,
+            out = map_payload(self.events, code, s, games, event_maps.Selection(team=ws), team=ws, xg_of=xg_reader(info, self.matchbook.pages(ls)),
                               extra={"matches": listing, "formations": agg["formations"], "manager": max(agg["managers"], key=agg["managers"].get) if agg["managers"] else None})
             to_us = {w: u for u, w in info["players"].items()}       # so the names in "who lost it most" open the player's page
             out["links"] = {str(p["id"]): to_us[p["id"]] for key in ("losers", "winners") for p in out["moves"][key] if p["id"] in to_us}

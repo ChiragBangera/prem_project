@@ -13,7 +13,25 @@ def pick_matches(log: list[dict], venue: str, last: int | None) -> list[dict]:
     return rows[-last:] if last else rows
 
 
-def map_payload(events: EventStore, code: str, season: int, matches: list[tuple[int, int]], selection, *, team: str, extra: dict) -> dict:
+def xg_reader(info: dict, pages: dict):
+    """``match -> {shot event index: Understat's xG}`` for a season's links (``info`` from the workbench's links, ``pages`` the stored
+    Understat match pages). A match Understat has not published, or whose page is not stored, gives nothing: its xG is unknown."""
+    from app.analytics.match_centre import shot_xg
+
+    fixtures, alias = info["fixtures"], info["alias"]
+
+    def read(m) -> dict[int, float]:
+        fixture = fixtures.get(m.game)
+        page = pages.get(fixture.id) if fixture is not None else None
+        if fixture is None or page is None:
+            return {}
+        home = alias.get(m.teams[0]["name"])
+        return shot_xg(m, page.shots, flip=home is not None and home != fixture.home)
+
+    return read
+
+
+def map_payload(events: EventStore, code: str, season: int, matches: list[tuple[int, int]], selection, *, team: str, extra: dict, xg_of=None) -> dict:
     """Grids, pass lines, defensive actions, carries and the pass network of the given ``(index, game)`` matches, for one team or one player."""
     silver = []
     for i, game in matches:
@@ -33,6 +51,9 @@ def map_payload(events: EventStore, code: str, season: int, matches: list[tuple[
         "grids": {"touches": layer["touches"], "pass_from": layer["pass_from"], "def": layer["def_grid"], "recover": layer["recover_grid"]},
         "lines": lines, "lost": lost, "all_passes": event_maps.lines_view(layer, limit=600), "carries": layer["carries"], "def": layer["def"], "takeons": layer["takeons"], "gk": layer["gk"],
         "zones": event_maps.zone_shares(layer), "network": event_maps.pass_network(silver, team) if selection.player is None else None,
+        "goal_mouth": event_maps.goal_mouth(silver, selection),
+        "names": {str(p["id"]): p["name"] for _i, m in silver for p in m.players} if selection.player is None else None,
         # the same moves the Match page lists, summed: how the team's end and where it loses the ball; for a player, where he lost it and won it
-        "moves": movestats.team_moves([m for _i, m in silver], team) if selection.player is None else movestats.player_moves(silver, selection.player), **extra,
+        "moves": (movestats.team_moves([m for _i, m in silver], team, xg_of=xg_of) if selection.player is None
+                  else movestats.player_moves(silver, selection.player, xg_of=xg_of)), **extra,
     }

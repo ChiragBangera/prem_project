@@ -57,5 +57,44 @@ def test_a_players_part_in_the_moves_and_where_he_lost_and_won_the_ball():
     three = MS.player_moves([(0, match())], 3)
     assert (three["lost_n"], three["won_n"]) == (1, 1) and three["lost_how"][0]["key"] in ("recovery", "pass")
     assert three["won"] == [[250, 500, "interception", 0]]                                       # deep in his own third, drawn on the left
-    assert MS.player_moves([(0, match())], 77) == {"matches": 0, "n": 0, "shot": 0, "lost_n": 0, "won_n": 0, "lost": [], "won": [], "lost_how": [], "lost_zone": [
+    assert MS.player_moves([(0, match())], 77) == {"matches": 0, "n": 0, "shot": 0, "lost_n": 0, "won_n": 0, "shots": 0, "shot_xg": None, "shot_xg_known": None, "lost": [], "won": [], "lost_how": [], "lost_zone": [
         {"key": "own", "label": "Own third", "n": 0}, {"key": "mid", "label": "Middle third", "n": 0}, {"key": "final", "label": "Final third", "n": 0}]}
+
+
+def test_where_shots_went_in_the_goal_for_a_team_a_player_and_what_was_faced():
+    from app.events import maps as M
+
+    m = silver([
+        ev("Goal", 4, x=90, y=50, minute=10, isShot=True, isGoal=True, goalMouthY=50.0, goalMouthZ=10.0),
+        ev("SavedShot", 4, x=85, y=50, minute=20, isShot=True, goalMouthY=47.0, goalMouthZ=20.0),
+        ev("SavedShot", 2, x=85, y=50, minute=30, isShot=True, goalMouthY=50.0, goalMouthZ=5.0, quals=("Blocked",)),    # blocked: never got there
+        ev("MissedShots", 9, team=AWAY, x=80, y=40, minute=40, isShot=True, goalMouthY=60.0, goalMouthZ=30.0),
+        ev("MissedShots", 2, x=70, y=50, minute=50, isShot=True),                                                       # no goal-mouth position recorded
+        end(),
+    ], home_players=[player(i, name=f"Red {i}") for i in (1, 2, 3, 4)], away_players=[player(9, team_side="away", name="Blue 9")])
+    team = M.goal_mouth([(0, m)], M.Selection(team="Reds"))
+    assert [(s["gy"], s["gz"], s["result"], s["p"]) for s in team["for"]] == [(500, 100, "Goal", 4), (470, 200, "SavedShot", 4)]
+    assert [(s["result"], s["p"]) for s in team["against"]] == [("MissedShots", 9)]
+    four = M.goal_mouth([(0, m)], M.Selection(player=4))
+    assert len(four["for"]) == 2 and four["against"] == []
+    assert M.goal_mouth([(0, m)], M.Selection(player=2)) == {"for": [], "against": []}
+
+
+def test_the_xg_of_the_shots_moves_came_to_is_understats_and_unknown_is_not_zero():
+    from types import SimpleNamespace as Shot
+
+    from app.analytics.match_centre import shot_xg
+
+    m = match()
+    goal = next(i for i in m.play_indices() if m.ev["mi"][i] == 0 and m.ev["p"][i] == 4)
+    pages = {"h": [Shot(minute=0, x=0.9, y=0.5, xg=0.42, result="Goal")], "a": []}
+    xg = shot_xg(m, pages)
+    assert xg == {goal: 0.42}
+    assert shot_xg(m, pages, flip=True) == {}                                # the same shots listed for the other side match nothing
+    team = MS.team_moves([m], "Reds", xg_of=lambda _m: xg)
+    assert (team["shot"], team["shots"], team["shot_xg"], team["shot_xg_known"]) == (1, 1, 0.42, 1)
+    two = MS.player_moves([(0, m)], 2, xg_of=lambda _m: xg)
+    assert (two["shot"], two["shot_xg"], two["shot_xg_known"]) == (1, 0.42, 1)
+    unknown = MS.player_moves([(0, m)], 2, xg_of=lambda _m: {})             # Understat has not published the match
+    assert (unknown["shot"], unknown["shot_xg"], unknown["shot_xg_known"]) == (1, 0.0, 0)
+    assert MS.player_moves([(0, m)], 2)["shot_xg"] is None                   # not asked for

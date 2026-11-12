@@ -12,7 +12,7 @@ from app.insights.core import dicts, rank
 from app.analytics.metrics import GROUP_LABELS
 from app.insights.player import player_insights
 from app.leagues import DEFAULT_LEAGUE, FIRST_SEASON, LEAGUES, season_label
-from app.workbench.pages.mapdata import map_payload
+from app.workbench.pages.mapdata import map_payload, xg_reader
 from app.workbench.part import Part
 
 
@@ -138,7 +138,7 @@ class PlayerPage(Part):
                 listing.append({"i": i, "game": r["game"], "date": f.date if f else None, "opp": (f.away if home else f.home) if f else None, "home": home, "minutes": round(r["minutes"]),
                                 "started": r["started"], "match_id": f.id if f else None})
             games = [(i, r["game"]) for i, r in enumerate(log)]
-            return map_payload(self.events, code, resolved, games, event_maps.Selection(player=wid), team=log[-1]["club"],
+            return map_payload(self.events, code, resolved, games, event_maps.Selection(player=wid), team=log[-1]["club"], xg_of=xg_reader(info, self.matchbook.pages(ls)),
                                extra={"matches": listing, "ws_id": wid, "name": player["name"], "minutes": round(sum(r["minutes"] for r in log))})
 
         out = await wb.memo(key, version, compute)

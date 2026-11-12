@@ -109,6 +109,7 @@
 
 /* ---- goal mouths ---- */
 .goalmouths { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 22px; }
+.goalmouths.one { grid-template-columns: minmax(0, 560px); }
 .goalmouth-side { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .goalmouth { width: 100%; height: auto; display: block; overflow: visible; }
 .gm-turf { fill: var(--pitch-fill); }
