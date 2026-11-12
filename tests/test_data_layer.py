@@ -343,3 +343,35 @@ async def test_memory_cache_is_bounded(store, provider, settings, clock):
     provider.calls.clear()
     await repo.league("EPL", 2018)  # evicted from memory, still in SQLite
     assert provider.calls == []
+
+
+def test_the_data_page_answers_while_stored_matches_are_being_re_derived(tmp_path):
+    """After an update that changes a definition every stored match is derived again once. The status call must say so with how far it
+    is, and must not wait for (or repeat) that work by lining every season up."""
+    import asyncio
+    from datetime import date
+
+    from app.config import Settings
+    from app.workbench import Workbench
+
+    async def go():
+        wb = Workbench(Settings(data_dir=tmp_path, demo=True, min_interval=0), today=date(2026, 10, 1))
+        try:
+            called = []
+            real = wb.links.status
+
+            async def spy(*, light=False):
+                called.append(light)
+                return await real(light=light)
+
+            wb.links.status = spy
+            wb.store.kv_set("boot:state", {"stage": "rebuilding", "total": 40, "at": 0.0})
+            status = await wb.data.status()
+            assert called == [True] and status["boot"]["stage"] == "rebuilding" and status["boot"]["total"] == 40 and status["boot"]["done"] >= 0
+            wb.store.kv_set("boot:state", {"stage": "done", "rebuilt": 40, "at": 1.0})
+            status = await wb.data.status()
+            assert called == [True, False] and "done" not in status["boot"]
+        finally:
+            await wb.close()
+
+    asyncio.run(go())

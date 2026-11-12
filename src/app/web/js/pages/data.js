@@ -52,6 +52,14 @@ const dayMonth = (ts) => new Date(ts * 1000).toLocaleDateString("en-GB", { day: 
 
 /** The page used to open on four counts and a wall of settings, and said "0 problems" while nothing had arrived for a month. It now opens
  *  on the three things a person comes here to learn: is the data current, what is the updater doing, and is anything waiting for them. */
+/** Right after an update that changed how matches are counted, every stored match is worked through again once. Until that is done the
+ *  event numbers on other pages can be slow or missing: say so, with how far it is. */
+function BootNotice({ boot }) {
+  if (!boot || !["importing", "rebuilding"].includes(boot.stage)) return null;
+  const far = boot.total ? ` ${Math.min(boot.done || 0, boot.total).toLocaleString("en-GB")} of ${boot.total.toLocaleString("en-GB")} done.` : "";
+  return html`<${Notice} tone="warn" icon="clock"><b>Re-working the stored matches.</b> A newer version counts some things differently, so each stored match is gone through once. Nothing is downloaded.${far} Pages that use event data can be slow or incomplete until it finishes; this page refreshes by itself.</${Notice}>`;
+}
+
 function StatusHead({ status }) {
   const auto = status.auto, last = auto.last;
   const failures = Object.entries(auto.failures || {});
@@ -369,6 +377,7 @@ function DataView({ status, meta, reload }) {
   return html`
     <${PageHead} eyebrow="System" title="Data" sub=${status.mode.demo ? "You are looking at a synthetic demo world." : "Everything you see is served from this computer. The app keeps it up to date by itself and shows here what it holds, what it did and what failed."}
       actions=${html`<${Button} icon="refresh" onClick=${reload}>Refresh</${Button}>`} />
+    <${BootNotice} boot=${status.boot} />
     ${status.mode.demo ? null : html`<${StatusHead} status=${status} />`}
     <div class="tiles">
       <div class="tile"><span class="label">Source</span><span class="value figure" style=${{ fontSize: "24px" }}>${status.mode.demo ? "Demo world" : status.mode.offline ? "Offline cache" : "Understat"}</span><span class="delta">${status.mode.demo ? "synthetic players and results" : "read at a polite pace, stored locally"}</span></div>

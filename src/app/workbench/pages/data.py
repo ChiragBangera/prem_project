@@ -14,6 +14,12 @@ class DataPage(Part):
         from app.events import raw as R
 
         wb = self.wb
+        boot = self.store.kv_get("boot:state") or {}
+        # after an update that changed a definition, every stored match is re-derived once (a few minutes for thousands). The page must
+        # answer meanwhile and say so, not wait for it: the parts that read every match are left out until it is done
+        working = boot.get("stage") in ("importing", "rebuilding")
+        if working:
+            boot = {**boot, "done": await asyncio.to_thread(self._rebuilt_since, float(boot.get("at") or 0.0))}
         stats = self.store.stats()
         matrix = await asyncio.to_thread(self.coverage_matrix)
         reclaim = await asyncio.to_thread(R.reclaimable_bytes, self.store, self.settings.data_dir)
@@ -27,11 +33,17 @@ class DataPage(Part):
             "coverage": {"favorites": len(wb.favorites)},
             "matrix": matrix,
             "auto": wb.auto.state(),
-            "boot": self.store.kv_get("boot:state"),
-            "events": await wb.links.status(),
+            "boot": boot or None,
+            "events": await wb.links.status(light=working),
             "birthdates": await wb.ages.status(),
             "reclaimable_bytes": reclaim,
         }
+
+    def _rebuilt_since(self, since: float) -> int:
+        """How many stored matches have had their counters written since the start-up work began (read from the store's index)."""
+        from app.events import counters as C
+
+        return sum(1 for _key, written, _complete in self.store.keys(C.GOLD_KIND) if written >= since)
 
     def coverage_matrix(self) -> list[dict]:
         """One row per league season that is tracked or stored: what is on this computer, against what exists. Reads only the local store."""
