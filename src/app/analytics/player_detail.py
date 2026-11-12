@@ -49,6 +49,28 @@ def event_summary(row: dict, pools: dict | None = None) -> dict:
             "pool_n": (pools or {}).get(row["group"], {}).get("tackles90", row.get("ev_pool_n", 0)), "pool_minutes": row["ev_pool_minutes"]}
 
 
+#: (label, counter, the counter of those that came to a shot, the metric whose percentile says how that share compares, an estimate?)
+OUTCOMES = (
+    ("Progressive passes", "prog", "prog_shot", "progpass_shot_pct", False),
+    ("Progressive carries", "carry_prog", "carry_prog_shot", "carryprog_shot_pct", True),
+    ("Take-ons won", "takeons_won", "takeons_won_shot", "takeon_shot_pct", False),
+    ("Crosses", "crosses", "crosses_shot", "cross_shot_pct", False),
+    ("Final-third entries", "f3_entry", "f3_entry_shot", "f3entry_shot_pct", True),
+    ("Moves he was part of", "mv_in", "mv_shot_in", "move_shot_pct", False),
+)
+
+
+def outcomes(row: dict) -> dict | None:
+    """What his actions led to: for each kind, how many, and how many were in a move that came to a shot. None without event data."""
+    counts = row.get("ev_c")
+    if not counts:
+        return None
+    pct = row.get("full_pct", {})
+    items = [{"label": label, "n": int(counts.get(total, 0)), "shot": int(counts.get(shot, 0)), "key": key, "pct": pct.get(key), "estimate": estimate}
+             for label, total, shot, key, estimate in OUTCOMES]
+    return {"items": [x for x in items if x["n"] > 0], "lost": int(counts.get("mv_lost", 0)), "broken": int(counts.get("mv_broken", 0)), "moves": int(counts.get("mv_in", 0))}
+
+
 def profile(row: dict) -> list[dict]:
     """The role's key metrics in display order, each with its percentile (the wider all-data set when event data exists)."""
     out = []
@@ -183,6 +205,7 @@ def player_detail(row: dict, page: PlayerPage | None, seasons: Sequence[int], te
         "profile": profile(row),
         "blocks": metric_blocks(row, pools),
         "events": event_summary(row, pools),
+        "outcomes": outcomes(row),
         "totals": {k: row[k] for k in ("goals", "npg", "assists", "shots", "kp", "yellow", "red", "xg", "npxg", "xa", "xgchain", "xgbuildup", "g_xg", "a_xa", "g_xg_z")},
         "finishing": finishing(shots) if shots else None,
         "shots": shot_rows(shots),
