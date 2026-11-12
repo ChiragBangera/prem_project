@@ -120,8 +120,11 @@ class EventLinks(Part):
                 out[us] = {"c": t["c"], "a": t["a"], "matches": t["matches"], "formations": t["formations"], "managers": t["managers"]}
         return out
 
-    async def status(self) -> list[dict]:
-        """Per league-season: matches stored, how many exist, how well they line up with Understat, and the state of any fetching run."""
+    async def status(self, *, light: bool = False) -> list[dict]:
+        """Per league-season: matches stored, how many exist, how well they line up with Understat, and the state of any fetching run.
+
+        ``light`` leaves the lining-up out (``linked`` stays None). It is for the minutes after a start in which stored matches are being
+        re-derived for new definitions: lining a season up reads every match of it, and would wait for that work (or do it again itself)."""
         seen: dict[tuple[str, int], None] = {(lg, s): None for lg, s, _n in self.events.seasons()}
         for key in self.store.kv_prefix(STATUS_PREFIX):
             name, _, year = key[len(STATUS_PREFIX):].partition(":")
@@ -136,7 +139,7 @@ class EventLinks(Part):
                 try:
                     fetched = await self.wb.seasons.load(league, season)
                     entry["total"] = len(fetched.data.played)
-                    if entry["matches"]:
+                    if entry["matches"] and not light:
                         version = (self.events.version(league, season), self.repo.version("league", f"{league}:{season}"), self.repo.epochs.get("match", 0),
                                    self._override_version(league, season))
 
