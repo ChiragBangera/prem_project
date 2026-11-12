@@ -1,23 +1,23 @@
 // Match report: the score, what the chances say it should have been, and how the game unfolded.
-import { html, useEffect, useState } from "../lib/html.js";
+import { html, useEffect, useMemo, useState } from "../lib/html.js";
 import { useApi } from "../lib/api.js";
-import { useScope } from "../lib/scope.js";
+import { setLeague, setSeason, useScope } from "../lib/scope.js";
 import { dateLong, formation, nf, timeOf, weekday } from "../lib/format.js";
 
-import { Async, Badge, Card, Crest, DataNotices, Insights, PageHead, Tabs, useDocumentTitle, playerHref, teamHref } from "../ui/common.js";
+import { Async, Card, Crest, DataNotices, Insights, PageHead, Segmented, Tabs, useDocumentTitle, playerHref, teamHref } from "../ui/common.js";
+import { DefendingSection, EventPlayers, GoalMouthCard, LeadersCard, LineupsSection, MomentumCard, NoEvents, NumbersCard, PassingSection, PeriodPicker, linker } from "../ui/matchcentre.js";
 import { MatchDeep } from "../ui/matchdeep.js";
 import { Contributors } from "../ui/matchcontrib.js";
 import { setQuery, useLocation } from "../lib/router.js";
 import { DataTable } from "../ui/table.js";
-import { MatchPitch } from "../charts/pitch.js";
+import { MovesSection } from "../ui/matchmoves.js";
+import { ShotBoard } from "../ui/shotboard.js";
 import { XgRace } from "../charts/race.js";
 import { Frame, AxisY, niceTicks, scaleBand, scaleLinear } from "../charts/core.js";
 import { tooltip } from "../lib/tooltip.js";
 import { scorerLines } from "../ui/matchcard.js";
 import { LiveNotice, LiveView, Tug } from "../ui/matchlive.js";
 
-const RESULT = { Goal: "Goal", SavedShot: "Saved", BlockedShot: "Blocked", MissedShots: "Off target", ShotOnPost: "Hit the post", OwnGoal: "Own goal" };
-const SITUATION = { OpenPlay: "Open play", FromCorner: "Corners", SetPiece: "Set pieces", DirectFreekick: "Free kicks", Penalty: "Penalties" };
 
 function Buckets({ b, homeShort, awayShort }) {
   const shots = b.unit === "shots";
@@ -102,82 +102,143 @@ function XgLater({ title }) {
   return html`<${Card} title=${title}><p class="small muted">Expected goals come from Understat after full time (it is looked for from the 90th minute, every three minutes). This fills in then.</p></${Card}>`;
 }
 
+const VIEWS = [
+  { value: "overview", label: "Overview" }, { value: "shots", label: "Shots" }, { value: "passing", label: "Passing" },
+  { value: "moves", label: "Moves" }, { value: "defending", label: "Defending" }, { value: "lineups", label: "Line-ups" }, { value: "players", label: "Players" },
+];
+
+/** The state of the match in a word or a minute: "Full time", "Half time", "67′". */
+function statusOf(d, f) {
+  if (!d.live) return { text: "Full time", live: false };
+  if (d.live.final) return { text: "Full time", live: false };
+  const e = String(d.live.elapsed || "").replace(/['′’]+$/, "");
+  return { text: e === "HT" ? "Half time" : e ? `${e}′` : "Live", live: e !== "HT" };
+}
+
+function Scoreboard({ d, c, hasXg }) {
+  const { report: r, stats } = d;
+  const f = r.fixture;
+  const status = statusOf(d, f);
+  const xh = r.summary?.home?.xg ?? f.hxg, xa = r.summary?.away?.xg ?? f.axg;
+  const ht = c?.info?.ht;
+  const won = f.hg > f.ag ? "h" : f.ag > f.hg ? "a" : "";
+  const facts = [c?.info?.venue, c?.info?.attendance ? `${Number(c.info.attendance).toLocaleString("en-GB")} there` : null, c?.info?.referee ? `Referee ${c.info.referee}` : null].filter(Boolean);
+  return html`<section class=${"scoreboard" + (status.live ? " live" : "")} aria-label="Score">
+    <div class="sb-main">
+      <div class=${"sb-col" + (won === "h" ? " won" : "")}><a class="sb-team" href=${teamHref(f.home)}><${Crest} team=${f.home} short=${f.home_short} size=${52} /><span>${f.home}</span></a><${Scorers} list=${r.scorers?.h} align="start" /></div>
+      <div class="sb-score">
+        <div class=${"sb-status" + (status.live ? " live" : "")}>${status.live ? html`<i></i>` : null}${status.text}</div>
+        <div class="figure"><span class=${won === "h" ? "w" : ""}>${f.hg}</span><i>–</i><span class=${won === "a" ? "w" : ""}>${f.ag}</span></div>
+        ${ht && (d.live ? d.live.elapsed !== "HT" : true) ? html`<div class="sb-ht num">Half time ${ht[0]}–${ht[1]}</div>` : null}
+      </div>
+      <div class=${"sb-col away" + (won === "a" ? " won" : "")}><a class="sb-team away" href=${teamHref(f.away)}><${Crest} team=${f.away} short=${f.away_short} size=${52} /><span>${f.away}</span></a><${Scorers} list=${r.scorers?.a} align="end" /></div>
+    </div>
+    <div class="sb-strip">
+      ${hasXg ? html`<div class="sb-meter" title=${matchXgNote(f, r.summary)}><b class="num">${nf(xh, 2)}</b><span class="sb-meter-mid"><span class="sb-meter-label">Expected goals</span><span class="tug-bars"><i class="h" style=${{ width: (xh / ((xh + xa) || 1)) * 100 + "%" }}></i><i class="a" style=${{ width: (xa / ((xh + xa) || 1)) * 100 + "%" }}></i></span></span><b class="num">${nf(xa, 2)}</b></div>`
+        : html`<div class="sb-meter wait"><span class="sb-meter-label">${d.live?.overdue ? "No expected goals yet: Understat has not published this match" : "Expected goals arrive from Understat after full time"}</span></div>`}
+      ${stats?.poss ? html`<div class="sb-meter"><b class="num">${stats.poss[0]}%</b><span class="sb-meter-mid"><span class="sb-meter-label">Possession</span><span class="tug-bars"><i class="h" style=${{ width: stats.poss[0] + "%" }}></i><i class="a" style=${{ width: stats.poss[1] + "%" }}></i></span></span><b class="num">${stats.poss[1]}%</b></div>` : null}
+      <div class="sb-meter"><b class="num">${r.summary.home.shots}</b><span class="sb-meter-mid"><span class="sb-meter-label">Shots</span><span class="tug-bars"><i class="h" style=${{ width: (r.summary.home.shots / ((r.summary.home.shots + r.summary.away.shots) || 1)) * 100 + "%" }}></i><i class="a" style=${{ width: (r.summary.away.shots / ((r.summary.home.shots + r.summary.away.shots) || 1)) * 100 + "%" }}></i></span></span><b class="num">${r.summary.away.shots}</b></div>
+    </div>
+    ${facts.length ? html`<div class="sb-facts">${facts.map((x, i) => html`<span key=${i}>${x}</span>`)}</div>` : null}
+  </section>`;
+}
+
 function MatchView({ d, live }) {
   const scope = useScope();
-  const tab = useLocation().query.tab === "deep" ? "deep" : "quick";
+  const query = useLocation().query;
+  const view = VIEWS.some((v) => v.value === query.view) ? query.view : query.tab === "deep" ? "players" : "overview";
+  const tab = query.tab === "deep" ? "deep" : query.tab === "events" ? "events" : "quick";
+  const [period, setPeriod] = useState("all");
   const { report: r, insights, scope: dscope, meta, stats } = d;
   const f = r.fixture, s = r.summary;
   const hasXg = r.has_xg !== false;   // false: a match Understat has not published, drawn from WhoScored's latest read
-  const chances = hasXg ? [...r.key_chances].sort((a, b) => b.xg - a.xg).slice(0, 8) : r.key_chances;
-  const goalsHome = f.hg, goalsAway = f.ag;
-  return html`
-    <${PageHead} eyebrow=${`${dscope.league_name} · ${dscope.label} · Matchweek ${f.round}`} title=${`${f.home} v ${f.away}`} sub=${`${weekday(f.date)} ${dateLong(f.date)}, kicked off ${timeOf(f.dt)}.`} />
-    <span class="wide-page" hidden></span>
-    ${d.live ? html`<${LiveNotice} d=${live} />` : html`<${DataNotices} scope=${dscope} meta=${meta} />`}
-    <div class="scoreboard card">
-      <div class="sb-col"><a class="sb-team" href=${teamHref(f.home)}><${Crest} team=${f.home} short=${f.home_short} size=${56} /><span>${f.home}</span></a><${Scorers} list=${r.scorers?.h} align="start" /></div>
-      <div class="sb-score"><div class="figure">${goalsHome}<i>–</i>${goalsAway}</div><div class="sb-xg num" title=${hasXg ? matchXgNote(f, r.summary) : "Understat publishes xG after full time"}>${d.live && !d.live.final ? html`<${Badge} tone="accent">${d.live.elapsed === "HT" ? "Half time" : d.live.elapsed ? `${String(d.live.elapsed).replace(/['′’]+$/, "")}′` : "Live"}</${Badge}> ` : ""}${hasXg ? `xG ${nf(r.summary?.home?.xg ?? f.hxg, 2)} – ${nf(r.summary?.away?.xg ?? f.axg, 2)}` : "xG after full time"}${stats?.poss ? html` · possession ${stats.poss[0]}–${stats.poss[1]}%` : ""}</div></div>
-      <div class="sb-col away"><a class="sb-team away" href=${teamHref(f.away)}><${Crest} team=${f.away} short=${f.away_short} size=${56} /><span>${f.away}</span></a><${Scorers} list=${r.scorers?.a} align="end" /></div>
+  const cq = useApi(`/api/match/${f.id}/centre`, { league: scope.league, season: scope.season }, d.live ? { staleMs: 0, persist: false, pollMs: 60000 } : {});
+  const c = cq.data?.centre?.available ? cq.data.centre : null;
+  const noEvents = cq.data?.centre && !cq.data.centre.available ? cq.data.centre.reason : null;
+  const hrefOf = c ? linker(c, scope) : () => undefined;
+  const boardSides = [{ label: f.home, short: f.home_short, color: "var(--c1)", goal: "right-hand goal" }, { label: f.away, short: f.away_short, color: "var(--c2)", mirror: true, goal: "left-hand goal" }];
+  const boardShots = useMemo(() => [...r.shots.home.map((sh) => ({ ...sh, side: 0 })), ...r.shots.away.map((sh) => ({ ...sh, side: 1 }))].filter((sh) => sh.result !== "OwnGoal"), [r.shots]);
+  const needsEvents = (node) => (c ? node : cq.loading && !cq.data ? html`<div class="card"><div class="card-body muted">Loading the event data…</div></div>` : html`<${NoEvents} reason=${noEvents} />`);
+
+  const headToHead = html`<${Card} title="Head to head">
+    <div class="stack" style=${{ "--gap": "12px" }}>
+      ${hasXg ? html`<${Tug} label="Expected goals" home=${s.home.xg} away=${s.away.xg} format=${(v) => nf(v, 2)} />` : null}
+      <${Tug} label="Shots" home=${s.home.shots} away=${s.away.shots} />
+      <${Tug} label="On target" home=${s.home.on_target} away=${s.away.on_target} />
+      ${hasXg ? html`<${Tug} label="xG per shot" home=${s.home.xg_per_shot} away=${s.away.xg_per_shot} format=${(v) => nf(v, 3)} />` : null}
+      <${Tug} label=${hasXg ? "Big chances (0.30+)" : "Big chances (Opta)"} home=${s.home.big_chances} away=${s.away.big_chances} />
+      <${Tug} label="Goals" home=${s.home.goals} away=${s.away.goals} />
     </div>
+  </${Card}>`;
+
+  const overview = html`
     ${d.live ? null : html`<${Insights} items=${insights} scope=${dscope} />`}
-
-    <div class="mrow m-race">
-      ${hasXg ? html`<${Card} title="How the chances built up" sub="Running total of expected goals. Rings mark goals; hover a ring for the scorer.">
+    ${c ? html`<${MomentumCard} c=${c} f=${f} />` : null}
+    ${hasXg ? html`<div class="mrow m-race">
+      <${Card} title="How the chances built up" sub="Running total of expected goals. Rings mark goals; hover a ring for the scorer.">
         <${XgRace} home=${r.timeline.home} away=${r.timeline.away} homeName=${f.home} awayName=${f.away} homeShort=${f.home_short} awayShort=${f.away_short} />
-      </${Card}>` : html`<${XgLater} title="How the chances built up" />`}
-      ${hasXg ? html`<${Contributors} players=${r.players} f=${f} scope=${{ league: scope.league, season: scope.season }} />` : html`<${XgLater} title="Who made the chances" />`}
-    </div>
+      </${Card}>
+      <${Contributors} players=${r.players} f=${f} scope=${{ league: scope.league, season: scope.season }} />
+    </div>` : null}
+    ${c ? html`<${NumbersCard} c=${c} period=${period} onPeriod=${setPeriod} hasXg=${hasXg} /><${LeadersCard} c=${c} period=${period} hrefOf=${hrefOf} />`
+      : html`<div class=${"mrow " + (stats ? "m-n2" : "")}>${headToHead}${stats ? html`<${HowPlayed} stats=${stats} f=${f} />` : null}</div>${noEvents ? html`<${NoEvents} reason=${noEvents} />` : null}`}
+  `;
 
-    <div class=${"mrow " + (stats ? "m-n3" : "m-n2")}>
+  const shots = html`
+    <${Card} title="Every shot, and who took it" sub=${`${f.home} attack the right-hand goal, ${f.away} the left. Pick a player to see only his shots; pick a shot, on the pitch or in the list, for what it was worth and how it came about.`}>
+      <${ShotBoard} shots=${boardShots} sides=${boardSides} takers hasXg=${hasXg} sort="time"
+        playerHref=${(sh) => playerHref(sh.player_id, { league: scope.league, season: scope.season })} />
+    </${Card}>
+    <div class="mrow m-n2">
+      ${c ? html`<${GoalMouthCard} c=${c} f=${f} period="all" hasXg=${hasXg} />` : headToHead}
       <${Card} title="When the chances came" sub=${hasXg ? "Expected goals in each period of the match." : "Shots in each period of the match (expected goals come from Understat after full time)."}>
         <${Buckets} b=${r.buckets} homeShort=${f.home_short} awayShort=${f.away_short} />
         <div class="legend" style=${{ marginTop: "6px" }}><span class="item"><span class="swatch box" style=${{ background: "var(--c1)" }}></span>${f.home}</span><span class="item"><span class="swatch box" style=${{ background: "var(--c2)" }}></span>${f.away}</span></div>
       </${Card}>
-      <${Card} title="Head to head">
-        <div class="stack" style=${{ "--gap": "12px" }}>
-          ${hasXg ? html`<${Tug} label="Expected goals" home=${s.home.xg} away=${s.away.xg} format=${(v) => nf(v, 2)} />` : null}
-          <${Tug} label="Shots" home=${s.home.shots} away=${s.away.shots} />
-          <${Tug} label="On target" home=${s.home.on_target} away=${s.away.on_target} />
-          ${hasXg ? html`<${Tug} label="xG per shot" home=${s.home.xg_per_shot} away=${s.away.xg_per_shot} format=${(v) => nf(v, 3)} />` : null}
-          <${Tug} label=${hasXg ? "Big chances (0.30+)" : "Big chances (Opta)"} home=${s.home.big_chances} away=${s.away.big_chances} />
-          <${Tug} label="Goals" home=${s.home.goals} away=${s.away.goals} />
-        </div>
-      </${Card}>
-      ${stats ? html`<${HowPlayed} stats=${stats} f=${f} />` : null}
     </div>
+  `;
 
-    <div class="mrow m-5-7">
-      <${Card} title="Shot map" sub=${hasXg ? "Home attacks right, away attacks left. Circle size is chance quality; a dark rim marks a goal." : "Home attacks right, away attacks left; a dark rim marks a goal. Every shot is the same size until Understat's xG arrives after full time."}>
-        <${MatchPitch} home=${r.shots.home} away=${r.shots.away} />
-        <div class="legend" style=${{ marginTop: "10px" }}><span class="item"><span class="swatch dot" style=${{ background: "var(--c1)" }}></span>${f.home}</span><span class="item"><span class="swatch dot" style=${{ background: "var(--c2)" }}></span>${f.away}</span>${hasXg ? html`<span class="item">Bigger circle = better chance (xG)</span>` : null}</div>
-      </${Card}>
-      <${Card} flush title=${hasXg ? "The best chances" : "Every shot so far"} sub=${hasXg ? "The eight shots with the highest xG." : "In the order they came. Ranked by xG once Understat has the match."}>
-        <div class="chancelist">${chances.map((c) => html`<div class="chance" key=${c.id}>
-          <span class="cmp-dot" style=${{ background: c.side === "h" ? "var(--c1)" : "var(--c2)" }}></span>
-          <span class="num muted" style=${{ width: "34px" }}>${c.minute}′</span>
-          <span class="stack" style=${{ "--gap": "0", flex: 1, minWidth: 0 }}>${c.player_id > 0 ? html`<a class="link truncate" href=${playerHref(c.player_id, { league: scope.league, season: scope.season })}>${c.player}</a>` : html`<span class="truncate">${c.player}</span>`}<span class="xsmall muted truncate">${SITUATION[c.situation] || c.situation}${c.assisted_by ? ` · assist ${c.assisted_by}` : ""}</span></span>
-          <${Badge} tone=${c.result === "Goal" ? "good" : ""}>${RESULT[c.result] || c.result}</${Badge}>
-          ${hasXg ? html`<b class="num" style=${{ width: "44px", textAlign: "right" }}>${nf(c.xg, 2)}</b>` : null}
-        </div>`)}</div>
-      </${Card}>
-    </div>
-
-    <div class="row between top" style=${{ marginBottom: "10px" }}>
-      <${Tabs} label="Player view" value=${tab} onChange=${(t) => setQuery({ tab: t === "quick" ? null : t })} tabs=${[{ value: "quick", label: "Quick view" }, { value: "deep", label: "Deep analytics" }]} />
+  const players = html`
+    <div class="row between top wrap" style=${{ gap: "10px" }}>
+      <${Segmented} label="Player view" value=${tab} onChange=${(t) => setQuery({ tab: t === "quick" ? null : t })} options=${[{ value: "quick", label: "Quick view" }, { value: "deep", label: "Deep analytics" }, ...(c ? [{ value: "events", label: "By half" }] : [])]} />
       ${tab === "deep" ? html`<span class="muted small">Every player who played, with every Scout metric for this match alone.</span>` : null}
+      ${tab === "events" && c ? html`<${PeriodPicker} c=${c} value=${period} onChange=${setPeriod} />` : null}
     </div>
     ${tab === "deep"
       ? html`<${MatchDeep} id=${f.id} scope=${scope} f=${f} live=${Boolean(d.live)} />`
+      : tab === "events" && c ? html`<${EventPlayers} c=${c} f=${f} period=${period} hrefOf=${hrefOf} />`
       : html`<div class="grid cols-2">
         <${PlayersTable} side="h" list=${r.players.home} team=${f.home} scope=${scope} hasXg=${hasXg} />
         <${PlayersTable} side="a" list=${r.players.away} team=${f.away} scope=${scope} hasXg=${hasXg} />
       </div>`}
+  `;
+
+  return html`
+    <${PageHead} eyebrow=${`${dscope.league_name} · ${dscope.label} · Matchweek ${f.round}`} title=${`${f.home} v ${f.away}`} sub=${`${weekday(f.date)} ${dateLong(f.date)}, kicked off ${timeOf(f.dt)}.`} />
+    <span class="wide-page" hidden></span>
+    ${d.live ? html`<${LiveNotice} d=${live} />` : html`<${DataNotices} scope=${dscope} meta=${meta} />`}
+    <${Scoreboard} d=${d} c=${c} hasXg=${hasXg} />
+    <div class="viewbar"><${Tabs} label="Match sections" value=${view} onChange=${(v) => setQuery({ view: v === "overview" ? null : v, tab: null })} tabs=${VIEWS} /></div>
+    ${view === "shots" ? shots
+      : view === "passing" ? needsEvents(c ? html`<${PassingSection} c=${c} f=${f} period=${period} onPeriod=${setPeriod} />` : null)
+      : view === "moves" ? needsEvents(c ? html`<${MovesSection} c=${c} f=${f} period=${period} onPeriod=${setPeriod} hrefOf=${hrefOf} />` : null)
+      : view === "defending" ? needsEvents(c ? html`<${DefendingSection} c=${c} f=${f} period=${period} onPeriod=${setPeriod} />` : null)
+      : view === "lineups" ? needsEvents(c ? html`<${LineupsSection} c=${c} f=${f} hrefOf=${hrefOf} />` : null)
+      : view === "players" ? players : overview}
   `;
 }
 
 export default function MatchPage({ params }) {
   const { league, season } = useScope();
   const id = Number(params.id);
+  // A match belongs to one league and season. Its address says which, so a link opened later, or sent to someone, finds the match whatever
+  // league the app was left on; an address without them (an old link) gets them from the league in view.
+  const { query } = useLocation();
+  useEffect(() => {
+    if (query.league && query.league !== league) setLeague(query.league);
+    if (query.season && query.season !== String(season)) setSeason(query.season);
+    if (!query.league) setQuery({ league, season: season === "auto" ? null : season });
+  }, [query.league, query.season, id]);
   // Where the match is first. One Understat has not published yet (being played, or just finished) is drawn from WhoScored's latest read:
   // the same page, with the parts that need xG waiting for Understat. Asking with follow=1 tells the updater someone is watching it.
   const [unlisted, setUnlisted] = useState(false);   // asked again every minute only while Understat has not published the match

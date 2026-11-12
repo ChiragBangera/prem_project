@@ -13,7 +13,7 @@ function Marker({ result, x, y, active }) {
   return html`<rect x=${x - r + 0.6} y=${y - r + 0.6} width=${(r - 0.6) * 2} height=${(r - 0.6) * 2} rx="1.5" class=${"res l" + (active ? " on" : "")} />`;
 }
 
-export function MatchStrip({ matches, height = 230, onOpen }) {
+export function MatchStrip({ matches, height = 244, onOpen }) {
   const [hover, setHover] = useState(null);
   const diffs = matches.map((m) => m.xg - m.xga);
   const [lo, hi] = niceExtent(Math.min(-0.5, ...diffs) * 1.05, Math.max(0.5, ...diffs) * 1.05, 4);
@@ -22,7 +22,7 @@ export function MatchStrip({ matches, height = 230, onOpen }) {
     { key: "score", label: "Result", num: true, render: (m) => `${WORD[m.result]} ${m.gf}–${m.ga}` }, { key: "xg", label: "xG–xGA", num: true, render: (m) => `${nf(m.xg, 2)}–${nf(m.xga, 2)}` },
     { key: "d", label: "Chance difference", num: true, render: (m) => signed(m.xg - m.xga, 2) },
   ];
-  return html`<${Frame} height=${height} label="Chance difference and result in every match" margin=${{ top: 26, right: 12, bottom: 26, left: 40 }} onLeave=${() => { setHover(null); tooltip.hide(); }} after=${html`<${ChartTable} columns=${cols} rows=${matches} />`}>
+  return html`<${Frame} height=${height} label="Chance difference and result in every match" margin=${{ top: 26, right: 12, bottom: 40, left: 40 }} onLeave=${() => { setHover(null); tooltip.hide(); }} after=${html`<${ChartTable} columns=${cols} rows=${matches} />`}>
     ${({ iw, ih }) => {
       const keys = matches.map((_, i) => i);
       const sx = scaleBand(keys, [0, iw], 0.28);
@@ -32,13 +32,16 @@ export function MatchStrip({ matches, height = 230, onOpen }) {
       return html`<g>
         <${AxisY} scale=${sy} ticks=${yt} iw=${iw} format=${(v) => (v > 0 ? "+" + fy(v) : fy(v))} zero=${true} />
         ${matches.map((m, i) => {
-          const d = diffs[i], x = sx(i), w = sx.bandwidth, on = hover === i;
+          const d = diffs[i], band = sx.bandwidth, w = Math.min(band, 46), x = sx(i) + (band - w) / 2, on = hover === i;   // a few matches are not drawn as slabs
+          const roomy = band >= 26;                                                                                         // room to name every opponent
           const y0 = sy(0), y1 = sy(d);
           return html`<g key=${i}>
             <rect class="strip-col" x=${x - 1.5} y=${-24} width=${w + 3} height=${ih + 24} style=${{ opacity: on ? 1 : 0 }} />
             <rect x=${x} y=${Math.min(y0, y1)} width=${w} height=${Math.max(1, Math.abs(y1 - y0))} rx="2" style=${{ fill: d >= 0 ? "var(--pos)" : "var(--neg)", opacity: on ? 1 : 0.9 }} />
             <${Marker} result=${m.result} x=${x + w / 2} y=${-12} active=${on} />
-            ${i === 0 || (i + 1) % 5 === 0 ? html`<text class="tick-label" x=${x + w / 2} y=${ih + 18} text-anchor="middle">${m.n}</text>` : null}
+            ${roomy ? html`<text class=${"tick-label strip-opp" + (on ? " on" : "")} x=${x + w / 2} y=${ih + 16} text-anchor="middle">${m.venue === "h" ? "" : "@"}${String(m.opponent_short || m.opponent || "").slice(0, 3).toUpperCase()}</text>
+              <text class="tick-label strip-score" x=${x + w / 2} y=${ih + 30} text-anchor="middle">${m.gf}–${m.ga}</text>`
+              : i === 0 || (i + 1) % 5 === 0 ? html`<text class="tick-label" x=${x + w / 2} y=${ih + 18} text-anchor="middle">${m.n}</text>` : null}
           </g>`;
         })}
         <rect class="hit" x="0" y="-24" width=${iw} height=${ih + 24}

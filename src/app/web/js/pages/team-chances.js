@@ -1,17 +1,18 @@
 // Team chances: one chart area with toggles. Choose what to break the chances down by (situation, zone, timing ...), then how to draw it
 // (bars, columns, mix, versus the league, pitch). Below it, every shot on a pitch. Each view is explained and set against the league.
-import { html, useState } from "../lib/html.js";
+import { html, useMemo, useState } from "../lib/html.js";
 import { useApi } from "../lib/api.js";
 import { setQuery, useLocation } from "../lib/router.js";
-import { nf, ordinal, plural } from "../lib/format.js";
+import { nf, ordinal } from "../lib/format.js";
 import { Tip, tooltip } from "../lib/tooltip.js";
-import { Async, Badge, Button, Card, Delta, EmptyState, Notice, Segmented, Switch } from "../ui/common.js";
+import { Async, Badge, Button, Card, Delta, Notice, Segmented, matchHref, playerHref } from "../ui/common.js";
 import { DataTable } from "../ui/table.js";
 import { StackedBar } from "../charts/bars.js";
 import { ColumnPairs } from "../charts/columns.js";
 import { ZonePitch } from "../charts/pitch.js";
 import { SERIES_COLORS } from "../charts/lines.js";
-import { Pitch, ShotLayer } from "../charts/pitchmaps.js";
+import { ShotBoard } from "../ui/shotboard.js";
+import { teamShot } from "../lib/shots.js";
 
 const NUMBERS_INFO = {
   what: "The raw counts behind the chart: shots, goals and xG for and against, plus xG per shot (how good the average shot was) and goals minus xG (finishing).",
@@ -273,47 +274,28 @@ function Numbers({ group }) {
 
 // ------------------------------------------------------------------ every shot
 
-const SITUATIONS = [
-  { value: "all", label: "All shots", test: () => true },
-  { value: "open", label: "Open play", test: (s) => s[6] === "OpenPlay" },
-  { value: "corner", label: "Corners", test: (s) => s[6] === "FromCorner" },
-  { value: "set", label: "Free kicks and set pieces", test: (s) => s[6] === "SetPiece" || s[6] === "DirectFreekick" },
-  { value: "pen", label: "Penalties", test: (s) => s[6] === "Penalty" },
-];
-
-function totalsOf(list) {
-  const xg = list.reduce((a, s) => a + s[2], 0);
-  return { n: list.length, goals: list.filter((s) => s[3] === "Goal").length, xg, per: list.length ? xg / list.length : null };
-}
-
 function ShotMapCard({ team, scope }) {
-  const [side, setSide] = useState("both");
-  const [sit, setSit] = useState("all");
-  const [goalsOnly, setGoalsOnly] = useState(false);
   const q = useApi("/api/team/shots", { team, league: scope.league, season: scope.season });
-  const test = SITUATIONS.find((s) => s.value === sit).test;
-  return html`<${Card} title="Every shot" sub="Where the team's shots came from, and where the shots it faced were taken. Circle size is the quality of the chance (xG); a dark rim is a goal."
-    actions=${html`<${Segmented} small label="Which shots" value=${side} onChange=${setSide} options=${[{ value: "both", label: "For and against" }, { value: "for", label: "Shots for" }, { value: "against", label: "Shots against" }]} />`}>
+  const sides = [{ label: "Shots for", short: "For", color: "var(--c1)", goal: "right-hand goal" }, { label: "Shots against", short: "Against", color: "var(--c2)", mirror: true, goal: "left-hand goal, their own" }];
+  return html`<${Card} title="Every shot" sub="The shots the team took and the shots it faced. Narrow them to one player, one kind of chance or the goals; pick a shot for what it was worth, who set it up and the match it came in.">
     <${Async} q=${q}>${(d) => {
-      const filt = (list) => list.filter((s) => test(s) && (!goalsOnly || s[3] === "Goal"));
-      const mine = filt(d.for), theirs = filt(d.against);
-      const a = totalsOf(mine), b = totalsOf(theirs);
       const [have, total] = d.coverage || [0, 0];
       return html`<div class="stack" style=${{ "--gap": "12px" }}>
         ${total && have < total ? html`<${Notice} icon="clock">Shots are stored for ${have} of ${total} matches so far; the rest arrive as match pages are downloaded.</${Notice}>` : null}
-        <div class="row wrap" style=${{ gap: "12px" }}>
-          <div class="chipgroup">${SITUATIONS.map((s) => html`<button type="button" key=${s.value} class="chip" aria-pressed=${String(sit === s.value)} onClick=${() => setSit(s.value)}>${s.label}</button>`)}</div>
-          <${Switch} checked=${goalsOnly} onChange=${setGoalsOnly}>Goals only</${Switch}>
-        </div>
-        ${mine.length + theirs.length ? html`<${Pitch} label="Shots for and against" maxWidth=${940}>
-            <g>${side !== "for" ? html`<${ShotLayer} shots=${theirs} mirror color="var(--c2)" />` : null}${side !== "against" ? html`<${ShotLayer} shots=${mine} color="var(--c1)" />` : null}</g>
-          </${Pitch}>` : html`<${EmptyState} compact icon="scatter" title="No shots to draw" text="Nothing matches this filter, or the match pages are not downloaded yet." />`}
-        <div class="legend"><span class="item"><span class="swatch dot" style=${{ background: "var(--c1)" }}></span>Shots for (right-hand goal): ${plural(a.n, "shot")}, ${a.goals} ${a.goals === 1 ? "goal" : "goals"}, ${nf(a.xg, 1)} xG${a.per != null ? `, ${nf(a.per, 2)} per shot` : ""}</span>
-          <span class="item"><span class="swatch dot" style=${{ background: "var(--c2)" }}></span>Shots against (left-hand goal, their own): ${plural(b.n, "shot")}, ${b.goals} ${b.goals === 1 ? "goal" : "goals"}, ${nf(b.xg, 1)} xG${b.per != null ? `, ${nf(b.per, 2)} per shot` : ""}</span></div>
+        <${TeamShots} d=${d} sides=${sides} scope=${scope} />
       </div>`;
     }}</${Async}>
   </${Card}>`;
 }
+
+function TeamShots({ d, sides, scope }) {
+  const shots = useMemo(() => [...d.for.map((r, i) => teamShot(r, i, 0, d.games)), ...d.against.map((r, i) => teamShot(r, i, 1, d.games))].filter((s) => s.result !== "OwnGoal"), [d]);
+  const q = { league: scope.league, season: scope.season };
+  return html`<${ShotBoard} shots=${shots} sides=${sides} takers takerSides=${TAKER_SIDES} multi sort="xg"
+    playerHref=${(s) => (s.side === 0 ? playerHref(s.player_id, q) : undefined)} matchHref=${(s) => matchHref(s.match_id, q)}
+    empty="Nothing matches this filter, or the match pages are not downloaded yet." />`;
+}
+const TAKER_SIDES = [0];   // the filter by taker lists the team's own players
 
 // ------------------------------------------------------------------ page
 
