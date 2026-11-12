@@ -103,9 +103,15 @@ export function Enrichment({ status }) {
 export function Birthdates({ status, meta }) {
   const items = status.birthdates || [];
   const now = Date.now() / 1000;
+  // twenty-odd league seasons at 190 px each made this one card half of the page (4,200 of 9,000 px): the ones that need a look go first,
+  // and the list scrolls inside the card
+  const needs = (e) => (e.pending.length || e.sparse ? 0 : 1);
+  const ordered = [...items].sort((a, b) => needs(a) - needs(b));
+  const attention = items.filter((e) => needs(e) === 0).length;
   return html`<${Card} title="Player ages" sub="Understat has no birthdates. Each club's squad list (ESPN) does, so ages are exact. Fetched in the background, then kept on this computer.">
-    ${items.length ? html`<div class="stack" style=${{ "--gap": "18px" }}>
-      ${items.map((e) => {
+    ${items.length ? html`<p class="xsmall muted" style=${{ marginBottom: "10px" }}>${plural(items.length, "league season")}${attention ? `, ${attention} partial or sparse (listed first)` : ", all read"}. Scroll for the rest.</p>
+    <div class="stack scroll-box" tabindex="0" role="group" aria-label="Player ages by league season" style=${{ "--gap": "18px" }}>
+      ${ordered.map((e) => {
         const share = e.regulars ? e.regulars_linked / e.regulars : null;
         return html`<div key=${e.league + e.season} class="stack" style=${{ "--gap": "6px" }}>
           <div class="row between"><b>${leagueName(meta.meta, e.league)} ${seasonLabel(e.season)}</b><${Badge} tone=${e.pending.length || e.sparse ? "warn" : "good"}>${e.sparse ? "Sparse" : e.pending.length ? "Partial" : e.final ? "Final" : "Live"}</${Badge}></div>

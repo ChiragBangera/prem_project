@@ -1,5 +1,6 @@
 // Player: who he is, how he compares with role peers, how real his finishing is, where he shoots from.
 import { html, useEffect, useMemo, useState } from "../lib/html.js";
+import { Pizza, pizzaSlices } from "../charts/pizza.js";
 import { useApi } from "../lib/api.js";
 import { useScope, useMeta } from "../lib/scope.js";
 import { navigate, setQuery, useLocation } from "../lib/router.js";
@@ -8,16 +9,18 @@ import { fmtMetric } from "../lib/metricfmt.js";
 import { Tip, tooltip } from "../lib/tooltip.js";
 import { poissonBinomial, tails } from "../lib/stats.js";
 import { Icon } from "../lib/icons.js";
-import { Async, Badge, Button, Card, DataNotices, EmptyState, Field, Info, Insights, Notice, PageHead, SearchBox, Segmented, Select, Stat, Star, Switch, Tabs, Delta, useDocumentTitle, teamHref, playerHref, metricValue } from "../ui/common.js";
+import { helpFor } from "../lib/help.js";
+import { Async, Badge, Button, Card, DataNotices, EmptyState, Field, Info, Insights, Notice, PageHead, SearchBox, Segmented, Select, Stat, Star, Switch, Tabs, Delta, useDocumentTitle, teamHref, playerHref, matchHref, metricValue } from "../ui/common.js";
 import { DataTable } from "../ui/table.js";
-import { PercentileBars } from "../charts/bars.js";
-import { ShotMap, ShotLegend } from "../charts/pitch.js";
+import { OutcomeBars, PercentileBars } from "../charts/bars.js";
+import { ShotBoard } from "../ui/shotboard.js";
 import { GoalsDistribution } from "../charts/dist.js";
 import { MiniBars } from "../charts/mini.js";
 import { rememberVisit } from "../ui/palette.js";
 import { MapLab } from "../ui/maplab.js";
 import { PlayerTrend } from "./player-trend.js";
 import { readBar } from "../lib/percentile.js";
+import { PlayerMoves } from "../ui/moves.js";
 import { SORTS, describeSort, nextSort, orderMetrics } from "../lib/metrictable.js";
 
 function Avatar({ name, size = 52 }) {
@@ -124,12 +127,37 @@ function EventNote({ ev }) {
   return html`<p class="xsmall muted">Event metrics rest on ${plural(ev.matches, "match", "matches")} and ${int(ev.minutes)} minutes of event data, ranked among the ${ev.pool_n} players of his role who have it${ev.in_pool ? "" : ". He has fewer than " + ev.pool_minutes + " minutes of it, so those rankings are pulled toward the average"}.</p>`;
 }
 
+/** Volume beside end product: each kind of forward action, split into the ones whose move came to a shot and the ones whose move did not. */
+function Outcomes({ d }) {
+  const o = d.outcomes;
+  if (!o || !o.items.length) return null;
+  const peers = `${d.group_label.toLowerCase()}s`;
+  const per90 = (n) => (d.events?.minutes ? nf((n * 90) / d.events.minutes, 1) : "–");
+  const moves = o.items.find((x) => x.key === "move_shot_pct");
+  const prog = o.items.filter((x) => x.key === "progpass_shot_pct" || x.key === "carryprog_shot_pct");
+  const n = prog.reduce((a, x) => a + x.n, 0), shot = prog.reduce((a, x) => a + x.shot, 0);
+  return html`<${Card} title="What his actions led to" sub=${`Each bar is how often he did it in ${plural(d.events.matches, "match", "matches")} with event data. The solid part is the times the move then came to a shot (or won a corner, free kick or penalty that did).`}>
+    <div class="outcome-card">
+      <${OutcomeBars} rows=${o.items.filter((x) => x.key !== "move_shot_pct").map((x) => ({ ...x, note: x.estimate ? "(estimate)" : "" }))} peers=${peers} />
+      <div class="outcome-side">
+        ${n >= 20 ? html`<p class="outcome-lead"><b class="num">${Math.round((shot / n) * 100)}%</b> of his ${n} progressive passes and carries were in a move that came to a shot.</p>` : null}
+        <dl class="kv">
+          ${moves ? html`<dt>Moves he was part of</dt><dd class="num">${int(moves.n)} <span class="muted">· ${Math.round((moves.shot / moves.n) * 100)}% came to a shot${moves.pct != null ? ` (${ordinal(Math.round(moves.pct))} pct)` : ""}</span></dd>` : null}
+          <dt>Moves that ended with him losing the ball</dt><dd class="num">${o.lost} <span class="muted">· ${per90(o.lost)} per 90</span></dd>
+          <dt>Opponents' moves he ended</dt><dd class="num">${o.broken} <span class="muted">· ${per90(o.broken)} per 90</span></dd>
+        </dl>
+        <p class="xsmall muted">The percentile beside a bar compares that share with other ${peers}. A low share is not a verdict: a pass can be the right one and the next player can still waste it. Carries are estimated from the order of events.</p>
+      </div>
+    </div>
+  </${Card}>`;
+}
+
 function RoleFacts({ d, ctx }) {
   const p = d.player;
   const how = { minutes: "The position he lined up in most (from match line-ups)", listed: "Understat's listed position", favorite: "Understat's favourite position", inferred: "His minutes profile (position unknown)" }[p.group_source] || p.group_source;
   const mins = Object.entries(p.pos_min || {}).sort((a, b) => b[1] - a[1]);
   return html`<${Card} title="Role" sub="How the app decides who he is compared with">
-    <dl class="kv">
+    <div class="role-facts"><div><dl class="kv">
       <dt>Compared as</dt><dd>${d.group_label}</dd>
       ${p.pos2 ? html`<dt>Detailed position</dt><dd>${ctx?.positions?.labels?.[p.pos2] || p.pos2}</dd>` : null}
       <dt>Decided by</dt><dd>${how}</dd>
@@ -138,8 +166,10 @@ function RoleFacts({ d, ctx }) {
       <dt>Small-sample rule</dt><dd>${p.in_pool ? "Passed" : "Below the minimum"}</dd>
     </dl>
     ${p.group_source === "inferred" ? html`<div class="notice" style=${{ marginTop: "12px" }}><${Icon} name="info" size="sm" /><div>His position is uncertain, so the app assigns the role whose typical profile his minutes resemble. It sharpens once position data arrives from the match pages.</div></div>` : null}
-    ${mins.length ? html`<div class="divider" style=${{ margin: "14px 0" }}></div><div class="label" style=${{ marginBottom: "8px" }}>Minutes by position</div>
-      <div class="stack" style=${{ "--gap": "6px" }}>${mins.map(([pos, m]) => html`<div class="row between small" key=${pos}><span class="muted">${pos}</span><span class="num">${int(m)} min</span></div>`)}</div>` : null}
+    </div>
+    ${mins.length ? html`<div><div class="label" style=${{ marginBottom: "8px" }}>Minutes by position</div>
+      <div class="stack" style=${{ "--gap": "6px" }}>${mins.map(([pos, m]) => html`<div class="row between small" key=${pos}><span class="muted">${pos}</span><span class="num">${int(m)} min</span></div>`)}</div></div>` : null}
+    </div>
   </${Card}>`;
 }
 
@@ -202,7 +232,6 @@ function Finishing({ d }) {
   const f = d.finishing, shots = d.shots || [];
   const npShots = shots.filter((s) => s.situation !== "Penalty");
   const pmf = useMemo(() => poissonBinomial(npShots.map((s) => s.xg)), [shots]);
-  const [filter, setFilter] = useState("all");
   const seasons = [...new Set(shots.map((s) => s.season))].sort();
   const [season, setSeason] = useState("all");
   const luck = f.luck_np;
@@ -214,40 +243,40 @@ function Finishing({ d }) {
     : z >= 1
       ? `With these chances, a finisher of average luck scores this many or more about ${pct(t.atLeast, t.atLeast < 0.1 ? 1 : 0)} of the time. ${z >= 2 ? "That is rare: some of it is quality, but expect it to cool." : "Notable, though within what a good season can look like."}`
       : `With these chances, a finisher of average luck scores this few or fewer about ${pct(t.atMost, t.atMost < 0.1 ? 1 : 0)} of the time. ${z <= -2 ? "That is rare: either the finishing is poor or the goals are overdue." : "Below par, though within what a quiet season can look like."}`;
-  const visible = shots.filter((s) => (season === "all" || String(s.season) === season)
-    && (filter === "all" || (filter === "goals" && s.result === "Goal") || (filter === "open" && s.situation === "OpenPlay") || (filter === "set" && s.situation !== "OpenPlay" && s.situation !== "Penalty")));
+  const visible = useMemo(() => shots.filter((s) => season === "all" || String(s.season) === season).map((s) => ({ ...s, side: 0 })), [shots, season]);
   return html`<div class="stack">
-    <div class="grid cols-wide-narrow top">
-      <${Card} title="How unusual is his finishing?" sub=${`${actual} non-penalty ${actual === 1 ? "goal" : "goals"} from ${nf(f.np_xg, 1)} xG over ${f.np_shots} shots.`}>
-        ${npShots.length ? html`<${GoalsDistribution} pmf=${pmf} actual=${actual} expected=${f.np_xg} />` : html`<${EmptyState} compact icon="scatter" title="No shot data" />`}
-        <p class="small" style=${{ marginTop: "8px" }}>${verdict}</p>
-        <div class="evidence" style=${{ marginTop: "8px" }}>
-          <span>Significance (z)<b>${signed(z, 1)}</b></span>
-          <span>Expected<b>${nf(luck?.expected, 1)} ± ${nf(luck?.sd, 1)}</b></span>
-          ${f.penalties?.taken ? html`<span>Penalties (excluded)<b>${f.penalties.scored}/${f.penalties.taken}</b></span>` : null}
+    ${/* one card, read left to right: the spread of goals these chances could have given, then the verdict and the shots it rests on */""}
+    <${Card} title="How unusual is his finishing?" sub=${`${actual} non-penalty ${actual === 1 ? "goal" : "goals"} from ${nf(f.np_xg, 1)} xG over ${f.np_shots} shots.`}>
+      <div class="finish-lead">
+        <div>
+          ${npShots.length ? html`<${GoalsDistribution} pmf=${pmf} actual=${actual} expected=${f.np_xg} />` : html`<${EmptyState} compact icon="scatter" title="No shot data" />`}
+          <p class="xsmall muted" style=${{ marginTop: "10px" }}>Bars: the exact chance of each goal tally given the quality of every shot he took. Highlighted bar: what he scored. Tinted bars: tallies at least as extreme.</p>
         </div>
-        <p class="xsmall muted" style=${{ marginTop: "10px" }}>Bars: the exact chance of each goal tally given the quality of every shot he took. Highlighted bar: what he scored. Tinted bars: tallies at least as extreme.</p>
-      </${Card}>
-      <${Card} title="Shot quality">
-        <dl class="kv">
-          <dt>Shots</dt><dd>${f.shots}</dd>
-          <dt>On target</dt><dd>${f.on_target} (${pct(f.shots ? f.on_target / f.shots : 0)})</dd>
-          <dt>xG per shot</dt><dd>${nf(f.xg_per_shot, 3)}</dd>
-          <dt>Average distance</dt><dd>${f.avg_distance_m != null ? nf(f.avg_distance_m, 1) + " m" : "–"}</dd>
-          <dt>Big chances (0.30+ xG)</dt><dd>${f.big_chances}</dd>
-        </dl>
-      </${Card}>
-    </div>
-    <div class="grid cols-2 top">
-      <${Card} title="Shot map" sub=${`${visible.length} shots shown. Hover a shot for the detail.`}
-        actions=${html`<div class="row wrap" style=${{ gap: "8px" }}>
-          ${seasons.length > 1 ? html`<${Select} compact label="Season" value=${season} options=${[{ value: "all", label: "All seasons" }, ...seasons.map((s) => ({ value: String(s), label: seasonLabel(s) }))]} onChange=${setSeason} />` : null}
-          <${Segmented} small label="Filter shots" value=${filter} onChange=${setFilter} options=${[{ value: "all", label: "All" }, { value: "goals", label: "Goals" }, { value: "open", label: "Open play" }, { value: "set", label: "Set pieces" }]} />
-        </div>`}>
-        ${visible.length ? html`<${ShotMap} shots=${visible} maxWidth=${520} /><div style=${{ marginTop: "10px" }}><${ShotLegend} /></div>` : html`<${EmptyState} compact title="No shots match" />`}
-      </${Card}>
-      <${FinishingTables} f=${f} />
-    </div>
+        <div>
+          <p class="finish-verdict">${verdict}</p>
+          <div class="evidence" style=${{ marginTop: "10px" }}>
+            <span>Significance (z)<b>${signed(z, 1)}</b></span>
+            <span>Expected<b>${nf(luck?.expected, 1)} ± ${nf(luck?.sd, 1)}</b></span>
+            ${f.penalties?.taken ? html`<span>Penalties (excluded)<b>${f.penalties.scored}/${f.penalties.taken}</b></span>` : null}
+          </div>
+          <div class="divider" style=${{ margin: "16px 0 12px" }}></div>
+          <div class="label" style=${{ marginBottom: "8px" }}>Shot quality <${Info} text=${helpFor("Shot quality")} label="About: Shot quality" /></div>
+          <dl class="kv">
+            <dt>Shots</dt><dd>${f.shots}</dd>
+            <dt>On target</dt><dd>${f.on_target} (${pct(f.shots ? f.on_target / f.shots : 0)})</dd>
+            <dt>xG per shot</dt><dd>${nf(f.xg_per_shot, 3)}</dd>
+            <dt>Average distance</dt><dd>${f.avg_distance_m != null ? nf(f.avg_distance_m, 1) + " m" : "–"}</dd>
+            <dt>Big chances (0.30+ xG)</dt><dd>${f.big_chances}</dd>
+          </dl>
+        </div>
+      </div>
+    </${Card}>
+    <${Card} title="Every shot" sub="Each shot he took, on the pitch and in a list. Pick one for what it was worth, how it came about and the match it was in.">
+      <${ShotBoard} shots=${visible} sides=${[{ label: d.player?.name || "His shots", color: "var(--c1)" }]} layout="half" multi sort="xg" maxWidth=${520}
+        matchHref=${(s) => (s.match_id ? matchHref(s.match_id, { league: d.scope?.league || undefined, season: s.season }) : undefined)}
+        controls=${seasons.length > 1 ? html`<${Select} compact label="Season" value=${season} options=${[{ value: "all", label: "All seasons" }, ...seasons.map((x) => ({ value: String(x), label: seasonLabel(x) }))]} onChange=${setSeason} />` : null} />
+    </${Card}>
+    <${FinishingTables} f=${f} />
   </div>`;
 }
 
@@ -255,7 +284,8 @@ function Finishing({ d }) {
 
 function Seasons({ career }) {
   const rows = [...career].sort((a, b) => a.season - b.season);
-  const labels = rows.map((r) => seasonLabel(r.season));
+  // four small charts share a row: with five or more seasons the full label (2021/22) runs into its neighbour, so the century is dropped (21/22)
+  const labels = rows.map((r) => (rows.length > 4 ? seasonLabel(r.season).slice(2) : seasonLabel(r.season)));
   const cur = rows.length - 1;
   const cols = [
     { key: "season", label: "Season", sortable: false, className: "strong", render: (r) => seasonLabel(r.season) },
@@ -325,9 +355,12 @@ function Similar({ d, scope, meta, id }) {
 
 function PlayerMaps({ id, league, season }) {
   const q = useApi(`/api/maps/player/${id}`, { league, season });
-  return html`<${Card} title="Maps" sub="Where he touches the ball, passes, defends and carries it, across every match he played. Drawn from the stored event data, so it needs no further download.">
-    <${Async} q=${q}>${(m) => html`<${MapLab} data=${m} kind="player" />`}</${Async}>
-  </${Card}>`;
+  return html`<div class="stack" style=${{ "--gap": "16px" }}>
+    <${Card} title="Maps" sub="Where he touches the ball, passes, defends and carries it, across every match he played. Drawn from the stored event data, so it needs no further download.">
+      <${Async} q=${q}>${(m) => html`<${MapLab} data=${m} kind="player" />`}</${Async}>
+    </${Card}>
+    ${q.data?.moves ? html`<${PlayerMoves} moves=${q.data.moves} matches=${q.data.matches} name=${q.data.name} />` : null}
+  </div>`;
 }
 
 // ------------------------------------------------------------------ page
@@ -342,6 +375,7 @@ function PlayerView({ d, id, tab, span, setSpan }) {
   const contrib = findMetric(detail.blocks, "contrib90");
   const npxg90 = findMetric(detail.blocks, "npxg90");
   const profile = detail.profile;
+  const slices = pizzaSlices(detail.blocks);
   const dScope = d.scope;
   useEffect(() => { rememberVisit({ kind: "player", href: playerHref(id, { league: dScope.league, season: dScope.seasons?.length === 1 ? dScope.seasons[0] : scope.season }), label: p.name, sub: `${p.team} · ${detail.group_label}` }); }, [id]);
 
@@ -365,19 +399,25 @@ function PlayerView({ d, id, tab, span, setSpan }) {
       <${Stat} label="npxG + xA per 90" value=${contrib ? nf(contrib.value, 2) : "–"} sub=${contrib?.pct != null ? `${ordinal(Math.round(contrib.pct))} percentile` : ""} />
       <${Stat} label="Share of team chain" value=${pct(detail.team_context.chain_share)} sub=${`${pct(detail.team_context.share_npxg)} of team npxG`} title="How much of the team's attacking play runs through him" />
     </div>
-    <${Insights} items=${insights} scope=${dScope} limit=${3} expandable />
     <${Tabs} tabs=${tabs} value=${tab} onChange=${(v) => setQuery({ tab: v === "profile" ? null : v }, { replace: false })} label="Player sections" />
 
     ${tab === "profile" ? html`<div class="stack">
-      <div class="grid cols-wide-narrow top">
+      ${/* the findings open the Profile, as they open a team's Overview: on the other tabs they pushed the tab's own content below the fold */""}
+      <${Insights} items=${insights} scope=${dScope} limit=${3} expandable />
+      <div class=${"grid fill " + (slices.length >= 8 ? "cols-2" : "cols-wide-narrow")}>
+        ${slices.length >= 8 ? html`<${Card} title="Profile at a glance" sub=${`Where he stands among the ${p.pool_n} ${detail.group_label.toLowerCase()}s in the ${dScope.league_name} with at least ${dScope.pool_minutes} minutes, on ${slices.length} measures. A slice that reaches the rim is the best of them; the dashed ring is the typical one.`}>
+          <${Pizza} slices=${slices} valueOf=${(x) => metricValue(x, x.value)} peers=${`${detail.group_label.toLowerCase()}s`} poolN=${p.pool_n} />
+        </${Card}>` : null}
         <${Card} title=${`Against ${detail.group_label.toLowerCase()}s with enough minutes`} sub=${`Compared with the ${p.pool_n} ${detail.group_label.toLowerCase()}s in the ${dScope.league_name} who have played at least ${dScope.pool_minutes} minutes. A full bar is the best of them, the tick the typical one; “72” means better than 72 of every 100.`}>
           ${profile.length ? html`<${PercentileBars} axis items=${profile.map((x) => ({ key: x.key, label: x.short, pct: x.pct, raw: metricValue(x, x.value),
             tip: html`<${Tip} title=${x.label} sub=${readBar(x, `${detail.group_label.toLowerCase()}s`) || `${detail.group_label}s with enough minutes`} rows=${[{ label: "Value", value: metricValue(x, x.value) }, { label: "Percentile", value: x.pct == null ? "–" : Math.round(x.pct) }, { label: "Rank", value: x.rank ? `${x.rank} of ${p.pool_n}` : "–" }]} />` }))} />` : html`<${EmptyState} compact title="Not ranked" text="Goalkeepers and players under the minute threshold are not ranked." />`}
         </${Card}>
-        <${RoleFacts} d=${detail} ctx=${metaState.catalog} />
       </div>
+      <${Outcomes} d=${detail} />
       <${EventNote} ev=${detail.events} />
       ${detail.blocks.length ? html`<${AllMetrics} blocks=${detail.blocks} group=${detail.group_label.toLowerCase()} catalog=${metaState.catalog} pool=${{ n: p.pool_n, minutes: dScope.pool_minutes, league: dScope.league_name }} onTrend=${(k) => setQuery({ tab: "trend", tm: k })} />` : null}
+      ${/* how he was classified is reference, not a finding: it closes the page */""}
+      <${RoleFacts} d=${detail} ctx=${metaState.catalog} />
     </div>` : null}
     ${tab === "trend" ? html`<${PlayerTrend} id=${id} league=${dScope.league} defaultSeason=${mapSeason} career=${detail.career} group=${p.group} groupLabel=${detail.group_label} catalog=${metaState.catalog} />` : null}
     ${tab === "maps" ? html`<${PlayerMaps} id=${id} league=${dScope.league} season=${mapSeason} />` : null}

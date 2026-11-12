@@ -67,10 +67,8 @@ img { max-width: 100%; }
 }
 .num { font-variant-numeric: tabular-nums lining-nums; }
 .eyebrow {
-  font-size: var(--fs-xs);
+  font-size: var(--fs-sm);
   font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
   color: var(--ink-3);
 }
 .muted { color: var(--ink-3); }
@@ -161,7 +159,8 @@ img { max-width: 100%; }
 /* ---- page header ---- */
 .page-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
 .page-head .titles { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
-.page-title { font-size: var(--fs-2xl); font-weight: 700; font-stretch: var(--stretch-display); line-height: 1.05; letter-spacing: -0.005em; text-wrap: balance; }
+.page-title { font-size: 36px; font-weight: 800; font-stretch: var(--stretch-display); line-height: 1.02; letter-spacing: -0.005em; text-wrap: balance; }
+@media (max-width: 720px) { .page-title { font-size: var(--fs-2xl); } }
 .page-sub { color: var(--ink-2); font-size: var(--fs-md); max-width: 72ch; text-wrap: pretty; }
 .page-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 
@@ -171,7 +170,9 @@ img { max-width: 100%; }
 .section-title .sub { color: var(--ink-3); font-size: var(--fs-sm); }
 
 /* ---- motion ---- */
-.fade-in { animation: fadein 220ms var(--ease) both; }
+/* "backwards", not "both": an animation that stays in effect after it ends keeps its transform, and an element with a transform becomes the box
+   that fixed-position descendants (the compare tray, a heading's menu) are placed in, instead of the window */
+.fade-in { animation: fadein 220ms var(--ease) backwards; }
 @keyframes fadein { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 .is-refetching { opacity: 0.55; transition: opacity 120ms; pointer-events: none; }
 @media (prefers-reduced-motion: reduce) {

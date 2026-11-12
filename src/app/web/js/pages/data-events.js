@@ -96,11 +96,11 @@ export function FetchPlan({ auto }) {
   const events = rows.some((r) => r.events_played != null);
   const cols = [
     { key: "label", label: "League season", sortable: false, className: "strong" },
-    { key: "pages_left", label: "Match pages left", num: true, sortable: false, render: (r) => r.pages_left || "–" },
+    { key: "pages_left", label: "Pages left", title: "Match pages (scorers, shots, positions) still to fetch from Understat", num: true, sortable: false, render: (r) => r.pages_left || "–" },
     { key: "pages_days", label: "At your limit", sortable: false, render: (r) => (r.pages_left ? daysText(r.pages_days) : html`<span class="muted">complete</span>`) },
     ...(events ? [
-      { key: "events_stored", label: "Event matches", num: true, sortable: false, render: (r) => (r.events_played == null ? html`<span class="muted">not fetched</span>` : `${r.events_stored} of ${r.events_played}`) },
-      { key: "events_parked", label: "Waiting for you", num: true, sortable: false, render: (r) => r.events_parked || "–" },
+      { key: "events_stored", label: "Events", title: "Matches whose event data is stored, of those played", num: true, sortable: false, render: (r) => (r.events_played == null ? html`<span class="muted">not fetched</span>` : `${r.events_stored} of ${r.events_played}`) },
+      { key: "events_parked", label: "For you", title: "Matches that could not be read and wait for your decision under Event matches to review", num: true, sortable: false, render: (r) => r.events_parked || "–" },
       { key: "events_days", label: "At your limit", sortable: false, render: (r) => (r.events_played == null ? "" : r.events_left ? daysText(r.events_days) : html`<span class="muted">complete</span>`) },
     ] : []),
   ];

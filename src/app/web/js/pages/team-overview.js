@@ -25,7 +25,7 @@ function Fixtures({ upcoming, schedule }) {
   const harder = schedule.remaining_avg_opp - schedule.played_avg_opp;
   const sub = `${plural(schedule.remaining, "game")} left. ${Math.abs(harder) < 0.15 ? "The run-in is no harder or easier than what they have faced." : harder > 0 ? "The run-in is tougher than the games already played." : "The run-in is kinder than the games already played."}`;
   return html`<${Card} flush title="What is next" sub=${sub}>
-    <div class="fixtures">${upcoming.slice(0, 8).map((f) => {
+    <div class="fixtures">${upcoming.slice(0, 5).map((f) => {
       const d = difficulty(f.opp_strength);
       const k = kickoff({ utc: f.dt ? `${f.dt.slice(0, 10)}T${f.dt.slice(11, 19)}Z` : null, date: f.date, dt: f.dt });
       return html`<a class="fixture-row" key=${f.match_id} href=${`#/match/${f.match_id}`}>
@@ -73,14 +73,14 @@ export default function Overview({ d, team, profile }) {
   const p = d.profile;
   const idx = p.matches.map((m) => m.n);
   const rolling = p.rolling;
-  // A line needs two points; the five-match average only starts at match five.
-  const rollingReady = rolling.xg.filter((v) => v != null).length >= 2;
+  // The five-match average only starts at match five, and two or three points of it are a stub, not a trend: until there are four, draw each match.
+  const rollingReady = rolling.xg.filter((v) => v != null).length >= 4;
   const evNote = profile?.row && profile.row.ev_matches < profile.row.matches
     ? `Possession, passing and pressing measures use the ${profile.row.ev_matches} of ${profile.row.matches} matches that have event data; they fill in as more are stored.` : null;
   return html`<div class="stack" style=${{ "--gap": "24px" }}>
     <${Insights} items=${insights} scope=${scope} limit=${3} expandable />
 
-    <div class="grid cols-wide-narrow top">
+    <div class="grid cols-wide-narrow fill">
       <${Card} title="Every match: chances against results" sub="Bars show whether they created more (blue) or allowed more (orange). The marker is what happened. Click a match to open it.">
         <${MatchStrip} matches=${p.matches} onOpen=${(m) => m.match_id && navigate(`/match/${m.match_id}`)} />
         <${StripLegend} />
@@ -95,7 +95,7 @@ export default function Overview({ d, team, profile }) {
     </${Card}>
 
     <div class="grid cols-2">
-      <${Card} title="Chances created and allowed" sub=${rollingReady ? "Rolling five-match average of xG for and against." : "xG for and against in each match. The rolling five-match average appears once six matches are played."}>
+      <${Card} title="Chances created and allowed" sub=${rollingReady ? "Rolling five-match average of xG for and against." : "xG for and against in each match. The rolling five-match average takes over once eight matches are played."}>
         <${LineChart} x=${idx} series=${[{ key: "xg", label: "xG for", values: rollingReady ? rolling.xg : p.matches.map((m) => m.xg), color: "var(--c1)", endLabel: "for" }, { key: "xga", label: "xG against", values: rollingReady ? rolling.xga : p.matches.map((m) => m.xga), color: "var(--c2)", endLabel: "against" }]}
           height=${260} yFormat=${(v) => nf(v, 1)} xFormat=${(v) => String(v)} xLabel="Matchweek" tooltipTitle=${(i) => `Matchweek ${idx[i]} · vs ${p.matches[i].opponent}`} tooltipFormat=${(v) => nf(v, 2)} />
       </${Card}>
@@ -105,9 +105,10 @@ export default function Overview({ d, team, profile }) {
       </${Card}>
     </div>
 
+    ${/* one manager all season is already in the page heading, and his row would only repeat the season's totals */""}
     <div class="grid cols-2 top">
       <${Splits} splits=${p.splits} />
-      ${p.eras?.length ? html`<${Managers} eras=${p.eras} />` : null}
+      ${p.eras?.length > 1 ? html`<${Managers} eras=${p.eras} />` : null}
     </div>
   </div>`;
 }

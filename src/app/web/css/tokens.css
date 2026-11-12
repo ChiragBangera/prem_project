@@ -48,24 +48,24 @@
   --stretch-tight: 88%;
 
   /* surfaces */
-  --bg: #f1f3f6;
-  --surface: #fbfcfd;
-  --surface-2: #f4f6f9;
-  --surface-3: #e9edf2;
+  --bg: #e8ecf1;
+  --surface: #ffffff;
+  --surface-2: #f2f4f8;
+  --surface-3: #e4e9ef;
   --overlay: rgba(13, 18, 24, 0.42);
 
   /* ink */
   --ink: #0d1218;
-  --ink-2: #4a5462;
-  --ink-3: #5d6979;
+  --ink-2: #404a58;
+  --ink-3: #566171;
 
   /* lines */
-  --line: #dce1e8;
-  --line-2: #c6ced9;
+  --line: #d3dae3;
+  --line-2: #b4bfcc;
 
   /* accent (also categorical slot 1) */
   --accent: #2a78d6;
-  --accent-strong: #256abf;
+  --accent-strong: #2265b9;
   --accent-hover: #1c5cab;
   --on-accent: #ffffff;
   --accent-wash: rgba(42, 120, 214, 0.10);
@@ -107,17 +107,19 @@
   --warn-ink: #7a5600;
   --crit-ink: #b42f2f;
   --good-wash: rgba(12, 163, 12, 0.11);
-  --warn-wash: rgba(250, 178, 25, 0.22);
+  --warn-wash: rgba(250, 178, 25, 0.16);
   --crit-wash: rgba(208, 59, 59, 0.10);
 
   /* chart furniture */
-  --grid: #e3e7ed;
-  --axis: #c6ced9;
-  --pitch-fill: #f4f6f9;
-  --pitch-line: #b9c2cf;
+  --grid: #e4e8ee;
+  --axis: #b4bfcc;
+  --pitch-fill: #afd1b5;
+  --pitch-stripe: #a3c8aa;
+  --pitch-line: #ffffff;
+  --pitch-ink: #10261a;
 
   --shadow-pop: 0 10px 30px rgba(13, 18, 24, 0.16), 0 1px 3px rgba(13, 18, 24, 0.10);
-  --shadow-sm: 0 1px 2px rgba(13, 18, 24, 0.06);
+  --shadow-sm: 0 1px 2px rgba(13, 18, 24, 0.07), 0 1px 1px rgba(13, 18, 24, 0.04);
 
   --r-xs: 4px;
   --r-sm: 6px;
@@ -182,8 +184,10 @@
     --crit-wash: rgba(230, 103, 103, 0.16);
     --grid: #1b222c;
     --axis: #313b49;
-    --pitch-fill: #131923;
-    --pitch-line: #3a4655;
+    --pitch-fill: #11251b;
+    --pitch-stripe: #142c20;
+    --pitch-ink: #e4efe7;
+    --pitch-line: #55725f;
     --shadow-pop: 0 12px 34px rgba(0, 0, 0, 0.55), 0 1px 3px rgba(0, 0, 0, 0.4);
     --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
   }
@@ -236,8 +240,10 @@
   --crit-wash: rgba(230, 103, 103, 0.16);
   --grid: #1b222c;
   --axis: #313b49;
-  --pitch-fill: #131923;
-  --pitch-line: #3a4655;
+  --pitch-fill: #11251b;
+  --pitch-stripe: #142c20;
+  --pitch-ink: #e4efe7;
+  --pitch-line: #55725f;
   --shadow-pop: 0 12px 34px rgba(0, 0, 0, 0.55), 0 1px 3px rgba(0, 0, 0, 0.4);
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
 }
