@@ -32,10 +32,13 @@ import sys
 import time
 from collections import deque
 from datetime import date, datetime, time as dtime, timedelta
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from collections.abc import Callable
 
 from app.data import matchclock
+from app.data.understat import MAINTENANCE
+from app.events import nativedriver
 from app.errors import AppError
 from app.events import ledger
 from app.events import raw as R
@@ -81,6 +84,46 @@ def _days(left: int, per_day: int) -> int | None:
 def ft_retry(kickoff: float, now: float) -> float:
     """How soon a full-time read that found the match still in play is made again: three minutes, ten once it has gone on unusually long."""
     return matchclock.FT_RETRY if now < kickoff + matchclock.FT_FAST_UNTIL else matchclock.FT_RETRY_SLOW
+
+
+DRIVER_CHECK_EVERY = 900.0
+_driver_checked: dict[str, tuple[float, str | None]] = {}
+
+
+def _driver_problem(browser: str) -> str | None:
+    """Why the fetcher's browser driver cannot run here, or None. Only an Apple-silicon Mac without Rosetta can have one (see
+    :mod:`app.events.nativedriver`); the answer is kept for a while, since asking starts the browser to read its version."""
+    hit = _driver_checked.get(browser)
+    if hit is not None and time.time() - hit[0] < DRIVER_CHECK_EVERY:
+        return hit[1]
+    why = nativedriver.problem(browser)
+    _driver_checked[browser] = (time.time(), why)
+    return why
+
+
+def last_error(path: Path, *, tail: int = 6000, limit: int = 150) -> str | None:
+    """What the event fetcher said last before it ended: the closing lines of its log that are not indented (a traceback's frames are;
+    its final ``Error: message`` and any lines that message runs on to are not). "Exited with status 1" alone tells a person nothing; the
+    line under it usually says what to do. None when the log is missing or ends in nothing readable."""
+    try:
+        with open(path, "rb") as fh:
+            fh.seek(0, os.SEEK_END)
+            fh.seek(max(0, fh.tell() - tail))
+            lines = fh.read().decode("utf-8", "replace").splitlines()
+    except OSError:
+        return None
+    block: list[str] = []
+    for line in reversed(lines):
+        if not line.strip():
+            if block:
+                break
+            continue
+        if line[:1].isspace() or line.startswith("Traceback"):
+            break
+        block.insert(0, line.strip())
+    block = [b for b in block if not b.lower().startswith("info:")]
+    text = " ".join(block[:3]).strip()
+    return (text[: limit - 1] + "…" if len(text) > limit else text) or None
 
 
 def next_midnight(now: float) -> float:
@@ -163,6 +206,10 @@ class AutoSync:
         browser = find_browser()
         if browser is None:
             return {"available": False, "reason": "No Chrome, Chromium or Brave was found.", "hint": "Install Google Chrome or Brave and it is found automatically (Microsoft Edge does not work for this), or set PREM_BROWSER to the path of one that is installed somewhere unusual."}
+        why = _driver_problem(browser)
+        if why is not None:
+            return {"available": False, "reason": f"The browser driver for event data cannot run on this Mac: {why}.",
+                    "hint": "This Mac has an Apple chip and no Rosetta. Prem Lab prepares its own driver for that, and it did not work this time. Installing Rosetta is the other way: run `softwareupdate --install-rosetta` in Terminal, then start Prem Lab again."}
         return {"available": True, "reason": None, "browser": browser}
 
     def events_enabled(self) -> bool:
@@ -197,6 +244,20 @@ class AutoSync:
 
     def wake(self) -> None:
         self._wake.set()
+
+    def run_now(self) -> int:
+        """A person pressed "Update now": look at once, and ask again for whatever is waiting out a failure (the growing delay is for the
+        updater's own retries, not for someone who asks). The count of failures stays, so the delay carries on from where it was if this
+        try fails too. Returns how many waiting things are tried again."""
+        now = self._clock()
+        released = 0
+        for key, fail in self.store.kv_prefix(FAIL_PREFIX).items():
+            if fail and fail.get("next_try", 0) > now:
+                self.store.kv_set(key, {**fail, "next_try": now})
+                released += 1
+        self.wb.repo.release_holds()
+        self.wake()
+        return released
 
     async def _loop(self) -> None:
         await asyncio.sleep(self.settings.auto_first_delay)
@@ -351,6 +412,11 @@ class AutoSync:
         if self._in_backoff(key):
             entry["state"] = "waiting"
             return
+        down = result.get("source_down")
+        if down and self._live_and_stored(key):
+            # the source said it is down a moment ago in this cycle: asking it again for the next league only adds to its load
+            self._refresh_failed(key, code, season, down, entry, result, note=False)
+            return
         try:
             fetched = await self.wb.repo.league(code, season)
         except AppError as exc:
@@ -362,7 +428,17 @@ class AutoSync:
             result["errors"].append(f"{pretty(code, season)}: {exc.message[:100]}")
             self._note("warn", f"{pretty(code, season)}: {exc.message[:100]}")
             return
-        entry["state"] = "stale" if fetched.meta.stale else "ok"
+        if fetched.meta.stale:
+            # The table was due, the source was asked and did not give it: the stored one is served. That is a failure like any other. It
+            # used to pass as "stale" with no problem counted, so the due moment stayed in the past and the updater woke every minute,
+            # asked every league and every missing match page again (6,497 requests in four and a half hours while Understat was down),
+            # spent the day's page limit on failures, and still reported "0 problems".
+            reason = fetched.meta.error or "the refresh did not complete"
+            if MAINTENANCE in reason:
+                reason = result["source_down"] = MAINTENANCE
+            self._refresh_failed(key, code, season, reason, entry, result)
+            return
+        entry["state"] = "ok"
         self._ok(key)
         ls = fetched.data
         try:
@@ -384,6 +460,20 @@ class AutoSync:
             result["errors"].append(f"{pretty(code, season)}: {type(exc).__name__}")
         if not self.settings.demo:
             self.wb.enricher.schedule_rosters([(code, season)])
+
+    def _live_and_stored(self, key: str) -> bool:
+        """A league season that is stored and not final: the only kind a cycle asks the source for again."""
+        meta = self.store.meta("league", key)
+        return meta is not None and not meta[2]
+
+    def _refresh_failed(self, key: str, code: str, season: int, reason: str, entry: dict, result: dict, *, note: bool = True) -> None:
+        """A due table could not be refreshed: keep what is stored, back off, say so once per cycle, and leave its match pages for later
+        (they come from the same source)."""
+        self._fail(key, reason)
+        entry.update({"state": "failed", "error": reason[:200]})
+        result["errors"].append(f"{pretty(code, season)}: {reason[:100]}")
+        if note:
+            self._note("warn", f"{pretty(code, season)}: {reason[:100]}" if reason != MAINTENANCE else f"{reason} League tables and match pages wait until it is back.")
 
     # ------------------------------------------------------------------ the event fetcher (a separate process)
 
@@ -536,6 +626,15 @@ class AutoSync:
         first = sorted(due.items(), key=lambda item: not any(t["moment"] == "ht" for t in item[1]))   # the break is short: half time goes first
         return dict(first), later
 
+    def _finished(self, ls) -> int:
+        """How many matches of a league season are over: the ones its table lists as played, or, when that table is behind (its source
+        is down or slow), the ones whose kickoff is more than four hours ago by the fixture list. Event data comes from another source
+        and does not wait for the table: in November 2026 Understat was down for a month and listed 59 Premier League matches as played
+        while WhoScored had 100, and the 41 in between were never asked for."""
+        now = self._clock()
+        by_clock = sum(1 for f in ls.fixtures if (k := matchclock.kickoff(f)) is not None and k + FT_GIVE_UP < now)
+        return max(ls.n_played, by_clock)
+
     def _backfill(self) -> list[tuple[str, int, int, float]]:
         """League seasons with finished matches whose event data is still missing, in the order they are fetched:
         ``(league, season, finished matches, not before)``. ``not before`` is in the future for a season the fetcher looked at a moment ago
@@ -556,11 +655,12 @@ class AutoSync:
                     continue
                 stored = len(self.wb.events.match_ids(code, season))
                 parked = sum(1 for e in ledger.failures(self.store, code, season).values() if ledger.waiting_for_person(e))
-                if stored + parked >= played.n_played:
+                finished = self._finished(played)
+                if stored + parked >= finished:
                     continue
                 last = self.store.kv_get(EVENT_RUN_PREFIX + f"{code}:{season}") or {}
-                same = bool(last) and last.get("played") == played.n_played
-                out.append((code, season, played.n_played, last.get("at", 0) + EVENT_RECHECK if same else 0.0))
+                same = bool(last) and last.get("played") == finished
+                out.append((code, season, finished, last.get("at", 0) + EVENT_RECHECK if same else 0.0))
         return out
 
     def _events_wake(self, now: float) -> list[tuple[float, str]]:
@@ -637,8 +737,9 @@ class AutoSync:
             handle.close()
             self.store.kv_set(EVENT_LAST_END, self._clock())
         if code != 0:
-            self._fail(f"events:{key}", f"the fetcher exited with status {code}")
-            self._note("warn", f"event fetcher for {self._named(key)} exited with status {code}")
+            why = await asyncio.to_thread(last_error, self.settings.data_dir / "logs" / f"events-{key.replace(':', '-')}.log")
+            self._fail(f"events:{key}", f"the fetcher exited with status {code}" + (f": {why}" if why else ""))
+            self._note("warn", f"event fetcher for {self._named(key)} exited with status {code}" + (f": {why}" if why else ""))
         else:
             self._ok(f"events:{key}")
             self._note("info", f"event fetcher for {self._named(key)} finished")
@@ -707,8 +808,9 @@ class AutoSync:
                 book = ledger.failures(self.store, code, season)
                 stored = len(self.wb.events.match_ids(code, season))
                 parked = sum(1 for e in book.values() if ledger.waiting_for_person(e))
-                left = max(0, ls.n_played - stored - parked)
-                row.update({"events_stored": stored, "events_played": ls.n_played, "events_left": left, "events_parked": parked, "events_days": _days(left, limits["whoscored"])})
+                finished = self._finished(ls)
+                left = max(0, finished - stored - parked)
+                row.update({"events_stored": stored, "events_played": finished, "events_left": left, "events_parked": parked, "events_days": _days(left, limits["whoscored"])})
             out.append(row)
         return out
 

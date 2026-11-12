@@ -42,6 +42,7 @@ from .store import Record, Store
 T = TypeVar("T")
 FOREVER = float("inf")
 REFRESH_WAIT = 8.0  # how long a request waits on a refresh before serving stale data
+REFRESH_HOLD = 240.0  # after a refresh failed, the stored copy is served this long without asking again (under the updater's shortest back-off)
 
 
 class Provider(Protocol):
@@ -113,6 +114,7 @@ class Repository:
         self._weights: dict[tuple[str, str], int] = {}
         self._budget = memory_budget
         self._inflight: dict[tuple[str, str], asyncio.Task] = {}
+        self._held: dict[tuple[str, str], tuple[float, str]] = {}   # a refresh that failed: (ask again after, why)
         self.epochs: dict[str, int] = {}  # kind -> how many payloads of that kind were stored since start (a cheap "something changed" token)
 
     # ------------------------------------------------------------------ public API
@@ -322,6 +324,14 @@ class Repository:
                 hint="Turn offline mode off, or run `prem sync` while online.",
             )
 
+        # A refresh of this failed a moment ago: every page that needs the table would ask the source again (and wait for it) while it is
+        # down. One open Briefing made about 130 requests that way. The stored copy is served with the same reason until the hold ends.
+        held = self._held.get((kind, key))
+        if entry is not None and held is not None and not force:
+            if self._clock() < held[0]:
+                return Fetched(entry.value, Meta(entry.source, entry.fetched_at, stale=True, error=held[1]))
+            del self._held[(kind, key)]
+
         task = self._inflight.get((kind, key))
         if task is None:
             task = asyncio.create_task(self._fetch_and_store(kind, key, fetch, parse, is_complete, weight))
@@ -336,11 +346,17 @@ class Repository:
         except (TimeoutError, AppError, ValueError) as exc:
             if entry is not None:
                 reason = "Refresh is taking too long; showing cached data." if isinstance(exc, asyncio.TimeoutError) else str(exc)
+                if not isinstance(exc, asyncio.TimeoutError):   # a slow refresh is still running and may yet land: only a failed one is held
+                    self._held[(kind, key)] = (self._clock() + REFRESH_HOLD, reason)
                 return Fetched(entry.value, Meta(entry.source, entry.fetched_at, stale=True, error=reason))
             if isinstance(exc, AppError):
                 raise self._translate(exc, kind, key) from exc
             raise UpstreamError(f"Could not read the {kind} data for {key}: {exc}") from exc
         return Fetched(new_entry.value, Meta(new_entry.source, new_entry.fetched_at, complete=new_entry.complete))
+
+    def release_holds(self) -> None:
+        """Forget which refreshes failed a moment ago, so the next read asks the source again (someone pressed "Update now")."""
+        self._held.clear()
 
     def _finish(self, key: tuple[str, str], task: asyncio.Task) -> None:
         self._inflight.pop(key, None)
