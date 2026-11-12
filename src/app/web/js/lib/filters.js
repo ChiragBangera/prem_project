@@ -89,6 +89,9 @@ export function predicateFor(state, ctx) {
       if (blank(share)) return false;
       if (state.part === "starter" && share < 0.6) return false;
       if (state.part === "rotation" && share >= 0.6) return false;
+    } else if (state.part && typeof row.started === "boolean") {
+      // one match: a starter is a player who started it, rotation one who came on
+      if (row.started !== (state.part === "starter")) return false;
     }
     if (state.rules.length && !rulesPass(row, state.rules, ctx)) return false;
     for (const lens of lenses) {

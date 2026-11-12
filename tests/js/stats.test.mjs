@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { poissonBinomial, tails, mean, quantile, poissonOutcome } from "../../src/app/web/js/lib/stats.js";
+import { poissonBinomial, tails, mean, quantile, poissonOutcome, rankShares } from "../../src/app/web/js/lib/stats.js";
 
 test("poisson-binomial pmf sums to one and matches the binomial case", () => {
   const pmf = poissonBinomial([0.5, 0.5, 0.5]);
@@ -34,4 +34,13 @@ test("outcome probabilities sum to one and favour the bigger xG", () => {
   assert.ok(Math.abs(o.home - 0.705) < 0.005 && Math.abs(o.away - 0.101) < 0.005);
   const even = poissonOutcome(1.2, 1.2);
   assert.ok(Math.abs(even.home - even.away) < 1e-9);
+});
+
+test("a rank share beats the others, ties count half, and fewer-is-better is turned round", () => {
+  assert.deepEqual(rankShares([3, 1, 2]), [100, 0, 50]);
+  assert.deepEqual(rankShares([3, 1, 2], false), [0, 100, 50]);
+  assert.deepEqual(rankShares([2, 2, 1, 3]), [50, 50, 0, 100]);
+  assert.deepEqual(rankShares([5, null, 7]), [0, null, 100]);         // a blank has no rank and does not count
+  assert.deepEqual(rankShares([5, null]), [null, null]);              // one value alone is not ranked
+  assert.deepEqual(rankShares([1, 2], null), [0, 100]);               // style: "higher than"
 });

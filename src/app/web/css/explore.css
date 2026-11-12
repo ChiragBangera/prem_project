@@ -1,68 +1,30 @@
-/* The explorer shared by Scout and Teams: filter bar, lenses, results bar, ranking read, banded table and map. */
+/* Pieces of the explorer that the desk (desk.css) shares with other pages: chips, filter pills, the results bar, table cells, the column picker and the map. */
 
-/* ---- filter bar ---- */
-.filterbar { padding: 16px 18px 14px; display: flex; flex-direction: column; gap: 12px; }
-.fb-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }
-.fb-top { gap: 12px; }
+/* ---- chips and lists ---- */
 .fb-label { flex: none; width: 74px; font-size: var(--fs-2xs); font-weight: 650; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); cursor: default; }
-.fb-count { font-size: var(--fs-sm); color: var(--ink-2); white-space: nowrap; }
-.fb-count b { color: var(--ink); font-weight: 750; }
 .chip .muted { font-weight: 500; font-size: var(--fs-xs); font-variant-numeric: tabular-nums; }
 .chip[aria-pressed="true"] .muted, .chip.on .muted { color: var(--ink-2); }
-.chip.dim { opacity: 0.55; }
-.chip.dim:hover { opacity: 0.9; }
-.chip.lens { gap: 7px; }
 .linklike { color: var(--accent-strong); font-weight: 600; font-size: inherit; padding: 0; text-decoration: underline; text-underline-offset: 2px; }
 :root[data-theme="dark"] .linklike { color: var(--accent-hover); }
 .checklist { max-height: 260px; overflow: auto; margin: 0 -6px; }
 .menu-item[disabled] { opacity: 0.45; pointer-events: none; }
 .menu-item.dim { opacity: 0.6; }
 
-/* ---- lenses ---- */
-.lensbar { display: flex; flex-direction: column; gap: 10px; padding-top: 12px; border-top: 1px solid var(--line); }
-.lens-row .lens-hint { display: inline-flex; align-items: center; gap: 5px; margin-left: 6px; }
-.lens-panel { display: flex; flex-direction: column; gap: 10px; padding: 14px 16px; background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--r-md); }
-.lens-title { font-size: var(--fs-lg); font-weight: 700; font-stretch: var(--stretch-tight); }
-.lens-explain { color: var(--ink-2); max-width: 78ch; text-wrap: pretty; }
-.lens-cols { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 8px 28px; }
-.lens-rules { margin: 0; }
-.lens-rules li { font-size: var(--fs-sm); }
-.x-btn { display: inline-grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; color: var(--ink-3); }
-.x-btn:hover { background: var(--surface-3); color: var(--ink); }
-@media (max-width: 720px) { .lens-cols { grid-template-columns: minmax(0, 1fr); } .fb-label { width: auto; } }
-
-/* ---- the strip of what is active ---- */
-.active-strip { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; min-height: 28px; padding-top: 12px; border-top: 1px solid var(--line); }
+/* ---- the pills of what is filtered ---- */
 .fchip { display: inline-flex; align-items: center; gap: 2px; height: 26px; padding: 0 3px 0 10px; border-radius: var(--r-pill); background: var(--accent-wash); border: 1px solid var(--accent-line); font-size: var(--fs-xs); font-weight: 600; color: var(--ink); max-width: 100%; }
-.fchip > span, .fchip .edit { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.fchip .edit { font-weight: 600; padding: 0; }
-.fchip .edit:hover { text-decoration: underline; text-underline-offset: 2px; }
+.fchip > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .fchip .x { display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; color: var(--ink-3); flex: none; }
 .fchip .x:hover { background: var(--accent-line); color: var(--ink); }
 .fchip .x .icon { width: 12px; height: 12px; }
 .fchip.lens { background: var(--surface-3); border-color: var(--line-2); }
-.rule-editor .metric-list { max-height: 260px; overflow: auto; border: 1px solid var(--line); border-radius: var(--r-md); padding: 4px; }
-.metric-group .eyebrow { padding: 8px 8px 2px; }
 
 /* ---- results ---- */
-.results-card { overflow: visible; }
 .results-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px 20px; flex-wrap: wrap; padding: 14px 18px; border-bottom: 1px solid var(--line); }
 .rb-title { font-size: var(--fs-lg); font-weight: 700; font-stretch: var(--stretch-tight); }
-.rb-of { font-weight: 500; font-size: var(--fs-sm); }
 .rb-controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .rb-field { display: inline-flex; align-items: center; gap: 6px; }
 .rb-label { font-size: var(--fs-xs); color: var(--ink-3); font-weight: 600; white-space: nowrap; }
 .rb-field .select.compact { max-width: 210px; }
-.results-notes:empty { display: none; }
-.results-notes { padding: 12px 18px 0; }
-.insight-strip { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 18px 28px; align-items: center; padding: 14px 18px; border-bottom: 1px solid var(--line); }
-.is-tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
-.is-tile { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
-.is-tile .label { color: var(--ink-3); font-weight: 600; }
-.is-tile .figure { font-size: 26px; }
-@media (max-width: 960px) { .insight-strip { grid-template-columns: minmax(0, 1fr); } }
-@media (max-width: 560px) { .is-tiles { gap: 8px; } .is-tile .figure { font-size: 20px; } .is-tile .xsmall { font-size: 11px; line-height: 1.3; white-space: normal; } .insight-strip { padding: 12px 14px; } }
-
 /* ---- the banded table ---- */
 table.data.banded thead th { top: 24px; }
 table.data.banded thead tr.band-row th { top: 0; height: 24px; z-index: 3; padding: 0 10px; font-size: var(--fs-2xs); font-weight: 650; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); background: var(--surface); border-bottom: 1px solid var(--line); text-align: left; cursor: default; }
@@ -108,19 +70,14 @@ table.data td.sticky-col { box-shadow: 1px 0 0 var(--line); }
 .map-controls .rb-field { flex-direction: column; align-items: flex-start; gap: 4px; }
 .metric-map .select.compact { max-width: 260px; }
 
-/* on a phone the first screen of the table should show who, and the value being ranked: the labels and the form strip wait until you scroll sideways */
-@media (max-width: 720px) {
-  table.data .col-profile, table.data .col-form { display: none; }
-}
-
-/* Deep analytics on the match page: who leads and who trails on each metric among the players shown */
-.deep-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px; padding: 14px 18px; border-bottom: 1px solid var(--line); }
-.deep-controls .grow { flex: 1 1 180px; min-width: 160px; max-width: 280px; }
-.mx-best, .mx-worst { display: inline-block; border-radius: 6px; padding: 2px 4px; margin: -2px -4px; }
-.mx-best { background: var(--good-wash); }
-.mx-worst { background: color-mix(in oklab, var(--neg-ink) 12%, transparent); }
-.deep-key { display: inline-flex; gap: 14px; align-items: center; }
-.deep-key i { display: inline-block; width: 12px; height: 12px; border-radius: 4px; vertical-align: -2px; margin-right: 5px; }
-.deep-key .b { background: var(--good-wash); box-shadow: inset 0 0 0 1px var(--good); }
-.deep-key .w { background: color-mix(in oklab, var(--neg-ink) 12%, transparent); box-shadow: inset 0 0 0 1px var(--neg-ink); }
-.deep-side { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+/* the map's questions, and who stands off the trend */
+.map-questions { display: grid; gap: 6px; }
+.map-questions .map-say { margin: 2px 0 0; max-width: 78ch; }
+.chart .trend-line { stroke: var(--ink-2); stroke-width: 1.5; opacity: 0.8; }
+.map-off { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 28px; padding-top: 12px; border-top: 1px solid var(--line); }
+.map-off h4 { margin: 0 0 6px; font-size: var(--fs-sm, 13px); }
+.map-off-col.below h4 { color: var(--warn-ink, var(--ink-1)); }
+.map-off ol { margin: 0; padding-left: 20px; display: grid; gap: 4px; }
+.map-off li span { display: block; }
+.map-off-note { grid-column: 1 / -1; margin: 0; max-width: 90ch; }
+@media (max-width: 640px) { .map-off { grid-template-columns: 1fr; } }

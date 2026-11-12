@@ -1,113 +1,96 @@
-// Deep analytics for one match: every player who played, side by side in one table, with every metric of the Scout table worked out for this match alone.
+// Deep analytics for one match: every player who played, side by side, on the same desk as Scout: filters in a rail (the side, role,
+// minutes, started or came on, rules on any measure), the table with every Scout measure worked out for this match alone, the best and the
+// weakest of each measure ringed, and one player beside the list. Its state lives in the page, not the address (the match's tabs use that).
 import { html, useMemo, useState } from "../lib/html.js";
 import { useApi } from "../lib/api.js";
 import { useMeta } from "../lib/scope.js";
 import { cls, plural } from "../lib/format.js";
-import { blank, fmtMetric } from "../lib/metricfmt.js";
-import { sortRows, quantile } from "../lib/filters.js";
-import { MINUTE_CHOICES, extremes, filterPlayers } from "../lib/matchplayers.js";
-import { Async, Notice, Segmented, Select, EmptyState, SearchBox, Button, playerHref } from "./common.js";
-import { CsvButton, DataTable } from "./table.js";
-import { MetricCell } from "./cells.js";
+import { useMedia } from "../lib/media.js";
+import { Icon } from "../lib/icons.js";
+import { extremes } from "../lib/matchplayers.js";
+import { Async, Notice, Segmented, EmptyState, Button, playerHref } from "./common.js";
+import { CsvButton } from "./table.js";
+import { useExplorer, useLocalQuery, sortSentence, openPlayer } from "./explore/model.js";
+import { Rail } from "./explore/Rail.js";
+import { MarkKey, ShadeKey, Sheet } from "./explore/Sheet.js";
+import { Peek } from "./explore/Peek.js";
 import { ColumnPicker } from "./explore/ColumnPicker.js";
-import { MetricSelect } from "./explore/MetricSelect.js";
-import { buildContext, bandsFor, resolveColumns } from "./explore/model.js";
-import { metricColumns, pinnedSort, csvColumns, sortLabel, directionWords } from "./explore/Results.js";
+import { MetricMap } from "./explore/MetricMap.js";
 
-// Open on the players who are ranked (30+ minutes): a rate from a few minutes tops any list sorted by it. "Everyone" is one choice away and the count says how many are out.
-const RANKED_FROM = 30;
-const OPEN = { side: "both", role: "all", minutes: 0, started: false, search: "" };
-const ROLES = [{ value: "all", label: "All roles" }, { value: "ATT", label: "Attackers" }, { value: "MID", label: "Midfielders" }, { value: "DEF", label: "Defenders" }, { value: "GK", label: "Goalkeepers" }];
+// Open on the players who are ranked (30+ minutes): a rate from a few minutes tops any list sorted by it. "Any" is one click away and the
+// count says how many are out.
+const RANKED_FROM = "30";
+const SIDE = { h: "var(--c1)", a: "var(--c2)" };
 
-/** Leader, middle and last on the metric the table is sorted by, among the players shown. */
-function Standouts({ rows, ctx, sort }) {
-  const def = ctx.metrics[sort.key];
-  if (!def || ctx.idx[sort.key] === undefined) return null;
-  const i = ctx.idx[sort.key];
-  const have = rows.filter((r) => !blank(r.v[i])).sort((a, b) => a.v[i] - b.v[i]);
-  if (have.length < 2) return null;
-  const good = def.hib === false ? have[0] : have[have.length - 1], bad = def.hib === false ? have[have.length - 1] : have[0];
-  const f = (v) => fmtMetric(def, v);
-  const tile = (label, r) => html`<div class="is-tile"><span class="label">${label}</span><b class="figure">${f(r.v[i])}</b><span class="xsmall muted truncate">${r.name} · ${r.team}</span></div>`;
-  return html`<div class="insight-strip"><div class="is-tiles">
-    ${tile(def.hib === null ? "Highest" : "Best", good)}
-    <div class="is-tile"><span class="label">Median of ${have.length}</span><b class="figure">${f(quantile(have.map((r) => r.v[i]), 0.5))}</b><span class="xsmall muted">${def.label}</span></div>
-    ${tile(def.hib === null ? "Lowest" : "Weakest", bad)}
-  </div></div>`;
-}
-
-function Table({ d, f, catalog, scope }) {
-  const ctx = useMemo(() => ({ ...buildContext("player", { keys: d.keys, scope: { group_sizes: d.group_sizes }, coverage: { event_players: d.coverage.events } }, catalog),
-    pctWhat: (r) => `Percentile vs this season's ${(catalog.roles?.plural?.[r.group] || "peers").toLowerCase()}` }), [d, catalog]);
-  const [flt, setFlt] = useState({ ...OPEN, minutes: RANKED_FROM });
-  const [colsValue, setCols] = useState(null);
-  const [sort, setSort] = useState({ key: ctx.idx.xg_xa90 !== undefined ? "xg_xa90" : "minutes", dir: "desc" });
-  const columns = useMemo(() => resolveColumns(colsValue || "overview", ctx), [colsValue, ctx]);
-  const rows = useMemo(() => d.rows.map((r) => ({ ...r, league: scope.league, seasons: [scope.season] })), [d.rows, scope]);
-  const filtered = useMemo(() => filterPlayers(rows, flt), [rows, flt]);
-  const sorted = useMemo(() => sortRows(filtered, sort, ctx), [filtered, sort, ctx]);
-  const lead = useMemo(() => extremes(filtered, columns.keys, ctx), [filtered, columns.keys, ctx]);
-  const model = { ctx, columns, setView: (p) => setCols("cols" in p ? p.cols : colsValue), setColumns: (keys) => setCols(`x:${keys.filter((k) => ctx.idx[k] !== undefined).join(",")}`) };
-
-  const tableColumns = useMemo(() => {
-    const { bands, keys } = bandsFor(columns.keys.filter((k) => k !== "minutes"), ctx);
-    const bandOf = Object.fromEntries(bands.map((b) => [b.group, b.label]));
-    const metric = metricColumns(keys, ctx, bandOf).map((c) => ({
-      ...c, render: (r) => {
-        const mark = lead[c.key]?.best.has(r.id) ? "mx-best" : lead[c.key]?.worst.has(r.id) ? "mx-worst" : null;
-        return mark ? html`<span class=${mark} title=${mark === "mx-best" ? "Best in this match among the players shown" : "Weakest in this match among the players shown"}><${MetricCell} row=${r} ctx=${ctx} k=${c.key} /></span>` : html`<${MetricCell} row=${r} ctx=${ctx} k=${c.key} />`;
-      },
-    }));
-    return [
-      { key: "name", label: "Player", sticky: true, firstDir: "asc", width: "min(230px, 52vw)", band: "", value: (r) => r.name, csvValue: (r) => r.name,
-        render: (r) => html`<div class="pcell"><i class="deep-side" style=${{ background: r.side === "h" ? "var(--c1)" : "var(--c2)" }} title=${r.team}></i>
-          <a class="cell-player" href=${playerHref(r.id, { league: scope.league, season: scope.season })}><span class="name">${r.name}</span><span class="sub">${[r.team === f.home ? f.home_short : f.away_short, ctx.positions?.labels?.[r.pos2] || r.pos2, r.started ? null : "Sub"].filter(Boolean).join(" · ")}</span></a></div>` },
-      { key: "minutes", label: "Min", num: true, band: "", title: "Minutes played in this match.", value: (r) => r.minutes, render: (r) => html`<span class=${cls("num", !r.in_pool && "muted")}>${r.minutes}</span>` },
-      ...pinnedSort({ ctx, view: { sort: sort.key }, columns }, bandOf),
-      ...metric,
-    ];
-  }, [columns, sort.key, ctx, lead, scope, f]);
-
-  const set = (patch) => setFlt((s) => ({ ...s, ...patch }));
-  const clear = JSON.stringify(flt) !== JSON.stringify(OPEN);
-  const sortKeyChoices = [{ value: "name", label: "Name (A–Z)" }];
-  const onSort = (s) => setSort(s);
-  const sortBy = (k) => setSort({ key: k, dir: k === "name" ? "asc" : ctx.metrics[k]?.hib === false ? "asc" : "desc" });
+function Desk({ d, f, catalog, scope }) {
+  const payload = useMemo(() => ({ keys: d.keys, rows: d.rows.map((r) => ({ ...r, league: scope.league, seasons: [scope.season] })),
+    scope: { group_sizes: d.group_sizes }, coverage: { event_players: d.coverage.events } }), [d, scope]);
+  const extend = useMemo(() => ({ pctWhat: (r) => `Better than, among this season's ${(catalog.roles?.plural?.[r.group] || "players").toLowerCase()}` }), [catalog]);
+  const overrides = useMemo(() => ({ sort: d.keys.includes("xg_xa90") ? "xg_xa90" : "minutes", dir: "desc" }), [d.keys]);
+  const [query, write] = useLocalQuery({ min: RANKED_FROM });
+  const model = useExplorer({ level: "player", payload, catalog, query, write, overrides, extend });
+  const { ctx, view, filtered, sorted, shown, columns, chips, setView, setFilters, isFiltered } = model;
+  const narrow = useMedia("(max-width: 1000px)");
+  const [peekId, setPeekId] = useState(null);
+  const [railOpen, setRailOpen] = useState(false);
+  const peeked = peekId != null && !narrow ? sorted.find((r) => r.id === peekId) : null;
+  const config = useMemo(() => ({ level: "player", kind: "match", noun: "players", searchPlaceholder: "Find a player",
+    sides: [{ value: f.home, label: f.home_short || f.home, dot: SIDE.h }, { value: f.away, label: f.away_short || f.away, dot: SIDE.a }] }), [f]);
+  const keys = useMemo(() => {
+    const set = columns.keys.filter((k) => k !== "minutes");
+    const pin = ctx.metrics[view.sort] && ctx.idx[view.sort] !== undefined && view.sort !== "minutes" && !set.includes(view.sort) ? [view.sort] : [];
+    return [...pin, ...set, ...(ctx.idx.minutes !== undefined ? ["minutes"] : [])];
+  }, [columns.keys.join(), view.sort, ctx]);
+  const marks = useMemo(() => extremes(filtered, keys.filter((k) => k !== "minutes"), ctx), [filtered, keys, ctx]);
+  const short = (team) => (team === f.home ? f.home_short : team === f.away ? f.away_short : team);
+  const lead = { label: "Player", width: narrow ? 178 : peeked ? 220 : 250, sortKey: "name",
+    render: (r, rank) => {
+      const link = playerHref(r.id, { league: scope.league, season: scope.season });
+      const inner = html`<span class="name">${r.name}</span><span class="sub">${[short(r.team), ctx.positions?.labels?.[r.pos2] || r.pos2, r.started ? null : "came on"].filter(Boolean).join(" · ")}</span>`;
+      return html`<div class="dk-who"><span class="dk-rank">${rank}</span><div class="pcell"><i class="dk-dot" style=${{ background: SIDE[r.side] }} title=${r.team}></i>
+        ${link ? html`<a class="cell-player" href=${link} onClick=${(e) => e.stopPropagation()}>${inner}</a>` : html`<span class="cell-player">${inner}</span>`}</div></div>`;
+    } };
+  const csv = [{ label: "Player", value: (r) => r.name }, { label: "Team", value: (r) => r.team }, { label: "Started", value: (r) => (r.started ? "yes" : "no") },
+    ...keys.map((k) => ({ label: ctx.metrics[k].label, value: (r) => r.v[ctx.idx[k]] }))];
   const thin = filtered.filter((r) => !r.in_pool).length;
+  const head = html`<div class="dk-railhead"><h2>Every player</h2><p>${plural(d.rows.length, "player")} played in ${f.home} v ${f.away}. Each number is for this match alone; a shade ranks it against the season's players in the same role.</p>
+    <${Button} size="sm" class="dk-railtoggle" icon="filter" onClick=${() => setRailOpen(!railOpen)}>${railOpen ? "Hide filters" : `Filters${chips.length ? ` (${chips.length})` : ""}`}</${Button}></div>`;
 
-  return html`<div class="card results-card">
-    <div class="deep-controls">
-      <${Segmented} small label="Team" value=${flt.side} onChange=${(v) => set({ side: v })} options=${[{ value: "both", label: "Both teams" }, { value: "h", label: f.home_short }, { value: "a", label: f.away_short }]} />
-      <label class="rb-field"><span class="rb-label">Played</span><${Select} compact value=${String(flt.minutes)} label="Minutes played" options=${MINUTE_CHOICES} onChange=${(v) => set({ minutes: Number(v) })} /></label>
-      <label class="rb-field"><span class="rb-label">Role</span><${Select} compact value=${flt.role} label="Role" options=${ROLES} onChange=${(v) => set({ role: v })} /></label>
-      <label class="rb-field"><input type="checkbox" checked=${flt.started} onChange=${(e) => set({ started: e.target.checked })} /><span class="small">Starters only</span></label>
-      <div class="grow"><${SearchBox} value=${flt.search} onInput=${(v) => set({ search: v })} placeholder="Find a player" /></div>
-      ${clear ? html`<${Button} kind="quiet" size="sm" onClick=${() => setFlt(OPEN)}>Clear filters</${Button}>` : null}
+  return html`<div class="stack" style=${{ "--gap": "12px" }}>
+    <div class=${cls("desk", "inset", peeked && "peeking", railOpen && "rail-open")}>
+      <${Rail} model=${model} allRows=${payload.rows} config=${config} head=${head} />
+      <section class="dk-main" aria-label="Players in this match">
+        <div class="results-bar">
+          <span class="dk-count"><b class="rb-title">${plural(sorted.length, "player")}</b><span class="muted small">${isFiltered ? `of ${d.rows.length}` : "everyone who played"}</span></span>
+          <div class="rb-controls">
+            <${Segmented} small label="View" options=${[{ value: "table", label: "Table" }, { value: "map", label: "Map" }]} value=${view.view} onChange=${(v) => setView({ view: v })} />
+            <${CsvButton} columns=${csv} rows=${shown} filename=${`prem-lab-match-${f.home_short}-${f.away_short}.csv`} />
+          </div>
+        </div>
+        ${chips.length ? html`<div class="dk-pills" aria-label="Active filters">
+          ${chips.map((c) => html`<span key=${c.id} class=${cls("fchip", c.kind)} title=${c.title}><span>${c.text}</span>
+            <button type="button" class="x" aria-label=${`Remove filter ${c.text}`} onClick=${() => setFilters(c.next)}><${Icon} name="x" /></button></span>`)}
+          <${Button} kind="quiet" size="sm" onClick=${model.clearFilters}>Clear all</${Button}>
+        </div>` : null}
+        ${view.view === "map" ? null : html`<div class="dk-setrow"><div class="dk-sets" role="tablist" aria-label="Which measures to show">
+          ${columns.custom ? html`<button type="button" role="tab" aria-selected="true" title="The measures you chose yourself">Your columns</button>` : null}
+          ${ctx.views.map((v) => html`<button type="button" role="tab" key=${v.key} aria-selected=${String(columns.preset === v.key)} title=${v.blurb} onClick=${() => setView({ cols: v.key === "overview" ? null : v.key })}>${v.label}</button>`)}
+          </div><${ColumnPicker} model=${model} />
+        </div>`}
+        ${!sorted.length
+          ? html`<${EmptyState} title="No players match these filters" text="Widen the minutes, or clear the filters." action=${html`<${Button} onClick=${model.clearFilters}>Clear all filters</${Button}>`} />`
+          : view.view === "map"
+            ? html`<div class="dk-scroll"><div class="card-body"><${MetricMap} model=${model} level="player" scope=${scope} noun="players" labelCount=${30} onOpen=${(r) => openPlayer(r, scope)} /></div></div>`
+            : html`<${Sheet} model=${model} lead=${lead} keys=${keys} rowKey=${(r) => r.id} picked=${peeked?.id ?? null} caption="Players in this match" marks=${marks}
+                peers="his role, this season" onPick=${(r) => (narrow ? r.id > 0 && openPlayer(r, scope) : setPeekId(peekId === r.id ? null : r.id))} />
+              <div class="dk-foot"><span>${sortSentence(view, ctx)} Click a row to see the player beside the list.</span>
+                <span class="row wrap" style=${{ gap: "4px 14px" }}><${MarkKey} /><${ShadeKey} peers="his role, this season" /></span></div>`}
+      </section>
+      ${peeked ? html`<${Peek} row=${peeked} ctx=${ctx} season=${scope.season} onClose=${() => setPeekId(null)}
+        facts=${[{ value: peeked.started ? "Started" : "Came on", label: short(peeked.team) }]}
+        note=${`Each bar ranks his number in this match against this season's ${(ctx.roles?.plural?.[peeked.group] || "players").toLowerCase()}; the tick is the middle of the role.${peeked.in_pool ? "" : " Under 30 minutes, so not ranked."}`} />` : null}
     </div>
-    <div class="results-bar">
-      <div class="stack" style=${{ "--gap": "2px" }}>
-        <b class="rb-title">${plural(sorted.length, "player")}${sorted.length !== d.rows.length ? html` <span class="muted rb-of">of ${d.rows.length}</span>` : ""}</b>
-        <span class="muted small">By ${sortLabel(sort.key, ctx)}, ${directionWords(sort.key, sort.dir, ctx)}. Click any column heading to re-sort.</span>
-      </div>
-      <div class="rb-controls">
-        <label class="rb-field"><span class="rb-label">Sort by</span>
-          <${MetricSelect} ctx=${ctx} compact value=${sort.key} label="Sort by" extra=${sortKeyChoices} onChange=${sortBy} />
-          <button type="button" class="btn sm icon-only" aria-label="Reverse the order" title="Reverse the order" onClick=${() => setSort({ ...sort, dir: sort.dir === "asc" ? "desc" : "asc" })}>${sort.dir === "asc" ? "↑" : "↓"}</button>
-        </label>
-        <${ColumnPicker} model=${model} />
-        <${CsvButton} columns=${csvColumns(tableColumns)} rows=${sorted} filename=${`prem-lab-match-${f.home_short}-${f.away_short}.csv`} />
-      </div>
-    </div>
-    <div class="results-notes" style=${{ display: "flex", flexWrap: "wrap", gap: "6px 18px", padding: "8px 18px", alignItems: "center" }}>
-      <span class="deep-key xsmall muted"><span><i class="b"></i>Best in this match</span><span><i class="w"></i>Weakest</span><span>among the players shown; marks follow the filters</span></span>
-    </div>
-    ${sorted.length
-      ? html`<${Standouts} rows=${sorted} ctx=${ctx} sort=${sort} />
-        <${DataTable} columns=${tableColumns} rows=${sorted} rowKey=${(r) => r.id} tight presorted maxHeight="min(78vh, 920px)" sort=${sort} onSort=${onSort} caption="Players in this match" />`
-      : html`<${EmptyState} title="No players match these filters" text="Widen the playing time, or clear the filters." action=${html`<${Button} onClick=${() => setFlt(OPEN)}>Clear filters</${Button}>`} />`}
-    <div class="results-notes" style=${{ padding: "10px 18px 14px" }}>
-      <${Notice} icon="info">Every number is for this match alone, from its shots, the line-ups${d.coverage.events ? " and the event data" : ""}. The bar under a rate shows where it would sit among this season's players in the same role who have played enough; counts have no bar, and players under 30 minutes are not ranked${thin ? ` (${thin} here)` : ""}. One match is a small sample: read a single rate with care.${d.coverage.events ? "" : " No event data is stored for this match, so tackles, passes, carries and duels are not shown."}</${Notice}>
-    </div>
+    <${Notice} icon="info">Every number is for this match alone, from its shots, the line-ups${d.coverage.events ? " and the event data" : ""}. Players under 30 minutes are not ranked${thin ? ` (${thin} in the list now)` : ""}, and one match is a small sample: read a single rate with care.${d.coverage.events ? "" : " No event data is stored for this match, so tackles, passes, carries and duels are blank."}</${Notice}>
   </div>`;
 }
 
@@ -116,5 +99,5 @@ export function MatchDeep({ id, scope, f, live = false }) {
   // a match drawn from a WhoScored read: its own cache key, asked again every minute, never kept in the browser's store (see MatchPage)
   const q = useApi(`/api/match/${id}/players`, live ? { league: scope.league, season: scope.season, live: 1 } : { league: scope.league, season: scope.season },
     live ? { staleMs: 0, persist: false, pollMs: 60000 } : undefined);
-  return html`<${Async} q=${q}>${(d) => (catalog ? html`<${Table} d=${d} f=${f} catalog=${catalog} scope=${scope} />` : null)}</${Async}>`;
+  return html`<${Async} q=${q}>${(d) => (catalog ? html`<${Desk} d=${d} f=${f} catalog=${catalog} scope=${scope} />` : null)}</${Async}>`;
 }
