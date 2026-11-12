@@ -99,6 +99,9 @@ export function PlayerMoves({ moves, matches, name }) {
   const zones = m.lost_zone.filter((z) => z.n > 0).map((z) => `${z.n} in ${z.label === "Own third" ? "his own third" : `the ${z.label.toLowerCase()}`}`);
   return html`<${Card} title="Moves he was part of"
     sub=${`A move is one spell of possession, as on a match's Moves tab. ${who} had a part in ${whole(m.n)} of his side's moves in ${plural(m.matches, "match", "matches")}; ${whole(m.shot)} of them came to a shot${m.n ? ` (${share(m.shot, m.n)})` : ""}.${worth(m)}`}>
+    ${(m.by_action || []).some((a) => a.shots > 0) ? html`<dl class="kv moves-kinds">${m.by_action.map((a) => html`<dt key=${a.key}>Shots that followed his ${a.label.toLowerCase()}</dt>
+      <dd class="num">${a.shots}${a.shots > 0 && a.xg != null && a.known > 0 ? html` <span class="muted">· ${a.xg.toFixed(1)} xG${a.known < a.shots ? ` (known for ${a.known})` : ""}</span>` : a.shots > 0 && a.xg != null ? html` <span class="muted">· no xG yet</span>` : null}</dd>`)}</dl>
+      <p class="xsmall muted" style=${{ margin: "6px 0 0" }}>A shot is listed under each kind of action of his in the move that came to it, so one shot can appear in two rows. Carries are an estimate.</p>` : null}
     <div class="grid cols-2 moves-grid">
       <section class="stack" style=${{ "--gap": "10px" }}>
         <h3 class="mini-title">Where he lost the ball <span class="muted">${whole(m.lost_n)} times${zones.length ? `: ${zones.join(", ")}` : ""}</span></h3>

@@ -42,3 +42,4 @@
 .people-row b { text-align: right; }
 .people-note { white-space: nowrap; }
 @media (max-width: 560px) { .people-row { grid-template-columns: minmax(0, 1fr) 60px 30px; } .people-note { grid-column: 1 / -1; margin-top: -4px; } }
+.moves-kinds { max-width: 520px; }

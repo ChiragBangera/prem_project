@@ -98,7 +98,7 @@ export function PercentileDots({ metrics, subjects, colors }) {
 export function OutcomeBars({ rows, minN = 5, peers = "", solid = "came to a shot", hatched = "did not" }) {
   const max = Math.max(1, ...rows.map((r) => r.n));
   return html`<div class="outcome-bars">
-    <div class="ob-legend xsmall muted"><span class="ob-key solid"></span>${solid}<span class="ob-key hatch"></span>${hatched}</div>
+    <div class="ob-legend xsmall muted"><span class="ob-key solid"></span>${solid}<span class="ob-key hatch"></span>${hatched}${rows.some((r) => r.lost != null) ? html`<span class="ob-key lost"></span>the ball was lost within three actions` : null}</div>
     ${rows.map((r) => {
       const share = r.n > 0 ? r.shot / r.n : null;
       return html`<div key=${r.key || r.label} class=${"ob-row" + (r.n < minN ? " faint" : "")} title=${r.n < minN ? "Too few to read a share from" : undefined} style=${r.color ? { "--ob": r.color } : null}>
@@ -106,9 +106,10 @@ export function OutcomeBars({ rows, minN = 5, peers = "", solid = "came to a sho
         <span class="ob-track" role="img" aria-label=${`${r.text || r.label}: ${r.shot} of ${r.n} ${solid}`}>
           <span class="ob-fill" style=${{ width: `${(r.n / max) * 100}%` }}>
             <span class="ob-solid" style=${{ width: `${(share || 0) * 100}%` }}></span>
+            ${r.lost ? html`<span class="ob-lost" style=${{ width: `${Math.min(1 - (share || 0), r.lost / r.n) * 100}%` }}></span>` : null}
           </span>
         </span>
-        <span class="ob-num num"><b>${r.shot}</b> of ${r.n}${share != null ? html` <span class="muted">· ${Math.round(share * 100)}%</span>` : null}</span>
+        <span class="ob-num num"><b>${r.shot}</b> of ${r.n}${share != null ? html` <span class="muted">· ${Math.round(share * 100)}%</span>` : null}${r.lost != null && r.n > 0 ? html`<span class="ob-lostnum muted xsmall" title="After this many, his side lost the ball within three actions"> · ${r.lost} lost soon</span>` : null}</span>
         ${r.pct != null ? html`<span class="ob-pct xsmall" title=${`That share is higher than ${Math.round(r.pct)}% of ${peers || "peers"}`}>${ordinal(Math.round(r.pct))} pct</span>` : html`<span class="ob-pct"></span>`}
       </div>`;
     })}

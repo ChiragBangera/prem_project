@@ -263,3 +263,31 @@ def action_outcomes(moves: list[dict]) -> tuple[set[int], set[int]]:
             elif step[0] != K_SHOT:
                 events.add(i)
     return events, carried
+
+
+LOST_WITHIN = 3   # "lost soon": the side lost the ball within this many further actions of the same move
+
+
+def lost_soon(moves: list[dict], within: int = LOST_WITHIN) -> tuple[set[int], set[int]]:
+    """Which actions were followed by the side losing the ball within the next ``within`` actions: ``(events, carries)``, as
+    :func:`action_outcomes` gives them.
+
+    The second thing that can come of an action, beside a shot: the move went to the other side (taken in play, played out of play,
+    a foul or an offside given away) and the losing action was one of the next ``within``. A move that ended in a shot, a restart
+    won or the whistle lost nothing. The action that itself gave the ball away is not listed: it did not lead to a loss, it was one.
+    """
+    events: set[int] = set()
+    carried: set[int] = set()
+    for move in moves:
+        gone = move["end"] in ("lost", "foul", "offside") or (move["end"] in ("out", "stopped") and move["keep"] is False)
+        if not gone:
+            continue
+        last = len(move["steps"]) - 1
+        final = move["steps"][last]
+        # the losing action is the move's last step (a pass that went astray, a player dispossessed), unless that step is a completed
+        # pass: then the receiver lost it before doing anything the data records, one action further on
+        loss_at = last + 1 if final[0] == K_PASS and final[6] else last
+        for pos, (step, i) in enumerate(zip(move["steps"], move["ix"], strict=True)):
+            if pos < loss_at and loss_at - pos <= within:   # pos == loss_at: he lost it himself, which is not "followed by" a loss
+                (carried if step[0] == K_CARRY else events).add(i)
+    return events, carried
