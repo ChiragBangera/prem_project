@@ -62,6 +62,15 @@ test("minutes, role in the team and age behave as written, and unknown ages neve
   assert.equal(sureAge(rows[5]), null);
 });
 
+test("in one match, role in the team means who started and who came on", () => {
+  const matchCtx = { idx: makeIndex(["minutes", "npxg90"]), metrics: {}, lenses: {} };
+  const players = [{ id: 1, name: "A", started: true, v: [90, 0.1], p: [] }, { id: 2, name: "B", started: false, v: [20, 0], p: [] }, { id: 3, name: "C", started: true, v: [70, 0], p: [] }];
+  const f = (part) => ids(applyFilters(players, { ...emptyFilters(), part }, matchCtx));
+  assert.deepEqual(f("starter"), [1, 3]);
+  assert.deepEqual(f("rotation"), [2]);
+  assert.deepEqual(f(""), [1, 2, 3]);
+});
+
 test("a metric rule never passes a row whose value is unknown, and an unknown metric does not exclude anyone", () => {
   const f = (rules) => ids(applyFilters(rows, { ...emptyFilters(), rules }, ctx));
   assert.deepEqual(f([{ metric: "npxg90", op: ">=", value: 0.5, on: "value" }]), [1, 2]);          // row 3 and 4 have no npxG: unknown is not zero

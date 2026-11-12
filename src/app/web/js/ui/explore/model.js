@@ -1,7 +1,7 @@
 // The explorer model: everything Scout and Teams share. It reads the dataset and the catalog, keeps filters, sorting and columns in the URL
 // (so a view is a link), and hands the page the rows to draw. No drawing happens here.
-import { useCallback, useMemo } from "../../lib/html.js";
-import { setQuery } from "../../lib/router.js";
+import { useCallback, useMemo, useState } from "../../lib/html.js";
+import { navigate, setQuery as writeAddress } from "../../lib/router.js";
 import { ui } from "../../lib/store.js";
 import {
   applyFilters, activeChips, emptyFilters, makeIndex, parseCols, sortRows, stateFromQuery, stateToQuery, takeTop, viewFromQuery, viewToQuery, customCols, isFiltered,
@@ -70,9 +70,15 @@ export function resolveColumns(colsValue, ctx) {
   return { keys: view.metrics.filter((k) => ctx.idx[k] !== undefined), name: view.label, preset: view.key, custom: false, blurb: view.blurb };
 }
 
-export function useExplorer({ level, payload, catalog, query }) {
-  const ctx = useMemo(() => buildContext(level, payload, catalog), [level, payload, catalog]);
-  const defaults = useMemo(() => ({ ...DEFAULTS[level], sort: defaultSort(level, ctx, payload.rows) }), [level, ctx, payload.rows]);
+/**
+ * The state is read from `query` and written with `write(patch)` (keys set to null are removed). Both default to the page's address, so a view
+ * is a link; a table inside a page whose address already means something else (a match's tabs) passes its own pair from `useLocalQuery`.
+ * `overrides` replaces some of the level's defaults (the sort a match table opens on, for one).
+ */
+export function useExplorer({ level, payload, catalog, query, write = writeAddress, overrides = null, extend = null }) {
+  const ctx = useMemo(() => { const c = buildContext(level, payload, catalog); return extend ? { ...c, ...extend } : c; }, [level, payload, catalog, extend]);
+  const defaults = useMemo(() => ({ ...DEFAULTS[level], sort: defaultSort(level, ctx, payload.rows), ...(overrides || {}) }), [level, ctx, payload.rows, overrides]);
+  const setQuery = write;
   const queryKey = JSON.stringify(query);
   const filters = useMemo(() => stateFromQuery(query, ctx), [queryKey, ctx]);
   const view = useMemo(() => viewFromQuery(query, defaults), [queryKey, defaults]);
@@ -87,10 +93,10 @@ export function useExplorer({ level, payload, catalog, query }) {
   const setFilters = useCallback((next) => {
     const state = typeof next === "function" ? next(filters) : next;
     setQuery(stateToQuery(state));
-  }, [filters]);
+  }, [filters, setQuery]);
   const patchFilters = useCallback((patch) => setFilters((s) => ({ ...s, ...patch })), [setFilters]);
-  const clearFilters = useCallback(() => setQuery(stateToQuery(emptyFilters())), []);
-  const setView = useCallback((patch) => setQuery(viewToQuery({ ...view, ...patch }, defaults)), [view, defaults]);
+  const clearFilters = useCallback(() => setQuery(stateToQuery(emptyFilters())), [setQuery]);
+  const setView = useCallback((patch) => setQuery(viewToQuery({ ...view, ...patch }, defaults)), [view, defaults, setQuery]);
 
   /** Show exactly these metrics as columns (saved, so the picker opens on them next time). */
   const setColumns = useCallback((keys) => {
@@ -99,16 +105,45 @@ export function useExplorer({ level, payload, catalog, query }) {
     setView({ cols: customCols(clean) });
   }, [ctx, level, setView]);
 
-  return { ctx, defaults, filters, view, filtered, sorted, shown, columns, labels, chips, isFiltered: isFiltered(filters), setFilters, patchFilters, clearFilters, setView, setColumns };
+  return { ctx, defaults, filters, view, filtered, sorted, shown, columns, labels, chips, isFiltered: isFiltered(filters), setFilters, patchFilters, clearFilters, setView, setColumns, query, write: setQuery };
 }
 
-/** Group a list of metric keys by catalog group, in the catalog's order: the bands over the table's columns. */
-export function bandsFor(keys, ctx) {
-  const groupOrder = ctx.groups.map((g) => g.key);
-  const label = Object.fromEntries(ctx.groups.map((g) => [g.key, g.label]));
-  const withGroup = keys.map((k) => ({ key: k, group: ctx.metrics[k]?.group }));
-  // keep the user's order within a band, and order the bands as the catalog does
-  const order = [...new Set(withGroup.map((m) => m.group))].sort((a, b) => groupOrder.indexOf(a) - groupOrder.indexOf(b));
-  const bands = order.map((g) => ({ group: g, label: label[g] || g, keys: withGroup.filter((m) => m.group === g).map((m) => m.key) }));
-  return { bands, keys: bands.flatMap((b) => b.keys) };
+/** A query kept in the component instead of the address: `[query, write]` for useExplorer, starting from `initial`. */
+export function useLocalQuery(initial = {}) {
+  const [query, setLocal] = useState(initial);
+  const write = useCallback((patch) => setLocal((q) => {
+    const next = { ...q };
+    for (const [k, v] of Object.entries(patch)) { if (v == null || v === "") delete next[k]; else next[k] = String(v); }
+    return next;
+  }), []);
+  return [query, write];
+}
+
+/** The order a list is in, in words: "highest first", "best (lowest) first", "A to Z". */
+export function directionWords(key, dir, ctx) {
+  if (key === "name") return dir === "asc" ? "A to Z" : "Z to A";
+  if (key === "rank") return dir === "asc" ? "best first" : "worst first";
+  const hib = ctx.metrics[key]?.hib;
+  if (hib === false) return dir === "asc" ? "best (lowest) first" : "worst (highest) first";
+  return dir === "asc" ? "lowest first" : "highest first";
+}
+
+/** A label as it reads inside a sentence: an ordinary first word is lowered ("tackles per 90"), a name or an abbreviation is kept ("xG per game", "PPDA"). */
+export const inSentence = (label) => (/^[A-Z][a-z]/.test(label) ? label[0].toLowerCase() + label.slice(1) : label);
+
+/** "Sorted by xG per game, highest first." for the foot of a table; empty when the sort is not one it can name. */
+export function sortSentence(view, ctx) {
+  const { sort, dir } = view;
+  if (sort === "rank") return `Sorted by league position, ${directionWords("rank", dir, ctx)}.`;
+  if (sort === "name") return `Sorted by name, ${directionWords("name", dir, ctx)}.`;
+  const def = ctx.metrics[sort];
+  return def ? `Sorted by ${inSentence(def.label)}, ${directionWords(sort, dir, ctx)}.` : "";
+}
+
+export function openPlayer(row, scope) {
+  navigate(`/player/${row.id}`, { league: row.league, season: row.seasons?.length === 1 ? row.seasons[0] : scope.season });
+}
+
+export function openTeam(row) {
+  navigate(`/team/${encodeURIComponent(row.team)}`, { league: row.league, season: row.season });
 }

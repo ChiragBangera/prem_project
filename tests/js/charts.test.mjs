@@ -41,6 +41,12 @@ test("label placement drops labels that would collide; pills are nudged apart", 
     { id: 2, x: 52, y: 51, r: 4, text: "Alphb" },
   ], { w: 300, h: 200 });
   assert.equal(placed.length >= 1, true);
+  // a label never covers another dot: with a neighbour to the right the name goes to the other side, and with dots all round it is left out
+  const dots = [{ id: 1, x: 50, y: 50, r: 4 }, { id: 2, x: 70, y: 50, r: 4 }];
+  const [beside] = placeLabels([{ id: 1, x: 50, y: 50, r: 4, text: "Alpha" }], { w: 300, h: 200 }, 12, dots);
+  assert.equal(beside.anchor, "end");
+  const ring = Array.from({ length: 24 }, (_, i) => ({ id: 10 + i, x: 50 + 22 * Math.cos(i * Math.PI / 12), y: 50 + 14 * Math.sin(i * Math.PI / 12), r: 5 }));
+  assert.equal(placeLabels([{ id: 1, x: 50, y: 50, r: 4, text: "Alpha" }], { w: 300, h: 200 }, 12, ring).length, 0);
   const pills = dodge([
     { id: "a", px: 100, py: 100, bw: 30, bh: 20 },
     { id: "b", px: 102, py: 101, bw: 30, bh: 20 },
@@ -52,4 +58,19 @@ test("label placement drops labels that would collide; pills are nudged apart", 
 test("csv escapes commas, quotes and newlines", () => {
   const csv = toCsv([{ label: "Name", export: (r) => r.n }, { label: "Note", export: (r) => r.t }], [{ n: "A, B", t: 'say "hi"\nbye' }, { n: "C", t: null }]);
   assert.equal(csv, 'Name,Note\n"A, B","say ""hi""\nbye"\nC,');
+});
+
+test("pass network names: each sits nearest its own dot, or is moved out on a leader line; none covers a dot or another name", async () => {
+  const { placeNames } = await import("../../src/app/web/js/charts/pitchmaps.js");
+  const radius = () => 3;
+  // two players who stood in almost the same place, a third just under them, and one alone
+  const nodes = [{ id: 1, name: "Schlager", x: 500, y: 500, touches: 60 }, { id: 2, name: "McAtee", x: 505, y: 510, touches: 40 },
+    { id: 3, name: "Milenkovic", x: 440, y: 505, touches: 50 }, { id: 4, name: "Sels", x: 100, y: 500, touches: 30 }];
+  const at = placeNames(nodes, radius, (n) => n.name);
+  assert.equal(at.size, 4);
+  assert.equal(at.get(4).leader, undefined);                              // room beside the dot: no line needed
+  assert.ok(at.get(2).leader || at.get(1).leader);                        // the pile is told apart with a line
+  const boxes = [...at.values()].map((p) => p.box);
+  const hit = (a, b) => a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+  for (let i = 0; i < boxes.length; i++) for (let j = i + 1; j < boxes.length; j++) assert.equal(hit(boxes[i], boxes[j]), false);
 });
