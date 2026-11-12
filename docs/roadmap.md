@@ -99,7 +99,10 @@ it off the opponents most). Player → Maps: "Moves he was part of" (where he lo
 **Second match checked 2026-11-12:** Ipswich v Nottingham Forest, 10:30 to the goal at 12:11, raw events (the page as WhoScored
 served it) against the moves: six moves, each starting and ending on the right event, the right player losing the ball and the
 right one winning it, and the eleven-pass move ending in Williams's goal.
-**Still open:** `counters._sequences` (the team "sequence" totals) still uses its older, plainer rule.
+**Sequence totals on the same rule, done 2026-11-12:** `counters._sequences` now adds up the match's moves (gold version 4, so stored
+matches re-derive once more on the next start: 46 s for 743 matches on a copy). A sequence is a move; passes are the completed ones.
+On the 2026/27 Premier League the order of teams hardly moves (Man City longest at 4.3 passes a sequence, Hull shortest at 1.7);
+there are about a quarter fewer sequences a game, because a lone touch is no longer one, and each team's count equals its `mv_in`.
 
 **Backend**
 - Lift the sequence builder out of `counters._sequences` into one function that returns rows, used by both the counters (totals unchanged:
