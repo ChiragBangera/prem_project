@@ -66,13 +66,26 @@ def link_fixtures(rollup: dict, fixtures: Iterable[Fixture]) -> tuple[dict[int, 
     links: dict[int, Fixture] = {}
     used: set[int] = set()
 
+    clubs = sorted({name for f in played for name in (f.home, f.away)})
+    known: dict[str, str | None] = {}
+
+    def club(name: str) -> str | None:
+        """The Understat club a WhoScored name plainly is, or None when names cannot tell."""
+        if name not in known:
+            known[name] = next((c for c in clubs if _plays_for([name], [c])), None)
+        return known[name]
+
     def fits(m: dict, f: Fixture, *, names: bool) -> bool:
         gap = _days(m["date"], f.date)
         if gap is None or gap > 1:
             return False
         if m["score"] and (m["score"][0] != f.hg or m["score"][1] != f.ag):
             return False
-        return not names or (_plays_for([m["home"]], [f.home]) and _plays_for([m["away"]], [f.away]))
+        if names:
+            return _plays_for([m["home"]], [f.home]) and _plays_for([m["away"]], [f.away])
+        # by date and score alone: only for clubs the names cannot place. A match of clubs that are plainly two *other* clubs is a
+        # match Understat has not published (its own fixture is not among the played ones), not this fixture
+        return club(m["home"]) in (None, f.home) and club(m["away"]) in (None, f.away)
 
     for names in (True, False):
         for m in matches:

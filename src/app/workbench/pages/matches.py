@@ -3,15 +3,20 @@
 from __future__ import annotations
 
 import dataclasses
+from datetime import date
 
 from app.analytics import matchsum
 from app.analytics.live_page import live_match_page, live_report, score
 from app.data import matchclock
 from app.analytics.match import match_report
+from app.analytics.match_centre import CENTRE_VERSION, attach_xg, build_centre
 from app.analytics.match_players import build_match_players
+from app.data.people import plays_for
 from app.data.repository import Meta
 from app.errors import BadRequest, NotFound
 from app.events import ledger
+from app.events import raw as R
+from app.events import silver as SV
 from app.insights.briefing import recent_matches
 from app.insights.core import dicts, rank
 from app.insights.match import match_insights
@@ -20,6 +25,10 @@ from app.workbench.part import Part
 
 
 class MatchesPage(Part):
+    def __init__(self, wb) -> None:
+        super().__init__(wb)
+        self._stored: dict[tuple[str, int], tuple[tuple, dict[int, int]]] = {}
+
     async def season(self, league: str, season) -> dict:
         """Every fixture by matchweek, each with its score, who scored, and the numbers behind the result."""
         code, s, fetched, scope = await self.wb.seasons.scope(league, season)
@@ -35,10 +44,11 @@ class MatchesPage(Part):
                 "round": number, "from": fixtures[0].date, "to": fixtures[-1].date, "played": all(f.played for f in fixtures),
                 "matches": [{**self.card(f, summaries, recent), **({"still_playing": True} if self._still_playing(code, s, f) else {})} for f in fixtures],
             })
-        latest = max((r["round"] for r in rounds if any(m["played"] for m in r["matches"])), default=None)
-        have = sum(1 for r in rounds for m in r["matches"] if "scorers" in m)
+        latest = max((r["round"] for r in rounds if any(m["played"] or m.get("result") for m in r["matches"])), default=None)
+        have = sum(1 for r in rounds for m in r["matches"] if m["played"] and "scorers" in m)
         return {"scope": scope, "meta": fetched.meta.to_dict(), "rounds": rounds, "latest_round": latest,
-                "coverage": {"scorers": have, "played": ls.n_played, "events": len(self.events.match_ids(code, s))}}
+                "coverage": {"scorers": have, "played": ls.n_played, "events": len(self.events.match_ids(code, s)),
+                             "unpublished": sum(1 for r in rounds for m in r["matches"] if m.get("result"))}}
 
     async def report(self, match_id: int, league: str, season) -> dict:
         """One played match: the scoreboard, the shots, the story of the game and how it was played.
@@ -50,7 +60,7 @@ class MatchesPage(Part):
         if fixture is None:
             raise NotFound(f"Match {match_id} is not in {scope['league_name']} {scope['label']}.", hint="Check the league and season.")
         if not fixture.played:
-            src = self._live_source(code, s, fixture)
+            src = self._live_source(fetched.data, fixture)
             if src is None:
                 raise BadRequest("That match has not been played yet: there are no shots to analyse.")
             live_fixture, page = self._live_page(fetched.data, fixture, s, src)
@@ -76,7 +86,7 @@ class MatchesPage(Part):
         if fixture is None:
             raise NotFound(f"Match {match_id} is not in {scope['league_name']} {scope['label']}.", hint="Check the league and season.")
         if not fixture.played:
-            src = self._live_source(code, s, fixture)
+            src = self._live_source(fetched.data, fixture)
             if src is None:
                 raise BadRequest("That match has not been played yet: there are no players to analyse.")
             live_fixture, live = self._live_page(ls, fixture, s, src)
@@ -101,12 +111,56 @@ class MatchesPage(Part):
         out = await wb.memo(("match-players", code, s, match_id), version, compute)
         return {"scope": scope, "meta": page.meta.to_dict(), "pool_minutes": ds.pool_minutes, "group_sizes": ds.group_sizes, **out}
 
+    async def centre(self, match_id: int, league: str, season) -> dict:
+        """The match's event data for the Match page (see :mod:`app.analytics.match_centre`): every touch, pass, defensive action and
+        shot, the timeline and the line-ups. From the stored match, or from the latest read of one still being played. A match with no
+        event data answers ``available: False`` and why, so the page can say so."""
+        wb = self.wb
+        code, s, fetched, scope = await wb.seasons.scope(league, season)
+        ls = fetched.data
+        fixture = next((f for f in ls.fixtures if f.id == match_id), None)
+        if fixture is None:
+            raise NotFound(f"Match {match_id} is not in {scope['league_name']} {scope['label']}.", hint="Check the league and season.")
+        to_us, _to_ws = self._links(ls)
+
+        def finish(doc: dict) -> dict:
+            doc["links"] = {pid: to_us[int(pid)] for pid in doc["names"] if int(pid) in to_us}
+            return doc
+
+        if not fixture.played:
+            src = self._live_source(fetched.data, fixture)
+            if src is None:
+                return {"scope": scope, "centre": {"available": False, "reason": "not_read"}}
+            silver = SV.parse_match(src["doc"], league=code, season=s, game_id=src["game"])
+            if silver is None:
+                return {"scope": scope, "centre": {"available": False, "reason": "not_read"}}
+            return {"scope": scope, "centre": finish(build_centre(SV.Match(silver), final=bool(src["final"])))}
+        info = wb.links.for_season(ls, wb.matchbook.pages(ls))
+        game = next((g for g, f in info["fixtures"].items() if f.id == fixture.id), None) if info is not None else None
+        match = self.events.silver(code, s, game) if game is not None else None
+        if match is None or info is None:
+            return {"scope": scope, "centre": {"available": False, "reason": "no_events"}}
+        page = self.matchbook.pages(ls).get(fixture.id)
+        version = (CENTRE_VERSION, self.events.version(code, s), self.repo.epochs.get("match", 0), page is not None)
+
+        alias = info["alias"]
+
+        def compute() -> dict:
+            home_name = alias.get(match.teams[0]["name"])
+            doc = build_centre(match, final=True, flip=home_name is not None and home_name != fixture.home)
+            if page is not None:
+                attach_xg(doc, page.shots)
+            return finish(doc)
+
+        return {"scope": scope, "centre": await wb.memo(("match-centre", code, s, match_id), version, compute)}
+
     # ------------------------------------------------------------------ a match Understat has not published: from its WhoScored read
 
-    def _live_source(self, code: str, season: int, fixture) -> dict | None:
+    def _live_source(self, ls, fixture) -> dict | None:
         """The latest WhoScored read of a fixture (half time, in play or full time): its page, when it was read, whether WhoScored called it
         finished, and its counters. None when it has not been read."""
-        note = ledger.matchday(self.store, code, season, fixture.id) or {}
+        code, season = ls.league, ls.season
+        note = self._note(ls, fixture)
         if not note.get("game") or note.get("state") not in ("final", "live"):
             return None
         game = int(note["game"])
@@ -118,6 +172,47 @@ class MatchesPage(Part):
                 return None
             doc, at, final, gold = found["doc"], found["fetched_at"], False, found["gold"]
         return None if doc is None else {"doc": doc, "at": at, "final": final, "gold": gold, "note": note, "game": game}
+
+    def _note(self, ls, fixture) -> dict:
+        """What is known of a fixture Understat has not published: its matchday note (the half-time or full-time read), or, when it
+        was never read on the day but its finished match was stored later (the catch-up fetch), a note saying just that."""
+        code, season = ls.league, ls.season
+        note = ledger.matchday(self.store, code, season, fixture.id) or {}
+        if note.get("game") and note.get("state") in ("final", "live"):
+            return note
+        game = self.stored_games(ls).get(fixture.id)
+        if game is None:
+            return note
+        meta = self.store.meta(R.RAW_KIND, R.raw_key(code, season, game))
+        doc = self.events.raw.get(code, season, game) or {}
+        return {**note, "game": game, "state": "final", "moment": "ft", "elapsed": "FT", "at": meta[0] if meta else None,
+                "score": str(doc.get("score") or ""), "stored_later": True}
+
+    def stored_games(self, ls) -> dict[int, int]:
+        """``Understat fixture id -> WhoScored match`` for finished matches that are stored but that Understat has not published
+        (it publishes late, or is down: in October 2026 for a month). The match is the fixture when it has the same two clubs, home
+        with home, within a day of the fixture's date, and no other stored match fits. Remembered until either side changes."""
+        code, season = ls.league, ls.season
+        version = (self.events.version(code, season), self.repo.version("league", f"{code}:{season}"), self.repo.epochs.get("match", 0))
+        hit = self._stored.get((code, season))
+        if hit is not None and hit[0] == version:
+            return hit[1]
+        out: dict[int, int] = {}
+        info = self.wb.links.for_season(ls, self.matchbook.pages(ls))
+        if info is not None:
+            alias, linked = info["alias"], set(info["fixtures"])
+            waiting = [f for f in ls.fixtures if not f.played]
+            agg = self.events.season(code, season)
+            for team in agg["teams"].values():
+                for row in team["log"]:
+                    if not row["home"] or row["game"] in linked:
+                        continue
+                    home, away = alias.get(team["name"], team["name"]), alias.get(row["opp"], row["opp"])
+                    fits = [f for f in waiting if plays_for([home], [f.home]) and plays_for([away], [f.away]) and _near(row["date"], f.date)]
+                    if len(fits) == 1 and fits[0].id not in out:
+                        out[fits[0].id] = row["game"]
+        self._stored[(code, season)] = (version, out)
+        return out
 
     def _links(self, ls) -> tuple[dict[int, int], dict[int, int]]:
         """``(WhoScored player id -> Understat id, Understat id -> WhoScored id)`` for a season, from the links already made."""
@@ -144,6 +239,7 @@ class MatchesPage(Part):
             "final": src["final"], "elapsed": "FT" if src["final"] else str(note.get("elapsed") or src["doc"].get("elapsed") or ""),
             "at": src["at"], "phase": "second_half" if self._still_playing_note(fixture, note, now) else matchclock.phase(fixture, now), "moment": note.get("moment"),
             "understat_from": None if kickoff is None else kickoff + matchclock.UNDERSTAT_FIRST,
+            "overdue": kickoff is not None and now > kickoff + UNDERSTAT_OVERDUE,
         }
 
     def _event_reader(self, ls, fixture, code: str, season: int):
@@ -183,7 +279,7 @@ class MatchesPage(Part):
         window = kickoff is not None and kickoff - 30 * 60 <= now < kickoff + FT_GIVE_UP
         if follow and events_on and window and not fixture.played and kickoff is not None:
             wb.auto.follow(code, s, fixture.id, kickoff + FT_GIVE_UP)
-        note = ledger.matchday(self.store, code, s, fixture.id) or {}
+        note = self._note(fetched.data, fixture)
         read = None
         if note.get("game") and note.get("state") in ("final", "live"):
             game = int(note["game"])
@@ -208,7 +304,7 @@ class MatchesPage(Part):
                  else "second_half" if self._still_playing_note(fixture, note, now) else matchclock.phase(fixture, now))
         return {"scope": scope, "fixture": self.card(fixture, {}, {}), "phase": phase, "now": now,
                 "events_on": events_on, "followed": followed, "favourite": {"home": wb.favourites.follows(code, fixture.home), "away": wb.favourites.follows(code, fixture.away)},
-                "read": read, "next_read": nxt}
+                "read": read, "next_read": nxt, "overdue": kickoff is not None and now > kickoff + UNDERSTAT_OVERDUE}
 
     # ------------------------------------------------------------------ the numbers behind each fixture (also used by the briefing)
 
@@ -260,7 +356,30 @@ class MatchesPage(Part):
                 flip = home_name is not None and home_name != fixture.home
                 a, b = (gold["teams"][1], gold["teams"][0]) if flip else (gold["teams"][0], gold["teams"][1])
                 out.setdefault(fixture.id, {})["stats"] = _team_stats(a, b)
+        by_id = {f.id: f for f in ls.fixtures}
+        for fid in self.stored_games(ls):   # finished and stored, not yet published by Understat
+            src = self._live_source(ls, by_id[fid])
+            if src is None or not src["gold"]:
+                continue
+            fixture, page = self._live_page(ls, by_id[fid], ls.season, src)
+            shots = {side: [x for x in page.shots.get(side, []) if x.result != "OwnGoal"] for side in ("h", "a")}
+            out[fid] = {
+                "result": {"hg": fixture.hg, "ag": fixture.ag, "source": "whoscored", "at": src["at"]},
+                "scorers": {side: [{**g, "xg": None} for g in goals] for side, goals in matchsum.scorers(page).items()}, "red": matchsum.sent_off(page),
+                "shots": {side: len(v) for side, v in shots.items()}, "sot": {side: sum(x.result in matchsum.ON_TARGET for x in v) for side, v in shots.items()},
+                "stats": _team_stats(*_sides(src["gold"])),
+            }
         return out
+
+
+UNDERSTAT_OVERDUE = 2 * 86400.0   # Understat usually has a match within hours; after this long the page stops saying "shortly"
+
+
+def _near(a: str, b: str) -> bool:
+    try:
+        return abs((date.fromisoformat(str(a)[:10]) - date.fromisoformat(str(b)[:10])).days) <= 1
+    except ValueError:
+        return False
 
 
 LIVE_STATS = (("goals", "Goals"), ("shots", "Shots"), ("sot", "On target"), ("bigch", "Big chances"), ("passes", "Passes"), ("pass_f3", "Passes into the final third"),
