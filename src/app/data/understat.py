@@ -28,6 +28,8 @@ BASE_URL = "https://understat.com"
 USER_AGENT = "prem-lab/2.0 (personal football analytics; polite, cached)"
 RETRY_STATUSES = {408, 425, 429, 500, 502, 503, 504}
 MAX_RETRY_AFTER = 20.0
+MAINTENANCE_MARK = "we will come back soon"   # the only words on the page Understat serves while it is down
+MAINTENANCE = "Understat is down for maintenance (its site only says \"We will come back soon\")."
 
 
 def team_slug(name: str) -> str:
@@ -195,6 +197,12 @@ def _parse_json(text: str, path: str) -> Any:
         return json.loads(text)
     except json.JSONDecodeError as exc:
         head = text.lstrip()[:1]
+        if head == "<" and MAINTENANCE_MARK in text.lower():
+            # Understat answers every address with this page while it is being worked on (seen from 3 November 2026): nothing is wrong here
+            raise UpstreamError(
+                MAINTENANCE,
+                hint="Nothing is wrong on this computer. What is stored stays, and the app asks again by itself.",
+            ) from exc
         reason = (
             "an HTML page (the site may be blocking automated requests or has changed)"
             if head == "<"

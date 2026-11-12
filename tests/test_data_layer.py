@@ -237,6 +237,33 @@ async def test_stale_data_is_served_when_refresh_fails(store, settings, clock):
     assert result.data.n_played == 6  # still usable
 
 
+async def test_a_failed_refresh_is_not_asked_for_again_by_every_page_that_needs_it(store, settings, clock):
+    """While Understat was down every page view asked it again for the same table (and waited): about 130 requests for one open Briefing."""
+    from app.data.repository import REFRESH_HOLD
+
+    provider = FakeProvider(raw_league(played=6))
+    repo = Repository(store, provider, settings, clock=clock)
+    await repo.league("EPL", 2025)
+    clock.advance(3 * 24 * 3600)
+    provider.fail = UpstreamError("Understat returned HTTP 503.", upstream_status=503)
+    first = await repo.league("EPL", 2025)
+    asked = len(provider.calls)
+    for _ in range(5):
+        again = await repo.league("EPL", 2025)
+        assert again.meta.stale and again.meta.error == first.meta.error and again.data.n_played == 6
+    assert len(provider.calls) == asked                      # served from what is stored, with the reason, without asking
+    clock.advance(REFRESH_HOLD + 1)
+    provider.fail = None
+    back = await repo.league("EPL", 2025)
+    assert len(provider.calls) == asked + 1 and not back.meta.stale   # the hold is over: asked once, and it is back
+    provider.fail = UpstreamError("Understat returned HTTP 503.", upstream_status=503)
+    clock.advance(3 * 24 * 3600)
+    await repo.league("EPL", 2025)
+    asked = len(provider.calls)
+    await repo.league("EPL", 2025, refresh=True, force=True)
+    assert len(provider.calls) == asked + 1                  # a person pressing "fetch again" is never held back
+
+
 async def test_no_cache_and_upstream_down_raises_clear_error(repo, provider):
     provider.fail = UpstreamError("Could not connect to Understat.")
     with pytest.raises(UpstreamError):

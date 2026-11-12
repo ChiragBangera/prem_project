@@ -305,6 +305,10 @@ def create_app(settings: Settings | None = None, *, provider=None, today: date |
     async def match_players(request: Request, match_id: int, league: str = "EPL", season: str = "auto"):
         return ok(await wb(request).matches.players(match_id, league, season))
 
+    @app.get("/api/match/{match_id}/centre")
+    async def match_centre(request: Request, match_id: int, league: str = "EPL", season: str = "auto"):
+        return ok(await wb(request).matches.centre(match_id, league, season))
+
     @app.get("/api/match/{match_id}/live")
     async def match_live(request: Request, match_id: int, league: str = "EPL", season: str = "auto", follow: bool = False):
         return ok(await wb(request).matches.live(match_id, league, season, follow=follow))
@@ -360,8 +364,8 @@ def create_app(settings: Settings | None = None, *, provider=None, today: date |
 
     @app.post("/api/data/auto/run")
     async def data_auto_run(request: Request):
-        wb(request).auto.wake()
-        return ok({"started": True})
+        released = wb(request).auto.run_now()
+        return ok({"started": True, "retrying": released})
 
     # ------------------------------------------------------------------ steering the event fetcher
 

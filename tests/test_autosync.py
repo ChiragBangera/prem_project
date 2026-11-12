@@ -12,7 +12,8 @@ from app.config import Settings
 from app.errors import UpstreamError
 from app.data import matchclock
 from app.events import ledger
-from app.sync.autosync import BACKOFF_BASE, CLEARANCE, EVENT_BATCH, EVENT_RECHECK, EVENT_REST, FAIL_PREFIX, AutoSync, next_midnight
+from app.data.understat import MAINTENANCE, _parse_json
+from app.sync.autosync import BACKOFF_BASE, CLEARANCE, EVENT_BATCH, EVENT_RECHECK, EVENT_REST, FAIL_PREFIX, MIN_SLEEP, AutoSync, last_error, next_midnight
 from app.workbench import Workbench
 
 from .events_kit import AWAY, end, ev, match, player
@@ -118,6 +119,108 @@ def test_a_failing_league_is_retried_later_with_a_growing_delay_and_the_rest_car
     run(go())
 
 
+def test_a_table_that_could_not_be_refreshed_is_a_failure_that_backs_off_not_a_quiet_stale(tmp_path):
+    """Understat was down for days in November 2026. Every stored table was due, every refresh failed softly (the stored table was served),
+    and the updater counted no problem: it woke every minute and asked for every league and every missing match page again."""
+    async def go():
+        wb, provider = make(tmp_path)
+        try:
+            now = [wb.auto._clock()]
+            wb.auto._clock = wb.repo._clock = lambda: now[0]
+            await wb.auto.run_once()                                                     # everything stored
+            original = provider.league
+
+            async def down(code, season):
+                provider.calls.append(("league", code, season, "down"))
+                _parse_json("<!DOCTYPE html><html><title>Understat.com</title><body>We will come back soon</body></html>", f"/getLeagueData/{code}/{season}")
+
+            provider.league = down
+            now[0] += 13 * 3600                                                          # past the twice-daily look: every live table is due
+            asked, spent = len(provider.calls), wb.auto.budget.summary()["understat"]["used"]
+            result = await wb.auto.run_once()
+            live = result["leagues"]                                                     # the fake seasons are all still being played
+            assert live and all(v["state"] == "failed" and v["error"] == MAINTENANCE for v in live.values())
+            assert len(result["errors"]) == len(live) and all("down for maintenance" in e for e in result["errors"])   # counted, in plain words
+            league_calls = [c for c in provider.calls[asked:] if c[0] == "league"]
+            assert len(league_calls) == 1                                                # the first answer said the site is down: the other leagues were not asked
+            assert not [c for c in provider.calls[asked:] if c[0] == "match"]            # and no match page was asked for from a site that is down
+            assert wb.auto.budget.summary()["understat"]["used"] == spent                # a failure costs nothing of the day's limit
+            at, _why = wb.auto.next_wake()
+            assert at - now[0] >= BACKOFF_BASE - 1 > MIN_SLEEP                            # it waits out the back-off instead of waking a minute later
+            asked = len(provider.calls)
+            again = await wb.auto.run_once()
+            assert all(v["state"] == "waiting" for v in again["leagues"].values()) and len(provider.calls) == asked
+            provider.league = original
+            now[0] += 7 * 3600
+            back = await wb.auto.run_once()
+            assert all(v["state"] == "ok" for v in back["leagues"].values()) and not back["errors"] and not wb.store.kv_prefix(FAIL_PREFIX)
+        finally:
+            await wb.close()
+
+    run(go())
+
+
+def test_event_data_does_not_wait_for_a_league_table_that_is_behind(tmp_path, monkeypatch):
+    """The table (Understat) lists three matches as played. By the fixture list's kickoffs more are long over: the event fetcher, which
+    reads another site, is asked for those too."""
+    async def go():
+        wb, _provider = make(tmp_path)
+        spawned = []
+        _events_on(wb, monkeypatch, spawned)
+        try:
+            await wb.auto.run_once()                                                     # tables stored; the fetcher starts for what is missing
+            ls = wb.repo.cached_league("EPL", 2026)
+            kicks = sorted(k for f in ls.fixtures if (k := matchclock.kickoff(f)) is not None)
+            assert len(kicks) > ls.n_played                                              # the fake season has fixtures the table has not played
+            wb.auto._clock = lambda: kicks[0] - 3600
+            assert wb.auto._finished(ls) == ls.n_played                                  # before any kickoff the clock adds nothing: the table's count stands
+            wb.auto._clock = lambda: kicks[-1] + 5 * 3600                                # every fixture kicked off over four hours ago
+            over = len(kicks)
+            assert wb.auto._finished(ls) == over
+            row = next(r for r in wb.auto.plan() if (r["league"], r["season"]) == ("EPL", 2026))
+            assert row["events_played"] == over and row["events_left"] == over
+            assert [(c, s, n) for c, s, n, _at in wb.auto._backfill() if c == "EPL"] == [("EPL", 2026, over)]
+        finally:
+            await wb.close()
+
+    run(go())
+
+
+def test_update_now_tries_again_what_is_waiting_out_a_failure(tmp_path):
+    async def go():
+        wb, provider = make(tmp_path)
+        try:
+            now = [wb.auto._clock()]
+            wb.auto._clock = wb.repo._clock = lambda: now[0]
+            await wb.auto.run_once()
+            original = provider.league
+            provider.league = lambda code, season: _parse_json("<html>We will come back soon</html>", "/x")   # raises: the site is down
+            now[0] += 13 * 3600
+            await wb.auto.run_once()
+            waiting = len(wb.store.kv_prefix(FAIL_PREFIX))
+            assert waiting and (await wb.auto.run_once())["leagues"]["EPL:2026"]["state"] == "waiting"      # left alone by the updater itself
+            provider.league = original
+            assert wb.auto.run_now() == waiting and wb.auto._wake.is_set()                                  # a person asks: everything is tried again now
+            back = await wb.auto.run_once()
+            assert all(v["state"] == "ok" for v in back["leagues"].values()) and not wb.store.kv_prefix(FAIL_PREFIX)
+        finally:
+            await wb.close()
+
+    run(go())
+
+
+def test_the_fetchers_last_words_are_what_the_data_page_shows(tmp_path):
+    log = tmp_path / "events-EPL-2026.log"
+    log.write_text(
+        "EPL 2026: reading 1 match now\nTraceback (most recent call last):\n  File \"x.py\", line 3, in <module>\n    raise Exception(message)\n"
+        "Exception: Missing a macOS dependency:\nYour Mac needs Rosetta 2 to use UC Mode!\nRun: \"softwareupdate --install-rosetta\"\nInfo: https://example.test/a\n"
+    )
+    assert last_error(log) == 'Exception: Missing a macOS dependency: Your Mac needs Rosetta 2 to use UC Mode! Run: "softwareupdate --install-rosetta"'
+    assert last_error(tmp_path / "missing.log") is None
+    (tmp_path / "empty.log").write_text("\n\n")
+    assert last_error(tmp_path / "empty.log") is None
+
+
 def test_a_season_that_does_not_exist_yet_is_not_an_error(tmp_path):
     async def go():
         wb, provider = make(tmp_path)
@@ -203,8 +306,10 @@ def test_no_event_fetcher_without_the_optional_dependencies_and_a_failed_one_bac
             assert spawned == [] and result["events"]["available"] is False and result["events"]["reason"] == "No browser"
             monkeypatch.setattr(AutoSync, "events_capability", staticmethod(lambda: {"available": True, "reason": None, "browser": "/bin/true"}))
             await wb.auto.run_once()
-            for _ in range(3):
-                await asyncio.sleep(0)
+            for _ in range(100):                                                         # the fetcher's end is noted after its log is read (off the loop)
+                if wb.store.kv_get(FAIL_PREFIX + "events:EPL:2026"):
+                    break
+                await asyncio.sleep(0.01)
             fail = wb.store.kv_get(FAIL_PREFIX + "events:EPL:2026")
             assert len(spawned) == 1 and fail and fail["n"] == 1 and "status 1" in fail["error"]
             await wb.auto.run_once()
