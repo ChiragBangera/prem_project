@@ -34,6 +34,8 @@ PLAYER_VIEWS: tuple[View, ...] = (
          ("passes90", "pass_acc", "fwd_pass_ratio", "prog_passes90", "fwdm90", "passf3_90", "passbox90", "long_ratio", "long_acc", "avg_pass_len")),
     View("possession", "Carrying & possession", "Running with the ball, dribbling, and where he is on it.", "player",
          ("touches90", "touchatt90", "touchbox90", "carries90", "carryprog90", "carrym90", "progact90", "takeons90", "takeon_success", "disp90")),
+    View("endproduct", "What came of it", "Forward passes, runs and dribbles, set against whether the move then came to a shot.", "player",
+         ("progact90", "progact_shot_pct", "progact_shot90", "carryprog90", "carryprog_shot_pct", "takeonswon90", "takeon_shot_pct", "pass_acc", "progpass_share", "movelost90")),
     View("defending", "Defending", "Winning the ball back and stopping attacks.", "player",
          ("tackles90", "tackle_success", "interceptions90", "tklint90", "clearances90", "blocks90", "recoveries90", "recatt90", "def_height", "challenges90")),
     View("duels", "Duels", "One-against-one contests and who wins them.", "player",

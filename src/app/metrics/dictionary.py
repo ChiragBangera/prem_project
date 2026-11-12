@@ -61,7 +61,7 @@ SOURCES: list[dict] = [
         "key": "whoscored", "name": "WhoScored (event data)", "kind": "web page, read by a browser (soccerdata)",
         "what": "Opta-style event data: every pass, tackle, duel, shot, save and card of a match (about 1,500 events), each with its position on the pitch, plus line-ups, formations, referee and a performance rating for each player.",
         "how": "Read match by match through a hidden browser (about 15 seconds each) the first time, then kept in this computer's own store exactly as it was served. Everything else is worked out from that stored copy, so a new definition or chart never needs the website again.",
-        "limits": "Positions are on a 0-100 pitch seen from the acting team's attacking direction. There is no ball tracking, no pressure event and no carry event (carries here are estimated). Its ratings are proprietary.",
+        "limits": "Positions are on a 0-100 pitch seen from the acting team's attacking direction. There is no tracking of players or the ball, so distance covered, sprints and high-intensity runs cannot be shown and are not estimated. There is no pressure event and no carry event (carries here are estimated). Its ratings are proprietary.",
         "parts": [
             {"name": "Match document", "fields": [
                 ("events[]", "Every event: type, outcome, team, player, minute and second, where it happened (x, y) and where it ended (endX, endY), and qualifiers that say how."),

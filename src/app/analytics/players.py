@@ -38,6 +38,9 @@ MIN_POOL_MINUTES, MAX_POOL_MINUTES = 180, 900
 MIN_POSITION_MINUTES = 270   # minutes started at known positions before the position decides his role
 ROLE_FEATURES = ("npxg90", "shots90", "xa90", "kp90", "xgchain90", "xgbuildup90")
 GK_GROUPS = {"goalkeeping", "passing", "discipline", "availability", "impact", "rating"}  # the metric groups a goalkeeper is ranked on
+#: the raw counts the player page draws as split bars (how many, and how many of those came to a shot)
+OUTCOME_COUNTERS = ("prog", "prog_shot", "carry_prog", "carry_prog_shot", "takeons_won", "takeons_won_shot", "crosses", "crosses_shot", "f3_entry", "f3_entry_shot",
+                    "mv_in", "mv_shot_in", "mv_lost", "mv_broken")
 SHOT_FIELDS = ("n", "goals", "xg", "sot", "blocked", "off", "post", "big", "big_goals", "pens", "pen_goals", "pen_xg", "sp_shots", "sp_xg", "sp_goals",
                "op_shots", "op_xg", "head", "head_xg", "head_goals", "dist", "box", "assisted", "fk", "fk_goals", "fk_xg", "xg_np")
 LEGACY_TOTALS = ("goals", "npg", "assists", "shots", "yellow", "red", "xg", "npxg", "xa", "xgchain", "xgbuildup", "games", "minutes")
@@ -395,6 +398,7 @@ def build_dataset(
             "ev_in_pool": bool(ev_in_pool[i]), "ev_pool_n": pools[g].get("tackles90", pools[g].get("passes90", 0)), "ev_pool_minutes": ev_pool_min,
             "output": None if not np.isfinite(output[i]) else round(float(output[i]), 1),
             "score_full": None if not np.isfinite(score_full[i]) else round(float(score_full[i]), 1),
+            "ev_c": {k: m.ev.get(k, 0) for k in OUTCOME_COUNTERS} if ev_present[i] and m.ev is not None else None,   # the counts behind "what came of it"
             "full_pct": {**pc},   # every percentile, base and event: the one table the new views read
             "full_rank": {**rk},
         }

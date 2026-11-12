@@ -96,6 +96,13 @@ PLAYER_LENSES: tuple[Lens, ...] = (
     Lens("carriers", "Ball carriers", "player", "Top 15% for progressive carries per 90",
          "Players who drive forward with the ball at their feet: progressive carries per 90 in the top 15% of their role. Estimated from the order of events; needs event data.",
          (Rule("carryprog90", ">=", 85, "pct"),), needs="events", show=("carryprog90", "carrym90", "carryf3_90", "takeons90"), sort="carryprog90"),
+    Lens("busy_empty", "Busy, little end product", "player", "Top 25% for progressive actions, bottom 30% for how many came to a shot",
+         "Players who move the ball forward a great deal (progressive passes plus carries per 90 in the top 25% of their role) while few of those moves then produce a shot "
+         "(bottom 30% of the role). It describes the actions, not the player's worth: team-mates finish moves too. Needs event data.",
+         (Rule("progact90", ">=", 75, "pct"), Rule("progact_shot_pct", "<=", 30, "pct")), needs="events", show=("progact90", "progact_shot_pct", "progact_shot90", "progact_empty90", "movelost90"), sort="progact90"),
+    Lens("progress_counts", "Progress that counts", "player", "Plenty of progressive actions, and top 20% for how many came to a shot",
+         "Players who progress the ball more than most in their role (top 40%) and whose progression most often ends in a shot (top 20%). Needs event data.",
+         (Rule("progact90", ">=", 60, "pct"), Rule("progact_shot_pct", ">=", 80, "pct")), needs="events", show=("progact90", "progact_shot_pct", "progact_shot90", "xa90", "kp90"), sort="progact_shot90"),
     Lens("pressers", "High regains", "player", "Top 15% for winning the ball in the attacking third",
          "Players who win the ball back high up the pitch: recoveries in the attacking third per 90 in the top 15% of their role. A marker of pressing. Needs event data.",
          (Rule("recatt90", ">=", 85, "pct"),), needs="events", show=("recatt90", "recoveries90", "tackles90", "def_height"), sort="recatt90"),
